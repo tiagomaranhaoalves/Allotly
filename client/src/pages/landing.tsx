@@ -68,13 +68,15 @@ function Hero() {
                 Now supporting OpenAI, Anthropic & Google
               </Badge>
               <h1 className="text-4xl sm:text-5xl lg:text-[3.5rem] font-extrabold tracking-tight leading-[1.08]">
-                The AI Spend{" "}
+                One Dashboard.{" "}
                 <span className="bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 bg-clip-text text-transparent">
-                  Control Plane
+                  Every Model.
                 </span>
+                <br />
+                <span className="text-3xl sm:text-4xl lg:text-[2.75rem]">Easy Compute Vouchers.</span>
               </h1>
               <p className="mt-6 text-lg sm:text-xl text-muted-foreground max-w-xl leading-relaxed">
-                Give your team AI access without losing control of your budget. Two powerful features, one dashboard.
+                Manage OpenAI, Anthropic, and Google from one place. Set budgets, distribute vouchers, and never lose control of your AI spend.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
