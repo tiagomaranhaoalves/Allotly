@@ -1,15 +1,17 @@
 import { Badge } from "@/components/ui/badge";
+import { Shield, Users, User } from "lucide-react";
 
-const ROLE_CONFIG: Record<string, { label: string; className: string }> = {
-  ROOT_ADMIN: { label: "Root Admin", className: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300" },
-  TEAM_ADMIN: { label: "Team Admin", className: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300" },
-  MEMBER: { label: "Member", className: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300" },
+const ROLE_CONFIG: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
+  ROOT_ADMIN: { label: "Root Admin", className: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 border-indigo-200/50 dark:border-indigo-800/50", icon: <Shield className="w-3 h-3" /> },
+  TEAM_ADMIN: { label: "Team Admin", className: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300 border-cyan-200/50 dark:border-cyan-800/50", icon: <Users className="w-3 h-3" /> },
+  MEMBER: { label: "Member", className: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 border-gray-200/50 dark:border-gray-700/50", icon: <User className="w-3 h-3" /> },
 };
 
 export function AdminRoleBadge({ role }: { role: string }) {
   const config = ROLE_CONFIG[role] || ROLE_CONFIG.MEMBER;
   return (
-    <Badge variant="secondary" className={`${config.className} no-default-hover-elevate no-default-active-elevate`} data-testid={`badge-role-${role.toLowerCase()}`}>
+    <Badge variant="secondary" className={`${config.className} no-default-hover-elevate no-default-active-elevate gap-1 font-semibold text-[11px] border`} data-testid={`badge-role-${role.toLowerCase()}`}>
+      {config.icon}
       {config.label}
     </Badge>
   );

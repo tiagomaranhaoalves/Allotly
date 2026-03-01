@@ -64,10 +64,13 @@ function AppSidebar() {
         <Link href="/" data-testid="link-sidebar-logo">
           <LogoFull size={24} />
         </Link>
+        {organization && (
+          <p className="mt-2 text-[11px] font-medium text-muted-foreground uppercase tracking-wider truncate">{organization.name}</p>
+        )}
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-[11px] uppercase tracking-wider font-semibold">Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {navItems.map((item) => (
@@ -85,13 +88,13 @@ function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="p-3 border-t">
-        <div className="flex items-center gap-2 px-2">
-          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary shrink-0">
+        <div className="flex items-center gap-2.5 px-2 py-1">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-100 to-indigo-200 dark:from-indigo-900/60 dark:to-indigo-800/60 flex items-center justify-center text-sm font-bold text-indigo-700 dark:text-indigo-300 shrink-0">
             {user?.name?.[0] || user?.email?.[0] || "?"}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">{user?.name || user?.email}</p>
-            <p className="text-xs text-muted-foreground truncate">{organization?.name}</p>
+            <p className="text-sm font-semibold truncate">{user?.name || user?.email}</p>
+            <p className="text-[11px] text-muted-foreground truncate">{user?.email}</p>
           </div>
         </div>
       </SidebarFooter>
@@ -113,8 +116,8 @@ function DashboardHeader() {
   };
 
   return (
-    <header className="flex items-center justify-between gap-2 p-3 border-b bg-background shrink-0">
-      <div className="flex items-center gap-2">
+    <header className="flex items-center justify-between gap-2 px-4 py-3 border-b bg-background/80 backdrop-blur-sm shrink-0">
+      <div className="flex items-center gap-3">
         <SidebarTrigger data-testid="button-sidebar-toggle" />
         {user && <AdminRoleBadge role={user.orgRole} />}
       </div>
@@ -124,18 +127,20 @@ function DashboardHeader() {
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="secondary" size="sm" className="gap-1" data-testid="button-user-menu">
-              {user?.name?.[0] || "?"}
+            <Button variant="secondary" size="sm" className="gap-1.5 pl-2 pr-2.5" data-testid="button-user-menu">
+              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-100 to-indigo-200 dark:from-indigo-900/60 dark:to-indigo-800/60 flex items-center justify-center text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
+                {user?.name?.[0] || "?"}
+              </div>
               <ChevronDown className="w-3 h-3" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <div className="px-2 py-1.5">
-              <p className="text-sm font-medium">{user?.name}</p>
+          <DropdownMenuContent align="end" className="w-56">
+            <div className="px-3 py-2">
+              <p className="text-sm font-semibold">{user?.name}</p>
               <p className="text-xs text-muted-foreground">{user?.email}</p>
             </div>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleLogout} data-testid="button-logout">
+            <DropdownMenuItem onClick={handleLogout} data-testid="button-logout" className="text-destructive focus:text-destructive">
               <LogOut className="w-4 h-4 mr-2" />
               Sign out
             </DropdownMenuItem>
@@ -177,7 +182,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         <AppSidebar />
         <div className="flex flex-col flex-1 min-w-0">
           <DashboardHeader />
-          <main className="flex-1 overflow-auto p-6">
+          <main className="flex-1 overflow-auto p-6 bg-muted/5">
             {children}
           </main>
         </div>
