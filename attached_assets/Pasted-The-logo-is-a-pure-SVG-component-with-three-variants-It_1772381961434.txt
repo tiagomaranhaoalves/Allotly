@@ -1,6 +1,22 @@
+The logo is a pure SVG component with three variants. It uses overlapping circles connected by lines to represent a network/allocation concept, in the brand colors indigo (#6366F1) and cyan (#06B6D4).
+
+Design Concept
+Main node: Large indigo circle (primary brand color)
+Two satellite nodes: One cyan, one light indigo — positioned top-right and bottom-right
+Connection lines: Subtle indigo lines linking the main node to each satellite
+Together they suggest a hub distributing resources outward (fitting the "allotment" theme)
+Brand Colors
+Primary: #6366F1 (Indigo)
+Secondary: #06B6D4 (Cyan)
+Accent: #818CF8 (Light Indigo)
+Text: currentColor (adapts to light/dark mode)
+Font: Inter, bold (700), 22px for the wordmark
+Component Code
+Create a file (e.g. components/logo.tsx) with this content:
+
 export function LogoFull({ className = "", size = 32 }: { className?: string; size?: number }) {
   return (
-    <svg viewBox="0 0 180 40" height={size} className={className} fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Allotly">
+    <svg viewBox="0 0 180 40" height={size} className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
       <g>
         <circle cx="16" cy="20" r="7" fill="#6366F1" opacity="0.9" />
         <circle cx="28" cy="13" r="5" fill="#06B6D4" opacity="0.8" />
@@ -14,10 +30,9 @@ export function LogoFull({ className = "", size = 32 }: { className?: string; si
     </svg>
   );
 }
-
 export function LogoIcon({ className = "", size = 32 }: { className?: string; size?: number }) {
   return (
-    <svg viewBox="0 0 40 40" height={size} width={size} className={className} fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Allotly">
+    <svg viewBox="0 0 40 40" height={size} width={size} className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
       <circle cx="16" cy="20" r="8" fill="#6366F1" opacity="0.9" />
       <circle cx="30" cy="12" r="6" fill="#06B6D4" opacity="0.8" />
       <circle cx="30" cy="28" r="5" fill="#818CF8" opacity="0.7" />
@@ -26,10 +41,9 @@ export function LogoIcon({ className = "", size = 32 }: { className?: string; si
     </svg>
   );
 }
-
 export function LogoMono({ className = "", size = 32 }: { className?: string; size?: number }) {
   return (
-    <svg viewBox="0 0 180 40" height={size} className={className} fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Allotly">
+    <svg viewBox="0 0 180 40" height={size} className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
       <circle cx="16" cy="20" r="7" fill="currentColor" opacity="0.6" />
       <circle cx="28" cy="13" r="5" fill="currentColor" opacity="0.4" />
       <circle cx="28" cy="27" r="4" fill="currentColor" opacity="0.3" />
@@ -41,3 +55,13 @@ export function LogoMono({ className = "", size = 32 }: { className?: string; si
     </svg>
   );
 }
+Three Variants
+Variant	Use Case	Description
+LogoFull	Navbar, headers	Colored icon + "Allotly" wordmark
+LogoIcon	Favicons, small spaces	Just the colored icon, slightly larger circles
+LogoMono	Footers, low-emphasis areas	Single-color version using currentColor
+Usage
+import { LogoFull, LogoIcon, LogoMono } from "@/components/logo";
+<LogoFull size={28} />       // Navbar
+<LogoIcon size={24} />       // Sidebar collapsed
+<LogoMono size={20} />       // Footer

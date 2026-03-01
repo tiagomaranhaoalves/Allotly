@@ -40,7 +40,7 @@ export default function SignupPage() {
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_left,_rgba(6,182,212,0.2),transparent_60%)]" />
         <div className="relative flex flex-col justify-center px-12 xl:px-16">
           <Link href="/" data-testid="link-signup-logo-side">
-            <LogoFull size={28} className="[&_text]:!fill-white [&_circle]:!fill-white/80 [&_path]:!stroke-white/50" />
+            <LogoFull size={28} className="text-white [&_circle]:!fill-white/80 [&_line]:!stroke-white/50" />
           </Link>
           <h2 className="mt-8 text-3xl font-extrabold text-white tracking-tight leading-tight">
             Your AI spend,<br />fully under control.
