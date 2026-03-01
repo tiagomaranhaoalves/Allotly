@@ -279,7 +279,7 @@ print(response.choices[0].message.content)`}</CodeBlock>
               {[
                 {
                   q: "Can I use Allotly with any AI model?",
-                  a: "Allotly supports OpenAI (GPT-4o, GPT-4o Mini, o1, o3), Anthropic (Claude Sonnet, Haiku, Opus), and Google (Gemini 2.5 Pro, Flash). More providers coming soon."
+                  a: "Allotly supports the latest models from all three major labs: OpenAI (GPT-4.1, GPT-4.1 Mini, GPT-4.1 Nano, GPT-4o, GPT-4o Mini, o3, o3 Mini, o4 Mini), Anthropic (Claude Sonnet 4.5, Claude Opus 4.5, Claude Haiku 4.5), and Google (Gemini 2.5 Pro, Gemini 2.5 Flash, Gemini 2.0 Flash). We update our model list as new releases come out."
                 },
                 {
                   q: "What happens if Allotly goes down?",
