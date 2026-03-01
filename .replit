@@ -37,3 +37,8 @@ author = "agent"
 task = "shell.exec"
 args = "npm run dev"
 waitForPort = 5000
+
+[userenv]
+
+[userenv.shared]
+ENCRYPTION_KEY = "293cfe548e20bcbb6deeac7710d23ddb774d05dd3b071cf280b55b5888c00e67"
