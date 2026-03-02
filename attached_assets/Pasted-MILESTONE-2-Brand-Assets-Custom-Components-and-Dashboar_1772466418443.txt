@@ -1,0 +1,50 @@
+MILESTONE 2: Brand Assets, Custom Components, and Dashboard Shell
+
+Referring to the full Allotly spec, complete Steps 2 and 6 from the build order.
+
+BUILD THESE:
+
+1. SVG LOGO (Section 2.1)
+   - Create /components/logo.tsx with three React SVG components:
+     - LogoFull: icon + "Allotly" wordmark. Icon evokes allocation/distribution (branching nodes or pie chart slices). Primary Indigo (#6366F1) for icon, Neutral 800 (#1F2937) for text in light mode, white in dark mode.
+     - LogoIcon: icon only (for favicon, mobile nav)
+     - LogoMono: monochrome white version (for dark backgrounds, footers)
+   - Must be legible at 24px height and look premium at 200px
+   - Export PNG favicons: 32x32, 180x180, 512x512
+   - Set up favicon in the root layout
+
+2. ALL CUSTOM COMPONENTS (Section 2.5) — build every one:
+   - /components/provider-badge.tsx — ProviderBadge: colored dot (#10A37F OpenAI, #D4A574 Anthropic, #4285F4 Google) + provider name
+   - /components/budget-bar.tsx — BudgetBar: horizontal progress bar, green (#10B981) 0-59%, amber (#F59E0B) 60-89%, red (#EF4444) 90%+. Shows "$X / $Y (Z%)"
+   - /components/admin-role-badge.tsx — AdminRoleBadge: pill badge. Indigo=Root Admin, Cyan=Team Admin, Gray=Member
+   - /components/spend-card.tsx — SpendCard: provider icon + formatted dollar amount + trend arrow with percentage
+   - /components/key-reveal-card.tsx — KeyRevealCard: masked key in JetBrains Mono with copy button. When revealed, shows full key ONCE with warning
+   - /components/voucher-card.tsx — VoucherCard: ALLOT-XXXX-XXXX-XXXX in JetBrains Mono + status badge + budget bar
+   - /components/automation-badge.tsx — AutomationBadge: "Instant Setup" (green) / "Quick Setup" (amber) / "Guided Setup" (gray)
+   - /components/feature-badge.tsx — FeatureBadge: "Teams" with key icon (indigo) / "Vouchers" with ticket icon (cyan)
+   - /components/bundle-card.tsx — BundleCard: redemptions used/total, requests used/total, expiry, progress bars
+   - /components/qr-code.tsx — QRCode: generates QR from value string at given size
+   - /components/empty-state.tsx — EmptyState: icon + title + description + CTA button
+   - /components/stats-card.tsx — StatsCard: title + large value + change indicator (up/down arrow + percentage)
+   - /components/data-table.tsx — DataTable: sortable, filterable, paginated table using shadcn/ui
+   - /components/dashboard-shell.tsx — DashboardShell: role-aware layout with sidebar navigation
+
+3. DASHBOARD SHELL (Section 11.4)
+   - DashboardShell reads the user's orgRole from session
+   - Root Admin sidebar: Overview, Providers, Teams, Vouchers, Bundles, Analytics, Audit Log, Settings
+   - Team Admin sidebar: Overview, Members, Vouchers, Bundles, Settings
+   - Member sidebar: Overview, API Keys (for DIRECT) or Usage (for PROXY)
+   - Header with LogoFull, user name, role badge, dark mode toggle
+   - Sidebar uses Allotly color scheme, active item highlighted in Primary (#6366F1)
+   - All dashboard pages wrap in DashboardShell
+
+4. DARK MODE
+   - Implement dark mode toggle (store preference in localStorage)
+   - Dark backgrounds: Neutral 900 (#111827), dark cards: #1E293B, dark hover: #334155
+   - Every component built in this milestone must work in both light and dark mode
+
+VERIFY BY:
+- Show me the dashboard shell logged in as Root Admin with full sidebar navigation
+- Show me each custom component rendered on a test page (all of them)
+- Toggle dark mode and confirm everything looks correct
+- Confirm the Allotly logo appears in the sidebar and the favicon is set

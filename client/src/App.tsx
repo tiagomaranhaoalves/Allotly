@@ -12,6 +12,7 @@ import LoginPage from "@/pages/login";
 import SignupPage from "@/pages/signup";
 import RedeemPage from "@/pages/redeem";
 import DocsPage from "@/pages/docs";
+import ComponentsShowcase from "@/pages/components-showcase";
 import DashboardOverview from "@/pages/dashboard/overview";
 import ProvidersPage from "@/pages/dashboard/providers";
 import TeamsPage from "@/pages/dashboard/teams";
@@ -40,6 +41,7 @@ function Router() {
       <Route path="/signup" component={SignupPage} />
       <Route path="/redeem" component={RedeemPage} />
       <Route path="/docs" component={DocsPage} />
+      <Route path="/components" component={ComponentsShowcase} />
       <Route path="/dashboard">
         {() => <DashboardRoute component={DashboardOverview} />}
       </Route>

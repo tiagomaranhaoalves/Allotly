@@ -101,5 +101,13 @@ Format: allotly_sk_ + 48 base64url chars. Only SHA-256 hash stored in DB.
 ## All Money in Integer Cents
 Never use floats for money. Display as `$(cents / 100).toFixed(2)`.
 
+## Brand Components (client/src/components/brand/)
+ProviderBadge, BudgetBar, AdminRoleBadge, SpendCard, KeyRevealCard, VoucherCard, AutomationBadge, FeatureBadge, BundleCard, QRCode, EmptyState, StatsCard, DataTable
+
+## Logo Components (client/src/components/logo.tsx)
+LogoFull (icon + wordmark), LogoIcon (icon only), LogoMono (monochrome white)
+Branching-nodes motif: central hub with 3 branch nodes representing allocation/distribution
+
 ## Milestone Status
 - Milestone 1 (Foundation, DB, Auth): COMPLETE — schema, auth, storage, all 15 tables, model pricing seeded, signup→login→dashboard flow verified
+- Milestone 2 (Brand Assets & Components): COMPLETE — all 14 brand components, logo variants, SVG favicon, dark mode, component showcase at /components, DataTable with sort/filter/pagination
