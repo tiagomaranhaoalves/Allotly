@@ -12,6 +12,12 @@ import LoginPage from "@/pages/login";
 import SignupPage from "@/pages/signup";
 import RedeemPage from "@/pages/redeem";
 import DocsPage from "@/pages/docs";
+import AboutPage from "@/pages/about";
+import CareersPage from "@/pages/careers";
+import ContactPage from "@/pages/contact";
+import PrivacyPage from "@/pages/privacy";
+import TermsPage from "@/pages/terms";
+import SecurityPage from "@/pages/security";
 import ComponentsShowcase from "@/pages/components-showcase";
 import DashboardOverview from "@/pages/dashboard/overview";
 import ProvidersPage from "@/pages/dashboard/providers";
@@ -41,6 +47,12 @@ function Router() {
       <Route path="/signup" component={SignupPage} />
       <Route path="/redeem" component={RedeemPage} />
       <Route path="/docs" component={DocsPage} />
+      <Route path="/about" component={AboutPage} />
+      <Route path="/careers" component={CareersPage} />
+      <Route path="/contact" component={ContactPage} />
+      <Route path="/privacy" component={PrivacyPage} />
+      <Route path="/terms" component={TermsPage} />
+      <Route path="/security" component={SecurityPage} />
       <Route path="/components" component={ComponentsShowcase} />
       <Route path="/dashboard">
         {() => <DashboardRoute component={DashboardOverview} />}

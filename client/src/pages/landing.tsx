@@ -867,18 +867,17 @@ function Footer() {
           <div>
             <p className="text-xs font-semibold text-neutral-300 uppercase tracking-wider mb-4">Company</p>
             <ul className="space-y-2.5">
-              <li><a href="#" className="text-sm hover:text-white transition-colors" data-testid="link-footer-about">About</a></li>
-              <li><a href="#" className="text-sm hover:text-white transition-colors" data-testid="link-footer-blog">Blog</a></li>
-              <li><a href="#" className="text-sm hover:text-white transition-colors" data-testid="link-footer-careers">Careers</a></li>
-              <li><a href="#" className="text-sm hover:text-white transition-colors" data-testid="link-footer-contact">Contact</a></li>
+              <li><Link href="/about" className="text-sm hover:text-white transition-colors" data-testid="link-footer-about">About</Link></li>
+              <li><Link href="/careers" className="text-sm hover:text-white transition-colors" data-testid="link-footer-careers">Careers</Link></li>
+              <li><Link href="/contact" className="text-sm hover:text-white transition-colors" data-testid="link-footer-contact">Contact</Link></li>
             </ul>
           </div>
           <div>
             <p className="text-xs font-semibold text-neutral-300 uppercase tracking-wider mb-4">Legal</p>
             <ul className="space-y-2.5">
-              <li><a href="#" className="text-sm hover:text-white transition-colors" data-testid="link-footer-privacy">Privacy Policy</a></li>
-              <li><a href="#" className="text-sm hover:text-white transition-colors" data-testid="link-footer-terms">Terms of Service</a></li>
-              <li><a href="#" className="text-sm hover:text-white transition-colors" data-testid="link-footer-security">Security</a></li>
+              <li><Link href="/privacy" className="text-sm hover:text-white transition-colors" data-testid="link-footer-privacy">Privacy Policy</Link></li>
+              <li><Link href="/terms" className="text-sm hover:text-white transition-colors" data-testid="link-footer-terms">Terms of Service</Link></li>
+              <li><Link href="/security" className="text-sm hover:text-white transition-colors" data-testid="link-footer-security">Security</Link></li>
             </ul>
           </div>
         </div>

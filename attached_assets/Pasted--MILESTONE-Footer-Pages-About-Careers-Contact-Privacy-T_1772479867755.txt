@@ -1,0 +1,66 @@
+## MILESTONE: Footer Pages — About, Careers, Contact, Privacy, Terms, Security
+
+```
+MILESTONE: Footer & Legal Pages
+
+Build ALL of the following pages linked from the landing page footer. These pages must share the same header (LogoFull + nav + "Start Free" CTA) and footer as the landing page. All pages must support dark mode. Use the Allotly brand system (colors, typography, spacing) consistently.
+
+These pages are part of the trust infrastructure. A CTO evaluating Allotly will click "Security" and "Privacy Policy" before signing up. A potential hire will check "About" and "Careers." Every page must feel intentional and professional — not boilerplate filler.
+
+
+1. ABOUT PAGE (/about)
+
+Design: Clean editorial layout. No sidebar. Max-width 720px centered content. Generous line-height. A few accent elements (brand color section dividers, a subtle gradient header area) to keep it from feeling like a plain text page.
+
+=== HEADER AREA ===
+Small label (caps, Primary color): "ABOUT ALLOTLY"
+Headline: "We believe AI access shouldn't come with a spreadsheet."
+
+=== OUR STORY ===
+"Every team using AI has the same moment. Someone asks: 'how much did we spend on API calls last month?' And nobody knows.
+
+We built Allotly because we lived that moment. As engineering leaders, we watched AI adoption explode inside our teams — GPT-4o for code reviews, Claude for documentation, Gemini for prototyping — and loved every minute of it. What we didn't love was the chaos that came with it: shared API keys floating around Slack, surprise $2,000 invoices, new hires waiting days for access, and zero visibility into who was using what.
+
+The tooling didn't exist. Cloud cost management platforms don't understand AI models. Provider dashboards show org-wide totals, not per-person breakdowns. And nobody had a good answer for 'how do I give 50 hackathon attendees temporary AI access without sharing my API key?'
+
+So we built the answer."
+
+=== WHAT ALLOTLY DOES ===
+"Allotly is the AI Spend Control Plane. We connect to your existing OpenAI, Anthropic, and Google AI accounts — then give you two ways to distribute access:
+
+Allotly Teams provisions scoped API keys directly at the provider level. Your developers call the AI providers with zero proxy and zero added latency. You get per-person budgets, model restrictions, and a unified dashboard across all providers.
+
+Allotly Vouchers let you generate shareable codes that give anyone instant AI access with hard budget enforcement. No provider accounts needed. One API key, all models, automatic expiry. Think gift card, but for AI.
+
+Both features, one dashboard. You decide who gets what, for how long, and at what cost."
+
+=== OUR PRINCIPLES ===
+Design: Three cards in a row, each with an icon and short text.
+
+Card 1 — "Your Data Path, Not Ours"
+Icon: Shield
+"For Teams, your developers call providers directly — we never see their prompts or responses. For Vouchers, the proxy processes requests in real time but stores nothing. We track metadata: model, tokens, cost. Never content."
+
+Card 2 — "Budgets, Not Barriers"
+Icon: Unlock
+"We're not here to restrict AI usage. We're here to make it safe to say yes. Per-person budgets mean developers get access faster because admins aren't afraid of a runaway bill."
+
+Card 3 — "Provider-Native, Not Lock-In"
+Icon: Layers
+"We work with your existing provider accounts. No proprietary credits. No wallet to fund. No vendor lock-in. If you leave Allotly, your provider keys still work."
+
+=== TEAM ===
+(Placeholder section — implement as a minimal area)
+
+"Allotly is built by a small team of engineers and product people who've managed AI infrastructure at scale. We're based in [location] and backed by [investors / bootstrapped — update when applicable]."
+
+Note to Replit agent: Make this section easy to update later. Use a simple grid that can hold name + role + optional headshot.
+
+=== CLOSING CTA ===
+"Ready to take control of your AI spend?"
+Button: "Start Free" → /signup
+
+
+2. CAREERS PAGE (/careers)
+
+Design: Clean, energetic. Should feel like a place builders would want
