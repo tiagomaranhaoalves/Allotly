@@ -90,6 +90,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { id: "faq-budget-accuracy", title: "How accurate are budgets?" },
       { id: "faq-langchain-cursor", title: "Can I use with LangChain/Cursor?" },
       { id: "faq-teams-vs-vouchers", title: "Teams vs Vouchers difference?" },
+      { id: "faq-voucher-tiers", title: "What are the different voucher tiers?" },
     ],
   },
 ];
@@ -999,9 +1000,73 @@ print(response.content)`}</CodeBlock>
             your organization — workshop attendees, hackathon participants, external contractors, students, or beta testers.
             Vouchers don't require recipients to have accounts, and real-time budget enforcement means you'll never overspend.
           </p>
-          <p className="text-muted-foreground leading-relaxed mb-12">
+          <p className="text-muted-foreground leading-relaxed mb-6">
             Many organizations use both: Teams for their internal engineering team and Vouchers for external distribution.
             Both models work from the same dashboard, same connected providers, and same billing.
+          </p>
+
+          <SubHeading id="faq-voucher-tiers" title="What are the different voucher tiers?" />
+          <p className="text-muted-foreground leading-relaxed mb-4">
+            Allotly offers vouchers on every plan, but the limits differ depending on whether you're on the Free plan, Team plan, or using a purchased Bundle. Here's how they compare:
+          </p>
+          <div className="overflow-x-auto my-6">
+            <table className="w-full text-sm border border-border rounded-lg overflow-hidden">
+              <thead>
+                <tr className="bg-muted/50">
+                  <th className="text-left px-4 py-3 font-semibold border-b border-border"></th>
+                  <th className="text-left px-4 py-3 font-semibold border-b border-border">Free Plan</th>
+                  <th className="text-left px-4 py-3 font-semibold border-b border-border">Team Plan</th>
+                  <th className="text-left px-4 py-3 font-semibold border-b border-border">Bundle ($10)</th>
+                </tr>
+              </thead>
+              <tbody className="text-muted-foreground">
+                <tr className="border-b border-border">
+                  <td className="px-4 py-2.5 font-medium text-foreground">Active codes</td>
+                  <td className="px-4 py-2.5">1</td>
+                  <td className="px-4 py-2.5">5 per admin</td>
+                  <td className="px-4 py-2.5">10</td>
+                </tr>
+                <tr className="border-b border-border bg-muted/20">
+                  <td className="px-4 py-2.5 font-medium text-foreground">Redemptions per code</td>
+                  <td className="px-4 py-2.5">2</td>
+                  <td className="px-4 py-2.5">5</td>
+                  <td className="px-4 py-2.5">50 (pooled)</td>
+                </tr>
+                <tr className="border-b border-border">
+                  <td className="px-4 py-2.5 font-medium text-foreground">Budget per recipient</td>
+                  <td className="px-4 py-2.5">Up to $5</td>
+                  <td className="px-4 py-2.5">Up to $20</td>
+                  <td className="px-4 py-2.5">Up to $25</td>
+                </tr>
+                <tr className="border-b border-border bg-muted/20">
+                  <td className="px-4 py-2.5 font-medium text-foreground">Max expiry</td>
+                  <td className="px-4 py-2.5">1 day</td>
+                  <td className="px-4 py-2.5">30 days</td>
+                  <td className="px-4 py-2.5">30 days</td>
+                </tr>
+                <tr className="border-b border-border">
+                  <td className="px-4 py-2.5 font-medium text-foreground">Proxy requests</td>
+                  <td className="px-4 py-2.5">500</td>
+                  <td className="px-4 py-2.5">5,000</td>
+                  <td className="px-4 py-2.5">25,000 (pooled)</td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-2.5 font-medium text-foreground">Availability</td>
+                  <td className="px-4 py-2.5">Included</td>
+                  <td className="px-4 py-2.5">Included</td>
+                  <td className="px-4 py-2.5">$10 one-time, all plans</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p className="text-muted-foreground leading-relaxed mb-4">
+            <strong>Free plan vouchers</strong> are designed for quick experiments — share a single code with up to 2 people, each getting a small budget for one day. Great for trying out the voucher workflow before committing.
+          </p>
+          <p className="text-muted-foreground leading-relaxed mb-4">
+            <strong>Team plan vouchers</strong> are included with your subscription and offer significantly more capacity. Each Team Admin can maintain up to 5 active voucher codes, each redeemable by 5 people with higher budgets and longer expiry. Ideal for recurring workshops, onboarding flows, or contractor access.
+          </p>
+          <p className="text-muted-foreground leading-relaxed mb-12">
+            <strong>Bundle vouchers ($10)</strong> are one-time purchases available on any plan — including Free. They unlock the most capacity: 10 codes, 50 pooled redemptions, 25,000 proxy requests, and up to $25 per recipient. Bundles are perfect for hackathons, large training sessions, or any scenario where you need to distribute AI access to many people at once. Redemptions and proxy requests are pooled across all codes in the bundle, so you have flexibility in how you distribute them.
           </p>
 
         </main>
