@@ -1,0 +1,275 @@
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const FROM_EMAIL = process.env.FROM_EMAIL || "Allotly <noreply@allotly.com>";
+
+async function sendEmail(to: string, subject: string, html: string): Promise<void> {
+  if (!RESEND_API_KEY) {
+    console.log(`[email] (no RESEND_API_KEY) To: ${to} | Subject: ${subject}`);
+    return;
+  }
+
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ from: FROM_EMAIL, to, subject, html }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      console.error(`[email] Failed to send to ${to}: ${err}`);
+    }
+  } catch (e: any) {
+    console.error(`[email] Error sending to ${to}: ${e.message}`);
+  }
+}
+
+function layout(title: string, body: string): string {
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+<div style="max-width:560px;margin:0 auto;padding:40px 20px">
+<div style="text-align:center;margin-bottom:32px">
+<div style="display:inline-block;background:#6366F1;color:#fff;font-weight:700;font-size:20px;padding:8px 18px;border-radius:8px;letter-spacing:-0.5px">allotly</div>
+</div>
+<div style="background:#fff;border-radius:12px;padding:32px;border:1px solid #e2e8f0">
+<h2 style="margin:0 0 16px;color:#1e293b;font-size:18px">${title}</h2>
+${body}
+</div>
+<div style="text-align:center;margin-top:24px;color:#94a3b8;font-size:12px">
+<p>Allotly — The AI Spend Control Plane</p>
+</div>
+</div>
+</body>
+</html>`;
+}
+
+function btn(text: string, url: string): string {
+  return `<div style="text-align:center;margin:24px 0">
+<a href="${url}" style="display:inline-block;background:#6366F1;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">${text}</a>
+</div>`;
+}
+
+function p(text: string): string {
+  return `<p style="margin:0 0 12px;color:#475569;font-size:14px;line-height:1.6">${text}</p>`;
+}
+
+function kv(label: string, value: string): string {
+  return `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9">
+<span style="color:#64748b;font-size:13px">${label}</span>
+<span style="color:#1e293b;font-size:13px;font-weight:500">${value}</span>
+</div>`;
+}
+
+function alert(text: string, color: string): string {
+  return `<div style="background:${color}10;border:1px solid ${color}30;border-radius:8px;padding:12px 16px;margin:16px 0">
+<p style="margin:0;color:${color};font-size:14px;font-weight:500">${text}</p>
+</div>`;
+}
+
+export const emailTemplates = {
+  welcome(orgName: string, userName: string, loginUrl: string) {
+    return {
+      subject: `Welcome to Allotly, ${userName}!`,
+      html: layout("Welcome to Allotly! 🎉", [
+        p(`Hi ${userName},`),
+        p(`Your organization <strong>${orgName}</strong> has been created. You're the Root Admin with full control over AI spend management.`),
+        p("Here's what you can do next:"),
+        `<ul style="color:#475569;font-size:14px;line-height:1.8;padding-left:20px;margin:12px 0">
+<li>Connect your AI providers (OpenAI, Anthropic, Google)</li>
+<li>Create teams and add members</li>
+<li>Set budgets and monitor spend</li>
+<li>Create vouchers for external access</li>
+</ul>`,
+        btn("Go to Dashboard", loginUrl),
+      ].join("")),
+    };
+  },
+
+  teamAdminInvite(adminName: string, orgName: string, inviterName: string, acceptUrl: string) {
+    return {
+      subject: `You've been invited as Team Admin — ${orgName}`,
+      html: layout("Team Admin Invitation", [
+        p(`Hi ${adminName},`),
+        p(`<strong>${inviterName}</strong> has invited you to join <strong>${orgName}</strong> as a Team Admin on Allotly.`),
+        p("As a Team Admin, you can manage team members, set budgets, and create voucher codes for external AI access."),
+        btn("Accept Invitation", acceptUrl),
+        p("This invitation does not expire, but can be revoked by the Root Admin."),
+      ].join("")),
+    };
+  },
+
+  memberInvite(memberName: string, teamName: string, inviterName: string, acceptUrl: string) {
+    return {
+      subject: `You've been added to ${teamName} on Allotly`,
+      html: layout("You've Been Added to a Team", [
+        p(`Hi ${memberName},`),
+        p(`<strong>${inviterName}</strong> has added you to the <strong>${teamName}</strong> team on Allotly.`),
+        p("Your AI provider access has been configured. Log in to view your setup instructions and start using your allocated AI budget."),
+        btn("View Your Dashboard", acceptUrl),
+      ].join("")),
+    };
+  },
+
+  voucherNotification(recipientName: string, code: string, budgetDollars: string, expiresAt: string, redeemUrl: string) {
+    return {
+      subject: `Your Allotly AI Access Voucher`,
+      html: layout("You've Received an AI Access Voucher", [
+        p(`Hi ${recipientName || "there"},`),
+        p("You've been given a voucher for AI API access through Allotly's proxy service."),
+        `<div style="background:#f8fafc;border-radius:8px;padding:20px;margin:16px 0;text-align:center">
+<div style="font-size:24px;font-weight:700;color:#6366F1;letter-spacing:2px;font-family:monospace">${code}</div>
+</div>`,
+        kv("Budget", `$${budgetDollars}`),
+        kv("Expires", expiresAt),
+        btn("Redeem Voucher", redeemUrl),
+        p("Once redeemed, you'll receive an API key to use with Allotly's AI proxy."),
+      ].join("")),
+    };
+  },
+
+  voucherRedeemed(adminName: string, code: string, recipientEmail: string, teamName: string) {
+    return {
+      subject: `Voucher ${code} was redeemed`,
+      html: layout("Voucher Redeemed", [
+        p(`Hi ${adminName},`),
+        p(`The voucher code <strong>${code}</strong> has been redeemed.`),
+        kv("Redeemed by", recipientEmail),
+        kv("Team", teamName),
+        kv("Code", code),
+        p("The recipient now has AI proxy access with the configured budget."),
+      ].join("")),
+    };
+  },
+
+  keyReady(memberName: string, provider: string, teamName: string, dashboardUrl: string) {
+    return {
+      subject: `Your ${provider} API key is ready`,
+      html: layout("API Key Provisioned", [
+        p(`Hi ${memberName},`),
+        p(`Your <strong>${provider}</strong> API key has been provisioned for the <strong>${teamName}</strong> team.`),
+        p("You can now start making API calls. View your key and setup instructions on your dashboard."),
+        btn("View Dashboard", dashboardUrl),
+      ].join("")),
+    };
+  },
+
+  setupInstructions(memberName: string, provider: string, steps: string[], dashboardUrl: string) {
+    return {
+      subject: `Setup instructions for ${provider}`,
+      html: layout(`${provider} Setup Instructions`, [
+        p(`Hi ${memberName},`),
+        p(`Follow these steps to complete your <strong>${provider}</strong> setup:`),
+        `<ol style="color:#475569;font-size:14px;line-height:1.8;padding-left:20px;margin:12px 0">
+${steps.map(s => `<li>${s}</li>`).join("")}
+</ol>`,
+        btn("Go to Dashboard", dashboardUrl),
+      ].join("")),
+    };
+  },
+
+  budgetWarning80(memberName: string, spentPercent: number, budgetDollars: string, dashboardUrl: string) {
+    return {
+      subject: `Budget 80% used — ${memberName}`,
+      html: layout("Budget Warning — 80%", [
+        p(`Hi ${memberName},`),
+        alert(`You've used ${spentPercent}% of your AI budget ($${budgetDollars}).`, "#f59e0b"),
+        p("Consider reducing usage or contacting your team admin to increase your budget."),
+        btn("View Usage", dashboardUrl),
+      ].join("")),
+    };
+  },
+
+  budgetWarning90(memberName: string, spentPercent: number, budgetDollars: string, dashboardUrl: string) {
+    return {
+      subject: `⚠️ Budget 90% used — ${memberName}`,
+      html: layout("Budget Warning — 90%", [
+        p(`Hi ${memberName},`),
+        alert(`You've used ${spentPercent}% of your AI budget ($${budgetDollars}). API keys will be revoked at 100%.`, "#ef4444"),
+        p("Contact your team admin immediately if you need a budget increase."),
+        btn("View Usage", dashboardUrl),
+      ].join("")),
+    };
+  },
+
+  budgetExhausted(memberName: string, budgetDollars: string, adminEmail: string) {
+    return {
+      subject: `🚫 Budget exhausted — API keys revoked`,
+      html: layout("Budget Exhausted", [
+        p(`Hi ${memberName},`),
+        alert(`Your AI budget of $${budgetDollars} has been fully consumed. Your API keys have been automatically revoked.`, "#dc2626"),
+        p(`Contact your team admin at <strong>${adminEmail}</strong> to request a budget increase or wait for the next billing period.`),
+      ].join("")),
+    };
+  },
+
+  budgetReset(memberName: string, newBudgetDollars: string, dashboardUrl: string) {
+    return {
+      subject: `Budget reset — new period started`,
+      html: layout("Budget Reset", [
+        p(`Hi ${memberName},`),
+        p(`Your AI budget has been reset to <strong>$${newBudgetDollars}</strong> for the new billing period.`),
+        p("Your API keys have been reactivated. You can continue using AI services."),
+        btn("View Dashboard", dashboardUrl),
+      ].join("")),
+    };
+  },
+
+  voucherExpiring(recipientName: string, code: string, hoursRemaining: number, dashboardUrl: string) {
+    return {
+      subject: `Your voucher expires in ${hoursRemaining} hours`,
+      html: layout("Voucher Expiring Soon", [
+        p(`Hi ${recipientName || "there"},`),
+        alert(`Your voucher <strong>${code}</strong> expires in approximately ${hoursRemaining} hours.`, "#f59e0b"),
+        p("After expiry, your API key will be revoked and you'll lose access to the AI proxy."),
+        btn("Use Your Access", dashboardUrl),
+      ].join("")),
+    };
+  },
+
+  bundlePurchased(buyerName: string, redemptions: number, expiresAt: string, dashboardUrl: string) {
+    return {
+      subject: `Voucher Bundle purchased — ${redemptions} redemptions`,
+      html: layout("Bundle Purchase Confirmed", [
+        p(`Hi ${buyerName},`),
+        p("Your Voucher Bundle has been purchased and is ready to use."),
+        kv("Total Redemptions", String(redemptions)),
+        kv("Expires", expiresAt),
+        p("You can now create voucher codes from this bundle and distribute them."),
+        btn("Create Vouchers", dashboardUrl),
+      ].join("")),
+    };
+  },
+
+  providerKeyInvalid(adminName: string, provider: string, connectionId: string) {
+    return {
+      subject: `⚠️ ${provider} API key validation failed`,
+      html: layout("Provider Key Invalid", [
+        p(`Hi ${adminName},`),
+        alert(`Your <strong>${provider}</strong> API key failed validation. The connection has been marked as invalid.`, "#ef4444"),
+        kv("Provider", provider),
+        kv("Connection ID", connectionId),
+        p("Please update the API key in your provider settings to restore access for your team members."),
+      ].join("")),
+    };
+  },
+
+  spendAnomaly(adminName: string, memberName: string, memberEmail: string, currentSpend: string, averageSpend: string, multiplier: string) {
+    return {
+      subject: `🔔 Spend anomaly detected — ${memberName}`,
+      html: layout("Spend Anomaly Detected", [
+        p(`Hi ${adminName},`),
+        alert(`Unusual spending detected for <strong>${memberName}</strong>.`, "#f59e0b"),
+        kv("Member", `${memberName} (${memberEmail})`),
+        kv("Current Period Spend", `$${currentSpend}`),
+        kv("7-Day Average", `$${averageSpend}`),
+        kv("Multiplier", `${multiplier}x above average`),
+        p("Review this member's usage to ensure it's expected."),
+      ].join("")),
+    };
+  },
+};
+
+export { sendEmail };

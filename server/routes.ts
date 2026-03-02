@@ -19,6 +19,11 @@ import { runBundleExpiry } from "./lib/jobs/bundle-expiry";
 import { runRedisReconciliation } from "./lib/jobs/redis-reconciliation";
 import { handleChatCompletion, handleListModels } from "./lib/proxy/handler";
 import { redisSet, redisGet, redisIncr, REDIS_KEYS } from "./lib/redis";
+import { runProviderValidation } from "./lib/jobs/provider-validation";
+import { runSnapshotCleanup } from "./lib/jobs/snapshot-cleanup";
+import { runSpendAnomalyCheck } from "./lib/jobs/spend-anomaly";
+import { checkPlanLimit } from "./lib/plan-limits";
+import { sendEmail, emailTemplates } from "./lib/email";
 import { z } from "zod";
 
 const VOUCHER_LIMITS = {
@@ -85,6 +90,10 @@ export async function registerRoutes(
         orgId: org.id,
         adminId: user.id,
       });
+
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      const welcomeEmail = emailTemplates.welcome(org.name, data.name, `${baseUrl}/dashboard`);
+      sendEmail(data.email, welcomeEmail.subject, welcomeEmail.html);
 
       await storage.createAuditLog({
         orgId: org.id,
@@ -196,9 +205,9 @@ export async function registerRoutes(
         return res.status(400).json({ message: "AI Provider and API key are required" });
       }
 
-      const existing = await storage.getProviderConnectionsByOrg(user.orgId);
-      if (existing.length >= 3) {
-        return res.status(400).json({ message: "Maximum of 3 AI Provider connections reached" });
+      const providerCheck = await checkPlanLimit(user.orgId, "provider");
+      if (!providerCheck.allowed) {
+        return res.status(400).json({ message: providerCheck.message });
       }
 
       const adapter = getProviderAdapter(provider);
@@ -391,6 +400,15 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Admin email and team name required" });
       }
 
+      const teamCheck = await checkPlanLimit(user.orgId, "team");
+      if (!teamCheck.allowed) {
+        return res.status(400).json({ message: teamCheck.message });
+      }
+      const adminCheck = await checkPlanLimit(user.orgId, "team_admin");
+      if (!adminCheck.allowed) {
+        return res.status(400).json({ message: adminCheck.message });
+      }
+
       const passwordHash = adminPassword ? await hashPassword(adminPassword) : await hashPassword("changeme123");
       const adminUser = await storage.createUser({
         email: adminEmail,
@@ -481,10 +499,9 @@ export async function registerRoutes(
       const org = await storage.getOrganization(user.orgId);
       if (!org) return res.status(404).json({ message: "Organization not found" });
 
-      const maxMembers = org.plan === "FREE" ? 5 : 20;
-      const currentMemberCount = await storage.getMemberCountByTeam(targetTeamId);
-      if (currentMemberCount >= maxMembers) {
-        return res.status(400).json({ message: `Maximum ${maxMembers} members per team on the ${org.plan} plan` });
+      const memberCheck = await checkPlanLimit(user.orgId, "member", targetTeamId);
+      if (!memberCheck.allowed) {
+        return res.status(400).json({ message: memberCheck.message });
       }
 
       const passwordHash = password ? await hashPassword(password) : await hashPassword("changeme123");
@@ -523,6 +540,16 @@ export async function registerRoutes(
         targetId: membership.id,
         metadata: { email, accessMode: accessMode || "DIRECT" },
       });
+
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      const team = await storage.getTeam(targetTeamId);
+      const inviteEmail = emailTemplates.memberInvite(
+        name || email.split("@")[0],
+        team?.name || "your team",
+        user.name || user.email,
+        `${baseUrl}/dashboard`
+      );
+      sendEmail(email, inviteEmail.subject, inviteEmail.html);
 
       res.json({ membership, user: { id: memberUser.id, email: memberUser.email, name: memberUser.name } });
     } catch (e: any) {
@@ -989,6 +1016,39 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/cron/provider-validation", requireCronAuth, async (_req, res) => {
+    try {
+      console.log("[cron] Manual provider validation triggered");
+      await runProviderValidation();
+      res.json({ message: "Provider validation completed" });
+    } catch (e: any) {
+      console.error("[cron] Provider validation error:", e);
+      res.status(500).json({ message: "Provider validation failed", error: e.message });
+    }
+  });
+
+  app.post("/api/cron/snapshot-cleanup", requireCronAuth, async (_req, res) => {
+    try {
+      console.log("[cron] Manual snapshot cleanup triggered");
+      await runSnapshotCleanup();
+      res.json({ message: "Snapshot cleanup completed" });
+    } catch (e: any) {
+      console.error("[cron] Snapshot cleanup error:", e);
+      res.status(500).json({ message: "Snapshot cleanup failed", error: e.message });
+    }
+  });
+
+  app.post("/api/cron/spend-anomaly", requireCronAuth, async (_req, res) => {
+    try {
+      console.log("[cron] Manual spend anomaly check triggered");
+      await runSpendAnomalyCheck();
+      res.json({ message: "Spend anomaly check completed" });
+    } catch (e: any) {
+      console.error("[cron] Spend anomaly error:", e);
+      res.status(500).json({ message: "Spend anomaly check failed", error: e.message });
+    }
+  });
+
   app.get("/api/cron/status", requireCronAuth, async (_req, res) => {
     res.json({
       jobs: [
@@ -998,6 +1058,9 @@ export async function registerRoutes(
         { name: "bundle-expiry", description: "Expires bundles and associated vouchers", intervalMinutes: 60 },
         { name: "redis-reconciliation", description: "Syncs Redis budget with Postgres", intervalSeconds: 60 },
         { name: "concurrency-self-heal", description: "Resets stale concurrency counters", intervalSeconds: 30 },
+        { name: "provider-validation", description: "Re-validates all admin API keys", intervalHours: 24 },
+        { name: "snapshot-cleanup", description: "Deletes old usage data per retention policy", intervalDays: 7 },
+        { name: "spend-anomaly", description: "Detects unusual spending patterns", intervalMinutes: 60 },
       ],
       status: "running",
     });
@@ -1332,6 +1395,15 @@ export async function registerRoutes(
         keyPrefix: prefix,
       });
 
+      await storage.createAuditLog({
+        orgId: voucher.orgId,
+        actorId: voucherUser.id,
+        action: "voucher.redeemed",
+        targetType: "voucher",
+        targetId: voucher.id,
+        metadata: { code: voucher.code, email: userEmail },
+      });
+
       const models = await storage.getModelPricing();
       const allowedProviders = voucher.allowedProviders as string[];
       const availableModels = models.filter(m => allowedProviders.includes(m.provider));
@@ -1366,6 +1438,52 @@ export async function registerRoutes(
       return { ...b, voucherCount: bundleVouchers.length };
     }));
     res.json(bundlesWithVouchers);
+  });
+
+  app.get("/api/billing/subscription", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(401).json({ message: "Unauthorized" });
+      const org = await storage.getOrganization(user.orgId);
+      if (!org) return res.status(404).json({ message: "Organization not found" });
+
+      if (!org.stripeSubId) {
+        return res.json({
+          plan: org.plan,
+          maxTeamAdmins: org.maxTeamAdmins,
+          graceEndsAt: org.graceEndsAt,
+          subscription: null,
+        });
+      }
+
+      try {
+        const stripe = await getUncachableStripeClient();
+        const sub = await stripe.subscriptions.retrieve(org.stripeSubId);
+        const quantity = sub.items?.data?.[0]?.quantity || 1;
+
+        res.json({
+          plan: org.plan,
+          maxTeamAdmins: org.maxTeamAdmins,
+          graceEndsAt: org.graceEndsAt,
+          subscription: {
+            id: sub.id,
+            status: sub.status,
+            seats: quantity,
+            currentPeriodEnd: new Date((sub as any).current_period_end * 1000).toISOString(),
+            cancelAtPeriodEnd: (sub as any).cancel_at_period_end,
+          },
+        });
+      } catch {
+        res.json({
+          plan: org.plan,
+          maxTeamAdmins: org.maxTeamAdmins,
+          graceEndsAt: org.graceEndsAt,
+          subscription: { id: org.stripeSubId, status: "unknown" },
+        });
+      }
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
   });
 
   app.get("/api/stripe/publishable-key", async (_req, res) => {
@@ -1756,8 +1874,57 @@ export async function registerRoutes(
   app.get("/api/audit-log", requireAuth, async (req, res) => {
     const user = await storage.getUser(req.session.userId!);
     if (!user || user.orgRole !== "ROOT_ADMIN") return res.status(403).json({ message: "Forbidden" });
-    const logs = await storage.getAuditLogsByOrg(user.orgId, 200);
-    res.json(logs);
+
+    const { action, targetType, actorId, startDate, endDate, page, limit } = req.query as any;
+    const hasFilters = action || targetType || actorId || startDate || endDate || page;
+
+    if (hasFilters) {
+      const result = await storage.getFilteredAuditLogs(user.orgId, {
+        action, targetType, actorId, startDate, endDate,
+        page: page ? parseInt(page) : 1,
+        limit: limit ? parseInt(limit) : 50,
+      });
+      res.json(result);
+    } else {
+      const logs = await storage.getAuditLogsByOrg(user.orgId, 200);
+      res.json({ logs, total: logs.length });
+    }
+  });
+
+  app.get("/api/audit-log/export", requireAuth, async (req, res) => {
+    const user = await storage.getUser(req.session.userId!);
+    if (!user || user.orgRole !== "ROOT_ADMIN") return res.status(403).json({ message: "Forbidden" });
+
+    const { action, targetType, actorId, startDate, endDate } = req.query as any;
+    const result = await storage.getFilteredAuditLogs(user.orgId, {
+      action, targetType, actorId, startDate, endDate,
+      page: 1, limit: 10000,
+    });
+
+    const orgUsers = await storage.getUsersByOrg(user.orgId);
+    const userMap = new Map(orgUsers.map(u => [u.id, u]));
+
+    const csvLines = ["Timestamp,Actor,Role,Action,Target Type,Target ID,Metadata"];
+    for (const log of result.logs) {
+      const actor = userMap.get(log.actorId);
+      const actorName = log.actorId === "system" ? "System" : (actor?.name || actor?.email || log.actorId);
+      const actorRole = log.actorId === "system" ? "SYSTEM" : (actor?.orgRole || "");
+      const metadata = log.metadata ? JSON.stringify(log.metadata).replace(/"/g, '""') : "";
+      csvLines.push(`"${new Date(log.createdAt).toISOString()}","${actorName}","${actorRole}","${log.action}","${log.targetType || ""}","${log.targetId || ""}","${metadata}"`);
+    }
+
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="audit-log-${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(csvLines.join("\n"));
+  });
+
+  app.get("/api/audit-log/actors", requireAuth, async (req, res) => {
+    const user = await storage.getUser(req.session.userId!);
+    if (!user || user.orgRole !== "ROOT_ADMIN") return res.status(403).json({ message: "Forbidden" });
+    const orgUsers = await storage.getUsersByOrg(user.orgId);
+    const actors = orgUsers.map(u => ({ id: u.id, name: u.name || u.email, role: u.orgRole }));
+    actors.push({ id: "system", name: "System", role: "SYSTEM" as any });
+    res.json(actors);
   });
 
   app.get("/api/org/settings", requireAuth, async (req, res) => {
@@ -1771,6 +1938,16 @@ export async function registerRoutes(
     const user = (req as any).user;
     const { name, orgBudgetCeilingCents, defaultMemberBudgetCents } = req.body;
     const updated = await storage.updateOrganization(user.orgId, { name, orgBudgetCeilingCents, defaultMemberBudgetCents });
+
+    await storage.createAuditLog({
+      orgId: user.orgId,
+      actorId: user.id,
+      action: "settings.updated",
+      targetType: "organization",
+      targetId: user.orgId,
+      metadata: { changes: { name, orgBudgetCeilingCents, defaultMemberBudgetCents } },
+    });
+
     res.json(updated);
   });
 

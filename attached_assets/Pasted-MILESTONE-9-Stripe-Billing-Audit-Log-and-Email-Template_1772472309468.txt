@@ -1,0 +1,73 @@
+MILESTONE 9: Stripe Billing, Audit Log, and Email Templates
+
+Referring to the full Allotly spec, complete Steps 33-36 from the build order.
+
+BUILD THESE:
+
+1. STRIPE SUBSCRIPTION BILLING (Section 15)
+   - Product 1: "Allotly Team — Team Admin Seat" at $20/month, quantity-based
+   - POST /api/billing/checkout — create Stripe Checkout Session
+     - For new subscribers: full checkout
+     - For existing: update subscription quantity (+1 seat per new Team Admin)
+   - POST /api/billing/portal — create Stripe Customer Portal session
+   - GET /api/billing/subscription — current subscription details
+   - POST /api/billing/webhooks — Stripe webhook handler (Section 15.3):
+     - checkout.session.completed (subscription): upgrade to TEAM, set maxTeamAdmins
+     - checkout.session.completed (bundle): create VoucherBundle, init Redis counters (already built in M7, wire it up here)
+     - customer.subscription.updated: sync seat count, suspend excess if decreased
+     - customer.subscription.deleted: downgrade to FREE with 30-day grace
+     - invoice.payment_failed: email Root Admin, 7-day grace
+   - Settings page (/dashboard/settings): plan details, "Upgrade to Team" button, "Manage Billing" link to Stripe Portal
+   - Plan enforcement on every mutation: check member limits, voucher limits, provider limits per plan
+- Bundle purchases are NOT gated by plan. Free plan users can purchase External Access Bundles. When creating vouchers from a bundle, the bundle limits apply regardless of plan. Only plan-included voucher allowances use the Free tier limits.
+
+2. AUDIT LOG (Section 11.5)
+   - Ensure ALL admin actions throughout the app are being logged (review all milestones):
+     - provider.connected, provider.disconnected, provider.validated
+     - team.created, team.removed
+     - member.created, member.suspended, member.reactivated, member.removed
+     - key.provisioned, key.revoked, key.regenerated
+     - voucher.created, voucher.redeemed, voucher.revoked, voucher.expired
+     - bundle.purchased, bundle.expired
+     - budget.warning_80, budget.warning_90, budget.exhausted, budget.reset
+     - settings.updated, plan.upgraded, plan.downgraded
+   - Page: /dashboard/audit-log (Root Admin only)
+     - Chronological list with: timestamp, actor name + role badge, action, target type + ID, metadata
+     - Filters: by actor, action type, target type, date range
+     - Pagination
+     - "Export CSV" button via GET /api/audit-log/export
+   - Audit log is append-only: no edits, no deletes, not even by Root Admin
+
+3. ALL 15 EMAIL TEMPLATES (Section 13)
+   - Create /lib/email.ts with Resend integration
+   - Professional HTML templates with: Allotly LogoMono header, indigo (#6366F1) accent color, clean typography
+   - Implement all 15 templates:
+     1. welcome — new org, to Root Admin
+     2. team-admin-invite — with accept link, to Team Admin
+     3. member-invite — with accept link, to Member
+     4. voucher-notification — voucher details + redeem link, to external recipient
+     5. voucher-redeemed — notification, to Team Admin
+     6. key-ready — provider key provisioned, to Member
+     7. setup-instructions — semi-auto/guided setup steps, to Member
+     8. budget-warning-80 — 80% spent, to Member
+     9. budget-warning-90 — 90% spent, to Member + Team Admin
+     10. budget-exhausted — 100% keys revoked, to Member + Team Admin
+     11. budget-reset — monthly reset, to Member
+     12. voucher-expiring — expires in 48h, to Voucher recipient
+     13. bundle-purchased — confirmation, to Purchaser
+     14. provider-key-invalid — validation failed, to Root Admin
+     15. spend-anomaly — unusual spend, to Team Admin
+   - Wire up email sending to all the triggers already built in previous milestones
+
+4. REMAINING BACKGROUND JOBS
+   - /api/cron/provider-validation — daily at 06:00 UTC: re-validate all admin API keys, mark invalid, email Root Admin on failure
+   - /api/cron/snapshot-cleanup — weekly: delete old UsageSnapshots + ProxyRequestLogs per retention (Free=7d, Team=90d, Enterprise=365d)
+   - /api/cron/spend-anomaly — hourly: flag members >3x their 7-day rolling average, email Team Admin
+
+VERIFY BY:
+- Show the Stripe checkout flow: Free, click "Upgrade", Stripe Checkout, webhook processes, plan updated to TEAM
+- Add a Team Admin seat, confirm Stripe quantity incremented
+- Show the audit log page with real entries from actions taken in previous milestones
+- Show the CSV export working
+- Show at least 3 email templates rendering correctly (welcome, voucher-notification, budget-exhausted)
+- Confirm plan limits are enforced: try to create a 6th member on Free, get rejected

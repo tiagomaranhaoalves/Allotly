@@ -79,6 +79,10 @@ export interface IStorage {
 
   createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
   getAuditLogsByOrg(orgId: string, limit?: number, offset?: number): Promise<AuditLog[]>;
+  getFilteredAuditLogs(orgId: string, filters: {
+    action?: string; targetType?: string; actorId?: string;
+    startDate?: string; endDate?: string; page?: number; limit?: number;
+  }): Promise<{ logs: AuditLog[]; total: number }>;
 
   getModelPricing(): Promise<ModelPricing[]>;
   getModelPricingByProvider(provider: string): Promise<ModelPricing[]>;
@@ -371,6 +375,27 @@ export class DrizzleStorage implements IStorage {
 
   async getAuditLogsByOrg(orgId: string, limit = 50, offset = 0): Promise<AuditLog[]> {
     return db.select().from(auditLogs).where(eq(auditLogs.orgId, orgId)).orderBy(desc(auditLogs.createdAt)).limit(limit).offset(offset);
+  }
+
+  async getFilteredAuditLogs(orgId: string, filters: {
+    action?: string; targetType?: string; actorId?: string;
+    startDate?: string; endDate?: string; page?: number; limit?: number;
+  }): Promise<{ logs: AuditLog[]; total: number }> {
+    const conditions = [eq(auditLogs.orgId, orgId)];
+    if (filters.action) conditions.push(eq(auditLogs.action, filters.action));
+    if (filters.targetType) conditions.push(eq(auditLogs.targetType, filters.targetType));
+    if (filters.actorId) conditions.push(eq(auditLogs.actorId, filters.actorId));
+    if (filters.startDate) conditions.push(gte(auditLogs.createdAt, new Date(filters.startDate)));
+    if (filters.endDate) conditions.push(lte(auditLogs.createdAt, new Date(filters.endDate)));
+
+    const whereClause = conditions.length === 1 ? conditions[0] : and(...conditions);
+    const limit = filters.limit || 50;
+    const offset = ((filters.page || 1) - 1) * limit;
+
+    const [countResult] = await db.select({ count: count() }).from(auditLogs).where(whereClause!);
+    const logs = await db.select().from(auditLogs).where(whereClause!).orderBy(desc(auditLogs.createdAt)).limit(limit).offset(offset);
+
+    return { logs, total: Number(countResult?.count || 0) };
   }
 
   async getModelPricing(): Promise<ModelPricing[]> {

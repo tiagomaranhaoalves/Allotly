@@ -3,6 +3,9 @@ import { runBudgetReset } from "./budget-reset";
 import { runVoucherExpiry } from "./voucher-expiry";
 import { runBundleExpiry } from "./bundle-expiry";
 import { runRedisReconciliation } from "./redis-reconciliation";
+import { runProviderValidation } from "./provider-validation";
+import { runSnapshotCleanup } from "./snapshot-cleanup";
+import { runSpendAnomalyCheck } from "./spend-anomaly";
 import { selfHealConcurrency } from "../proxy/safeguards";
 
 let usagePollTimer: ReturnType<typeof setInterval> | null = null;
@@ -11,6 +14,9 @@ let concurrencyHealTimer: ReturnType<typeof setInterval> | null = null;
 let voucherExpiryTimer: ReturnType<typeof setInterval> | null = null;
 let bundleExpiryTimer: ReturnType<typeof setInterval> | null = null;
 let redisReconciliationTimer: ReturnType<typeof setInterval> | null = null;
+let providerValidationTimer: ReturnType<typeof setInterval> | null = null;
+let snapshotCleanupTimer: ReturnType<typeof setInterval> | null = null;
+let spendAnomalyTimer: ReturnType<typeof setInterval> | null = null;
 
 const USAGE_POLL_INTERVAL = 5 * 60 * 1000;
 const BUDGET_RESET_INTERVAL = 60 * 60 * 1000;
@@ -18,6 +24,9 @@ const CONCURRENCY_HEAL_INTERVAL = 30 * 1000;
 const VOUCHER_EXPIRY_INTERVAL = 60 * 60 * 1000;
 const BUNDLE_EXPIRY_INTERVAL = 60 * 60 * 1000;
 const REDIS_RECONCILIATION_INTERVAL = 60 * 1000;
+const PROVIDER_VALIDATION_INTERVAL = 24 * 60 * 60 * 1000;
+const SNAPSHOT_CLEANUP_INTERVAL = 7 * 24 * 60 * 60 * 1000;
+const SPEND_ANOMALY_INTERVAL = 60 * 60 * 1000;
 
 export function startJobScheduler() {
   console.log("[scheduler] Starting background job scheduler...");
@@ -75,12 +84,41 @@ export function startJobScheduler() {
     }
   }, REDIS_RECONCILIATION_INTERVAL);
 
+  providerValidationTimer = setInterval(async () => {
+    try {
+      console.log("[scheduler] Running provider validation job...");
+      await runProviderValidation();
+    } catch (e: any) {
+      console.error("[scheduler] Provider validation failed:", e.message);
+    }
+  }, PROVIDER_VALIDATION_INTERVAL);
+
+  snapshotCleanupTimer = setInterval(async () => {
+    try {
+      console.log("[scheduler] Running snapshot cleanup job...");
+      await runSnapshotCleanup();
+    } catch (e: any) {
+      console.error("[scheduler] Snapshot cleanup failed:", e.message);
+    }
+  }, SNAPSHOT_CLEANUP_INTERVAL);
+
+  spendAnomalyTimer = setInterval(async () => {
+    try {
+      await runSpendAnomalyCheck();
+    } catch (e: any) {
+      console.error("[scheduler] Spend anomaly check failed:", e.message);
+    }
+  }, SPEND_ANOMALY_INTERVAL);
+
   console.log(`[scheduler] Usage poll: every ${USAGE_POLL_INTERVAL / 1000}s`);
   console.log(`[scheduler] Budget reset: every ${BUDGET_RESET_INTERVAL / 1000}s`);
   console.log(`[scheduler] Concurrency self-heal: every ${CONCURRENCY_HEAL_INTERVAL / 1000}s`);
   console.log(`[scheduler] Voucher expiry: every ${VOUCHER_EXPIRY_INTERVAL / 1000}s`);
   console.log(`[scheduler] Bundle expiry: every ${BUNDLE_EXPIRY_INTERVAL / 1000}s`);
   console.log(`[scheduler] Redis reconciliation: every ${REDIS_RECONCILIATION_INTERVAL / 1000}s`);
+  console.log(`[scheduler] Provider validation: every ${PROVIDER_VALIDATION_INTERVAL / 1000}s`);
+  console.log(`[scheduler] Snapshot cleanup: every ${SNAPSHOT_CLEANUP_INTERVAL / 1000}s`);
+  console.log(`[scheduler] Spend anomaly: every ${SPEND_ANOMALY_INTERVAL / 1000}s`);
 }
 
 export function stopJobScheduler() {
@@ -90,5 +128,8 @@ export function stopJobScheduler() {
   if (voucherExpiryTimer) { clearInterval(voucherExpiryTimer); voucherExpiryTimer = null; }
   if (bundleExpiryTimer) { clearInterval(bundleExpiryTimer); bundleExpiryTimer = null; }
   if (redisReconciliationTimer) { clearInterval(redisReconciliationTimer); redisReconciliationTimer = null; }
+  if (providerValidationTimer) { clearInterval(providerValidationTimer); providerValidationTimer = null; }
+  if (snapshotCleanupTimer) { clearInterval(snapshotCleanupTimer); snapshotCleanupTimer = null; }
+  if (spendAnomalyTimer) { clearInterval(spendAnomalyTimer); spendAnomalyTimer = null; }
   console.log("[scheduler] Job scheduler stopped");
 }
