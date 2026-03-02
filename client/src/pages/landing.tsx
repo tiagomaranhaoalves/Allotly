@@ -200,25 +200,25 @@ function FeaturesSection() {
                   <p className="text-sm text-muted-foreground">No-Proxy · Direct Provider Access</p>
                 </div>
               </div>
+              <p className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 mb-2">Direct Provider Access with Guardrails</p>
               <p className="text-muted-foreground mb-6 leading-relaxed">
-                Provision scoped API keys for your team directly at the provider level. Members call OpenAI, Anthropic, and Gemini directly — zero latency, zero proxy, zero single point of failure.
+                Your team calls OpenAI, Anthropic, and Gemini directly — no proxy sitting between them and the model. Allotly provisions scoped API keys at the provider level, so you get full control without adding latency or a single point of failure.
               </p>
-              <ul className="space-y-3 mb-6">
+              <div className="flex flex-wrap gap-x-3 gap-y-2 mb-6">
                 {[
                   "Zero added latency",
-                  "Members talk to providers directly",
-                  "Budget monitoring via usage polling",
-                  "If Allotly goes down, keys still work",
-                  "Model access restrictions",
+                  "Keys work even if Allotly is offline",
+                  "Budget tracking via provider usage polling",
+                  "Model-level access restrictions",
                 ].map(item => (
-                  <li key={item} className="flex items-start gap-2.5 text-sm">
-                    <div className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center mt-0.5 shrink-0">
+                  <span key={item} className="flex items-center gap-1.5 text-sm">
+                    <div className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center shrink-0">
                       <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                     </div>
-                    <span>{item}</span>
-                  </li>
+                    {item}
+                  </span>
                 ))}
-              </ul>
+              </div>
               <div className="pt-5 border-t">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Ideal for</p>
                 <div className="flex flex-wrap gap-2">
