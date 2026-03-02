@@ -1,9 +1,6 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
 import { rm, readFile } from "fs/promises";
-import { builtinModules } from "module";
-
-const nodeBuiltins = builtinModules.flatMap((m) => [m, `node:${m}`]);
 
 const allowlist = [
   "@google/generative-ai",
@@ -51,16 +48,13 @@ async function buildAll() {
     entryPoints: ["server/index.ts"],
     platform: "node",
     bundle: true,
-    format: "esm",
-    outfile: "dist/index.mjs",
-    banner: {
-      js: `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`,
-    },
+    format: "cjs",
+    outfile: "dist/index.cjs",
     define: {
       "process.env.NODE_ENV": '"production"',
     },
     minify: true,
-    external: [...externals, ...nodeBuiltins],
+    external: externals,
     logLevel: "info",
   });
 }
