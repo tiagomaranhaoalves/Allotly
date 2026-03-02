@@ -435,6 +435,7 @@ function VoucherCallout() {
               </div>
               <div className="space-y-6">
                 <div className="bg-background rounded-xl border border-border/60 p-6 shadow-sm">
+                  <p className="text-sm font-bold text-foreground mb-1">Allotly Voucher</p>
                   <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-3">Voucher Code</p>
                   <p className="font-mono text-lg font-bold tracking-wider text-foreground" data-testid="text-voucher-code">ALLOT-7K3M-X9PQ-2BWL</p>
                   <div className="mt-4 flex items-center gap-4 flex-wrap">
