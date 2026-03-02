@@ -81,6 +81,21 @@ export default {
           busy: "rgb(239 68 68)",
           offline: "rgb(156 163 175)",
         },
+        allotly: {
+          primary: "#6366F1",
+          "primary-dark": "#4338CA",
+          "primary-light": "#E0E7FF",
+          secondary: "#06B6D4",
+          "secondary-dark": "#0891B2",
+          success: "#10B981",
+          warning: "#F59E0B",
+          danger: "#EF4444",
+        },
+        provider: {
+          openai: "#10A37F",
+          anthropic: "#D4A574",
+          google: "#4285F4",
+        },
       },
       fontFamily: {
         sans: ["var(--font-sans)"],

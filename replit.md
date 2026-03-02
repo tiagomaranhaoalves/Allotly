@@ -40,7 +40,11 @@ Allotly is a SaaS platform for managing and distributing AI API access with budg
 
 ## Design System
 - Primary color: Indigo (#6366F1 / HSL 239 84% 67%)
-- Secondary: Cyan for vouchers
+- Secondary: Cyan (#06B6D4) for vouchers
+- Provider colors: OpenAI (#10A37F), Anthropic (#D4A574), Google (#4285F4)
+- Status colors: Success (#10B981), Warning (#F59E0B), Danger (#EF4444)
+- Allotly brand colors available as `allotly-primary`, `allotly-secondary`, etc. in Tailwind
+- Provider colors available as `provider-openai`, `provider-anthropic`, `provider-google` in Tailwind
 - Fonts: Inter (sans) + JetBrains Mono (mono)
 - Dark mode via ThemeProvider + `class` strategy on `<html>`
 - Brand components in `client/src/components/brand/`
@@ -48,6 +52,12 @@ Allotly is a SaaS platform for managing and distributing AI API access with budg
 
 ## Database Tables
 organizations, users, teams, team_memberships, provider_connections, provider_member_links, allotly_api_keys, usage_snapshots, budget_alerts, proxy_request_logs, vouchers, voucher_redemptions, voucher_bundles, audit_logs, model_pricing
+
+## Model Pricing (Seeded)
+18 models seeded across 3 providers:
+- OpenAI: GPT-4o, GPT-4o Mini, GPT-4.1, GPT-4.1 Mini, GPT-4.1 Nano, o3, o3 Mini, o4 Mini, GPT-5.2
+- Anthropic: Claude Opus 4.5, Claude Sonnet 4.5, Claude Haiku 4.5, Claude Opus 4.6, Claude Sonnet 4.6
+- Google: Gemini 2.5 Pro, Gemini 2.5 Flash, Gemini 2.0 Flash, Gemini 3.1
 
 ## Role Hierarchy
 ROOT_ADMIN > TEAM_ADMIN > MEMBER — enforced on every API route
@@ -90,3 +100,6 @@ Format: allotly_sk_ + 48 base64url chars. Only SHA-256 hash stored in DB.
 
 ## All Money in Integer Cents
 Never use floats for money. Display as `$(cents / 100).toFixed(2)`.
+
+## Milestone Status
+- Milestone 1 (Foundation, DB, Auth): COMPLETE — schema, auth, storage, all 15 tables, model pricing seeded, signup→login→dashboard flow verified
