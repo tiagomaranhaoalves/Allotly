@@ -263,31 +263,41 @@ function Hero() {
 
 function ProblemStrip() {
   return (
-    <section className="bg-neutral-900 text-white py-16 lg:py-20">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section className="relative bg-neutral-950 text-white py-20 lg:py-24 overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-950/40 via-transparent to-transparent" />
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(99,102,241,0.04)_1px,transparent_1px),linear-gradient(to_bottom,rgba(99,102,241,0.04)_1px,transparent_1px)] bg-[size:60px_60px]" />
+      <div className="relative max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
         <FadeIn>
-          <div className="grid sm:grid-cols-3 gap-10 lg:gap-16 text-center">
+          <div className="grid sm:grid-cols-3 gap-0 divide-y sm:divide-y-0 sm:divide-x divide-neutral-800">
             {[
               {
                 stat: "$8.4B",
                 desc: "spent on enterprise LLM APIs in just the first half of 2025",
                 source: "Menlo Ventures",
+                accent: "from-indigo-400 to-indigo-500",
               },
               {
                 stat: "67%",
                 desc: "of companies have no responsive AI controls in place",
                 source: "EY, 2025",
+                accent: "from-cyan-400 to-cyan-500",
               },
               {
                 stat: "62%",
                 desc: "of executives say over a quarter of their spend delivers no value",
                 source: "Sweep, 2025",
+                accent: "from-violet-400 to-violet-500",
               },
             ].map(item => (
-              <div key={item.stat}>
-                <p className="font-mono text-4xl lg:text-5xl font-bold tracking-tight text-white" data-testid={`stat-${item.stat.replace(/[^a-zA-Z0-9]/g, "")}`}>{item.stat}</p>
-                <p className="mt-3 text-sm text-neutral-300 leading-relaxed">{item.desc}</p>
-                <p className="mt-2 text-xs text-neutral-500">{item.source}</p>
+              <div key={item.stat} className="text-center py-8 sm:py-0 sm:px-10 lg:px-14">
+                <p
+                  className={`font-mono text-5xl lg:text-6xl font-extrabold tracking-tighter bg-gradient-to-r ${item.accent} bg-clip-text text-transparent`}
+                  data-testid={`stat-${item.stat.replace(/[^a-zA-Z0-9]/g, "")}`}
+                >
+                  {item.stat}
+                </p>
+                <p className="mt-4 text-[15px] text-neutral-300 leading-relaxed">{item.desc}</p>
+                <p className="mt-3 text-xs font-medium uppercase tracking-wider text-neutral-500">{item.source}</p>
               </div>
             ))}
           </div>
