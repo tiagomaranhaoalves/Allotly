@@ -4,9 +4,10 @@ import { storage } from "./storage";
 import { setupAuth, requireAuth, requireRole } from "./auth";
 import { hashPassword, comparePasswords } from "./lib/password";
 import { signupSchema, loginSchema } from "@shared/schema";
-import { encryptProviderKey } from "./lib/encryption";
+import { encryptProviderKey, decryptProviderKey } from "./lib/encryption";
 import { generateVoucherCode } from "./lib/voucher-codes";
 import { generateAllotlyKey, hashKey } from "./lib/keys";
+import { getProviderAdapter } from "./lib/providers";
 import { stripeService } from "./stripeService";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
 import { z } from "zod";
@@ -148,9 +149,8 @@ export async function registerRoutes(
     });
   });
 
-  app.get("/api/providers", requireAuth, async (req, res) => {
-    const user = await storage.getUser(req.session.userId!);
-    if (!user) return res.status(401).json({ message: "Unauthorized" });
+  app.get("/api/providers", requireRole("ROOT_ADMIN"), async (req, res) => {
+    const user = (req as any).user;
     const connections = await storage.getProviderConnectionsByOrg(user.orgId);
     const sanitized = connections.map(c => ({
       id: c.id,
@@ -179,7 +179,17 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Maximum of 3 AI Provider connections reached" });
       }
 
-      const automationLevel = provider === "OPENAI" ? "FULL_AUTO" : provider === "ANTHROPIC" ? "SEMI_AUTO" : "GUIDED";
+      const adapter = getProviderAdapter(provider);
+      if (!adapter) {
+        return res.status(400).json({ message: "Unsupported AI Provider" });
+      }
+
+      const validation = await adapter.validateAdminKey(apiKey);
+      if (!validation.valid) {
+        return res.status(400).json({ message: `Key validation failed: ${validation.error}` });
+      }
+
+      const automationLevel = adapter.automationLevel;
       const { encrypted, iv, tag } = encryptProviderKey(apiKey);
 
       const connection = await storage.createProviderConnection({
@@ -235,6 +245,104 @@ export async function registerRoutes(
       metadata: { provider: conn.provider },
     });
     res.json({ message: "Disconnected" });
+  });
+
+  app.patch("/api/providers/:id", requireRole("ROOT_ADMIN"), async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const conn = await storage.getProviderConnection(req.params.id);
+      if (!conn || conn.orgId !== user.orgId) {
+        return res.status(404).json({ message: "Not found" });
+      }
+
+      const patchSchema = z.object({
+        displayName: z.string().min(1).max(100).optional(),
+        orgAllowedModels: z.array(z.string()).nullable().optional(),
+      });
+      const parsed = patchSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+      }
+
+      const { displayName, orgAllowedModels } = parsed.data;
+      const updates: Record<string, any> = { updatedAt: new Date() };
+      if (displayName !== undefined) updates.displayName = displayName;
+      if (orgAllowedModels !== undefined) updates.orgAllowedModels = orgAllowedModels;
+
+      const updated = await storage.updateProviderConnection(conn.id, updates);
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "provider.updated",
+        targetType: "provider_connection",
+        targetId: conn.id,
+        metadata: { provider: conn.provider, changes: Object.keys(updates).filter(k => k !== "updatedAt") },
+      });
+
+      res.json({
+        id: updated!.id,
+        provider: updated!.provider,
+        displayName: updated!.displayName,
+        automationLevel: updated!.automationLevel,
+        status: updated!.status,
+        orgAllowedModels: updated!.orgAllowedModels,
+        lastValidatedAt: updated!.lastValidatedAt,
+      });
+    } catch (e: any) {
+      console.error("Provider update error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/providers/:id/validate", requireRole("ROOT_ADMIN"), async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const conn = await storage.getProviderConnection(req.params.id);
+      if (!conn || conn.orgId !== user.orgId) {
+        return res.status(404).json({ message: "Not found" });
+      }
+
+      const adapter = getProviderAdapter(conn.provider);
+      if (!adapter) {
+        return res.status(400).json({ message: "Unsupported AI Provider" });
+      }
+
+      const plainKey = decryptProviderKey(conn.adminApiKeyEncrypted, conn.adminApiKeyIv, conn.adminApiKeyTag);
+      const result = await adapter.validateAdminKey(plainKey);
+
+      const newStatus = result.valid ? "ACTIVE" : "INVALID_KEY";
+      await storage.updateProviderConnection(conn.id, {
+        status: newStatus as any,
+        lastValidatedAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "provider.validated",
+        targetType: "provider_connection",
+        targetId: conn.id,
+        metadata: { provider: conn.provider, valid: result.valid, error: result.error },
+      });
+
+      res.json({ valid: result.valid, error: result.error, status: newStatus });
+    } catch (e: any) {
+      console.error("Provider validate error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/models", async (req, res) => {
+    const provider = req.query.provider as string | undefined;
+    if (provider) {
+      const models = await storage.getModelPricingByProvider(provider);
+      res.json(models);
+    } else {
+      const models = await storage.getModelPricing();
+      res.json(models);
+    }
   });
 
   app.get("/api/teams", requireAuth, async (req, res) => {

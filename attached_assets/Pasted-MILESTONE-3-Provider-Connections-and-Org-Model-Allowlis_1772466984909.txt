@@ -1,0 +1,54 @@
+MILESTONE 3: Provider Connections and Org Model Allowlist
+
+Referring to the full Allotly spec, complete Steps 7-8 from the build order.
+
+BUILD THESE:
+
+1. ENCRYPTION (Section 17.1)
+   - Create /lib/encryption.ts with the EXACT AES-256-GCM implementation from the spec
+   - encryptProviderKey() and decryptProviderKey() functions
+   - Uses ENCRYPTION_KEY env var (64-char hex = 32 bytes)
+
+2. PROVIDER ADAPTER INTERFACES (Section 5.3)
+   - Create /lib/providers/types.ts with the ProviderAdapter interface
+   - Create /lib/providers/openai.ts — implement validateAdminKey:
+     GET https://api.openai.com/v1/organization/projects with Bearer token
+   - Create /lib/providers/anthropic.ts — implement validateAdminKey:
+     GET https://api.anthropic.com/v1/organizations/workspaces with x-api-key header
+   - Create /lib/providers/google.ts — Guided setup (no validation API)
+   - Each adapter must return its automationLevel: FULL_AUTO, SEMI_AUTO, GUIDED
+
+3. PROVIDER CONNECTION UI (Root Admin only)
+   - Page: /dashboard/providers
+   - "Connect Provider" button opens modal:
+     - Select provider (OpenAI / Anthropic / Google)
+     - Paste Admin API key (masked input)
+     - Optional display name
+     - "Validate and Connect" button
+   - On submit: validate key via provider API, encrypt, save to ProviderConnection table
+   - Show connected providers as cards with: provider name + badge, status indicator, automation level badge, display name, "Disconnect" button
+   - Disconnecting requires confirmation dialog
+
+4. API ROUTES
+   - GET /api/providers — list connected providers (Root Admin only)
+   - POST /api/providers — connect new provider (validate + encrypt + save)
+   - PATCH /api/providers/[id] — update settings
+   - DELETE /api/providers/[id] — disconnect (revokes all member keys for this provider)
+   - POST /api/providers/[id]/validate — re-validate provider key
+   - All routes enforce Root Admin role check
+
+5. ORG MODEL ALLOWLIST (Step 8)
+   - On the provider detail page, show all models for that provider (from ModelPricing table)
+   - Toggle switches to enable/disable each model org-wide
+   - Save to ProviderConnection.orgAllowedModels as JSON array
+   - When no models are explicitly selected, all models are allowed
+
+6. AUDIT LOGGING
+   - Start logging provider actions: "provider.connected", "provider.disconnected", "provider.validated"
+   - Create the AuditLog insert helper in /lib/audit.ts
+
+VERIFY BY:
+- Show me the Providers page with a "Connect Provider" flow working end-to-end (use a mock or real key)
+- Show the encryption working (encrypted bytes stored in DB, can decrypt to original)
+- Show the model allowlist toggles saving correctly
+- Confirm non-Root-Admin users get a 403 on provider routes

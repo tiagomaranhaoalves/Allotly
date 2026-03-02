@@ -108,6 +108,13 @@ ProviderBadge, BudgetBar, AdminRoleBadge, SpendCard, KeyRevealCard, VoucherCard,
 LogoFull (icon + wordmark), LogoIcon (icon only), LogoMono (monochrome white)
 Branching-nodes motif: central hub with 3 branch nodes representing allocation/distribution
 
+## Provider Adapters (server/lib/providers/)
+- OpenAI: FULL_AUTO — validates via GET /v1/organization/projects
+- Anthropic: SEMI_AUTO — validates via GET /v1/models
+- Google: GUIDED — no validation (always returns valid, manual setup required)
+- Audit helper: server/lib/audit.ts (logAudit function)
+
 ## Milestone Status
 - Milestone 1 (Foundation, DB, Auth): COMPLETE — schema, auth, storage, all 15 tables, model pricing seeded, signup→login→dashboard flow verified
 - Milestone 2 (Brand Assets & Components): COMPLETE — all 14 brand components, logo variants, SVG favicon, dark mode, component showcase at /components, DataTable with sort/filter/pagination
+- Milestone 3 (Provider Connections & Model Allowlist): COMPLETE — provider adapters with real API validation, PATCH/validate routes with Zod validation, model allowlist toggles, confirmation dialog for disconnect, audit logging, RBAC enforced on all provider routes (ROOT_ADMIN only)
