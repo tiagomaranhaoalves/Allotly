@@ -82,7 +82,7 @@ function CostPerModelSection() {
                 <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
                 <Tooltip
                   formatter={(value: number) => [`$${value.toFixed(2)}`, "Cost"]}
-                  contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }}
+                  contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, color: "hsl(var(--foreground))" }}
                   labelStyle={{ color: "hsl(var(--foreground))" }}
                 />
                 <Bar dataKey="cost" radius={[0, 4, 4, 0]} maxBarSize={28}>
@@ -312,7 +312,7 @@ function SpendForecastSection() {
                   <YAxis tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" tickFormatter={v => `$${v}`} />
                   <Tooltip
                     formatter={(value: number, name: string) => [`$${(value || 0).toFixed(2)}`, name === "spend" ? "Actual" : "Projected"]}
-                    contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }}
+                    contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, color: "hsl(var(--foreground))" }}
                     labelFormatter={(d) => new Date(d + "T00:00:00").toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })}
                   />
                   <Area type="monotone" dataKey="spend" stroke="#6366f1" fill="url(#spendGradient)" strokeWidth={2} connectNulls={false} dot={false} />

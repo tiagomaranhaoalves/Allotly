@@ -54,3 +54,11 @@ All money values are handled in integer cents to avoid floating-point inaccuraci
   - Optimization Recommendations: Model downgrade suggestions based on modelPricing differentials, budget reallocation tips
   - RBAC: Team Admin scoped to their team only (via teams.adminId); Root Admin sees all org data
   - Files: server/lib/analytics.ts (5 analytics functions), server/routes.ts (5 GET endpoints), client/src/pages/dashboard/analytics.tsx (Recharts + data tables)
+- Milestone 12 (Security, Dark Mode, Polish, Testing): COMPLETE
+  - Security: Helmet middleware (CSP disabled for Vite compat), rate limiters (login 10/hr, redeem 5/hr, key revoke 3/hr), Zod validation on all mutable routes (providers, teams, members, vouchers, settings, redeem)
+  - ErrorBoundary: React class component wrapping all dashboard routes in App.tsx, catches render errors with retry button
+  - Confirmation Dialogs: AlertDialog on all destructive actions (member remove, member suspend, team delete, provider disconnect)
+  - Dark Mode Pass: Fixed Recharts tooltip contentStyle to use hsl(var(--popover)), PieChart labels with explicit fill, all pages audited for hardcoded colors
+  - Empty States & Skeletons: All dashboard pages verified for loading skeletons and empty state CTAs
+  - Unit Tests: vitest.config.ts + 5 test files (88 tests): encryption roundtrip, budget thresholds, voucher code format/charset, key generation/hashing, permission matrix (3 roles × 19 actions)
+  - Files: server/lib/rate-limiter.ts, server/index.ts, server/routes.ts, client/src/components/error-boundary.tsx, client/src/App.tsx, vitest.config.ts, tests/*.test.ts

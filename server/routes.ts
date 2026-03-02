@@ -25,6 +25,7 @@ import { runSpendAnomalyCheck } from "./lib/jobs/spend-anomaly";
 import { checkPlanLimit } from "./lib/plan-limits";
 import { sendEmail, emailTemplates } from "./lib/email";
 import { getCostPerModel, getTopSpenders, getSpendForecast, getAnomalies, getOptimizationRecommendations } from "./lib/analytics";
+import { loginLimiter, redeemLimiter, regenerateKeyLimiter } from "./lib/rate-limiter";
 import { z } from "zod";
 
 const VOUCHER_LIMITS = {
@@ -118,7 +119,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/auth/login", async (req, res) => {
+  app.post("/api/auth/login", loginLimiter, async (req, res) => {
     try {
       const data = loginSchema.parse(req.body);
       const user = await storage.getUserByEmail(data.email);
@@ -200,11 +201,14 @@ export async function registerRoutes(
   app.post("/api/providers", requireRole("ROOT_ADMIN"), async (req, res) => {
     try {
       const user = (req as any).user;
-      const { provider, apiKey, displayName } = req.body;
-
-      if (!provider || !apiKey) {
-        return res.status(400).json({ message: "AI Provider and API key are required" });
-      }
+      const providerSchema = z.object({
+        provider: z.enum(["OPENAI", "ANTHROPIC", "GOOGLE"]),
+        apiKey: z.string().min(1),
+        displayName: z.string().max(100).optional(),
+      });
+      const parsed = providerSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+      const { provider, apiKey, displayName } = parsed.data;
 
       const providerCheck = await checkPlanLimit(user.orgId, "provider");
       if (!providerCheck.allowed) {
@@ -395,11 +399,15 @@ export async function registerRoutes(
   app.post("/api/teams", requireRole("ROOT_ADMIN"), async (req, res) => {
     try {
       const user = (req as any).user;
-      const { adminEmail, adminName, teamName, adminPassword } = req.body;
-
-      if (!adminEmail || !teamName) {
-        return res.status(400).json({ message: "Admin email and team name required" });
-      }
+      const createTeamSchema = z.object({
+        adminEmail: z.string().email(),
+        adminName: z.string().optional(),
+        teamName: z.string().min(1),
+        adminPassword: z.string().min(6).optional(),
+      });
+      const parsed = createTeamSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+      const { adminEmail, adminName, teamName, adminPassword } = parsed.data;
 
       const teamCheck = await checkPlanLimit(user.orgId, "team");
       if (!teamCheck.allowed) {
@@ -481,7 +489,19 @@ export async function registerRoutes(
       if (!user) return res.status(401).json({ message: "Unauthorized" });
       if (user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
 
-      const { email, name, teamId, budgetCents, accessMode, allowedModels, allowedProviders, password } = req.body;
+      const addMemberSchema = z.object({
+        email: z.string().email(),
+        name: z.string().optional(),
+        teamId: z.string().optional(),
+        budgetCents: z.number().int().min(100),
+        accessMode: z.enum(["DIRECT", "PROXY"]).optional(),
+        allowedModels: z.array(z.string()).nullable().optional(),
+        allowedProviders: z.array(z.string()).nullable().optional(),
+        password: z.string().min(6).optional(),
+      });
+      const parsed = addMemberSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+      const { email, name, teamId, budgetCents, accessMode, allowedModels, allowedProviders, password } = parsed.data;
 
       let targetTeamId = teamId;
       if (user.orgRole === "TEAM_ADMIN") {
@@ -493,8 +513,8 @@ export async function registerRoutes(
         if (!team || team.orgId !== user.orgId) return res.status(400).json({ message: "Team not found in your organization" });
       }
 
-      if (!targetTeamId || !email || !budgetCents || typeof budgetCents !== "number" || budgetCents <= 0) {
-        return res.status(400).json({ message: "Missing or invalid required fields" });
+      if (!targetTeamId) {
+        return res.status(400).json({ message: "Team is required" });
       }
 
       const org = await storage.getOrganization(user.orgId);
@@ -844,7 +864,7 @@ export async function registerRoutes(
     res.json({ message: "Marked as complete" });
   });
 
-  app.post("/api/members/:id/revoke-key/:linkId", requireAuth, async (req, res) => {
+  app.post("/api/members/:id/revoke-key/:linkId", requireAuth, regenerateKeyLimiter, async (req, res) => {
     try {
       const user = await storage.getUser(req.session.userId!);
       if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
@@ -1117,7 +1137,19 @@ export async function registerRoutes(
       const user = await storage.getUser(req.session.userId!);
       if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
 
-      const { label, budgetCents, allowedProviders, allowedModels, expiresAt, maxRedemptions, teamId, bundleId } = req.body;
+      const createVoucherSchema = z.object({
+        label: z.string().optional(),
+        budgetCents: z.number().int().min(100),
+        allowedProviders: z.array(z.string()).min(1),
+        allowedModels: z.array(z.string()).nullable().optional(),
+        expiresAt: z.string(),
+        maxRedemptions: z.number().int().min(1).optional(),
+        teamId: z.string().optional(),
+        bundleId: z.string().optional(),
+      });
+      const parsed = createVoucherSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+      const { label, budgetCents, allowedProviders, allowedModels, expiresAt, maxRedemptions, teamId, bundleId } = parsed.data;
 
       const org = await storage.getOrganization(user.orgId);
       if (!org) return res.status(404).json({ message: "Organization not found" });
@@ -1132,8 +1164,8 @@ export async function registerRoutes(
         if (!team || team.orgId !== user.orgId) return res.status(400).json({ message: "Team not found in your organization" });
       }
 
-      if (!targetTeamId || !budgetCents || typeof budgetCents !== "number" || budgetCents <= 0 || !allowedProviders || !Array.isArray(allowedProviders) || !expiresAt) {
-        return res.status(400).json({ message: "Missing or invalid required fields" });
+      if (!targetTeamId) {
+        return res.status(400).json({ message: "Team is required" });
       }
 
       if (bundleId) {
@@ -1289,13 +1321,18 @@ export async function registerRoutes(
     });
   });
 
-  app.post("/api/vouchers/redeem", async (req, res) => {
+  app.post("/api/vouchers/redeem", redeemLimiter, async (req, res) => {
     try {
-      const { code, email, name, password, instant } = req.body;
-
-      if (!code) {
-        return res.status(400).json({ message: "Voucher code required" });
-      }
+      const redeemSchema = z.object({
+        code: z.string().min(1),
+        email: z.string().email().optional(),
+        name: z.string().optional(),
+        password: z.string().min(6).optional(),
+        instant: z.boolean().optional(),
+      });
+      const parsed = redeemSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+      const { code, email, name, password, instant } = parsed.data;
 
       const voucher = await storage.getVoucherByCode(code.toUpperCase());
       if (!voucher || voucher.status !== "ACTIVE") {
@@ -1937,7 +1974,14 @@ export async function registerRoutes(
 
   app.patch("/api/org/settings", requireRole("ROOT_ADMIN"), async (req, res) => {
     const user = (req as any).user;
-    const { name, orgBudgetCeilingCents, defaultMemberBudgetCents } = req.body;
+    const settingsSchema = z.object({
+      name: z.string().min(1).optional(),
+      orgBudgetCeilingCents: z.number().int().min(0).nullable().optional(),
+      defaultMemberBudgetCents: z.number().int().min(0).nullable().optional(),
+    });
+    const parsed = settingsSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+    const { name, orgBudgetCeilingCents, defaultMemberBudgetCents } = parsed.data;
     const updated = await storage.updateOrganization(user.orgId, { name, orgBudgetCeilingCents, defaultMemberBudgetCents });
 
     await storage.createAuditLog({

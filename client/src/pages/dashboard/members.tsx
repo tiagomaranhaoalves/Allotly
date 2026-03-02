@@ -11,8 +11,12 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
-  DialogDescription, DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -373,17 +377,38 @@ function MemberCard({ member, providers, onRemove }: { member: any; providers: a
               </Dialog>
 
               {member.status === "ACTIVE" ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs"
-                  onClick={() => suspendMutation.mutate()}
-                  disabled={suspendMutation.isPending}
-                  data-testid={`button-suspend-${member.id}`}
-                >
-                  <UserMinus className="w-3 h-3 mr-1" />
-                  Suspend
-                </Button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs"
+                      disabled={suspendMutation.isPending}
+                      data-testid={`button-suspend-${member.id}`}
+                    >
+                      <UserMinus className="w-3 h-3 mr-1" />
+                      Suspend
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Suspend Member?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Are you sure you want to suspend <strong>{member.user?.name || member.user?.email}</strong>? They will lose access to all AI providers until reactivated.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel data-testid="button-cancel-suspend">Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={() => suspendMutation.mutate()}
+                        className="bg-red-600 text-white hover:bg-red-700"
+                        data-testid="button-confirm-suspend"
+                      >
+                        Suspend Member
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               ) : member.status === "SUSPENDED" ? (
                 <Button
                   size="sm"
@@ -399,32 +424,32 @@ function MemberCard({ member, providers, onRemove }: { member: any; providers: a
               ) : null}
             </div>
 
-            <Dialog open={confirmRemoveOpen} onOpenChange={setConfirmRemoveOpen}>
-              <DialogTrigger asChild>
+            <AlertDialog open={confirmRemoveOpen} onOpenChange={setConfirmRemoveOpen}>
+              <AlertDialogTrigger asChild>
                 <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:text-destructive" data-testid={`button-remove-${member.id}`}>
                   <Trash2 className="w-3 h-3 mr-1" />
                   Remove
                 </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Remove Member</DialogTitle>
-                  <DialogDescription>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Remove Member</AlertDialogTitle>
+                  <AlertDialogDescription>
                     Are you sure you want to remove <strong>{member.user?.name || member.user?.email}</strong>? Their account and all provider links will be deleted permanently.
-                  </DialogDescription>
-                </DialogHeader>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setConfirmRemoveOpen(false)} data-testid="button-cancel-remove">Cancel</Button>
-                  <Button
-                    variant="destructive"
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel data-testid="button-cancel-remove">Cancel</AlertDialogCancel>
+                  <AlertDialogAction
                     onClick={() => { onRemove(member.id); setConfirmRemoveOpen(false); }}
+                    className="bg-red-600 text-white hover:bg-red-700"
                     data-testid="button-confirm-remove"
                   >
                     Remove Member
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
       )}

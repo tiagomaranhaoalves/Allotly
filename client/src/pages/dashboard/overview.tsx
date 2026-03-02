@@ -138,7 +138,7 @@ function RootAdminOverview() {
                 <XAxis dataKey="name" className="text-xs" tick={{ fill: 'currentColor', fontSize: 12 }} />
                 <YAxis tick={{ fill: 'currentColor', fontSize: 12 }} tickFormatter={(v) => `$${v}`} />
                 <Tooltip
-                  contentStyle={{ backgroundColor: 'var(--popover)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--popover-foreground)' }}
+                  contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px', color: 'hsl(var(--popover-foreground))' }}
                   formatter={(value: number) => [`$${value.toFixed(2)}`, 'Spend']}
                 />
                 <Bar dataKey="spend" fill="#6366F1" radius={[4, 4, 0, 0]} />
@@ -167,14 +167,18 @@ function RootAdminOverview() {
                   paddingAngle={3}
                   dataKey="value"
                   nameKey="name"
-                  label={({ name, value }) => `${name}: $${value.toFixed(2)}`}
+                  label={({ name, value, x, y, cx }: any) => (
+                    <text x={x} y={y} fill="hsl(var(--foreground))" fontSize={11} textAnchor={x > cx ? "start" : "end"} dominantBaseline="central">
+                      {`${name}: $${value.toFixed(2)}`}
+                    </text>
+                  )}
                 >
                   {chartProviderData.map((entry: any) => (
                     <Cell key={entry.provider} fill={PROVIDER_COLORS[entry.provider] || "#6366F1"} />
                   ))}
                 </Pie>
                 <Tooltip
-                  contentStyle={{ backgroundColor: 'var(--popover)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--popover-foreground)' }}
+                  contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px', color: 'hsl(var(--popover-foreground))' }}
                   formatter={(value: number) => [`$${value.toFixed(2)}`, 'Spend']}
                 />
               </PieChart>
@@ -421,7 +425,7 @@ function TeamAdminOverview() {
               <XAxis dataKey="name" tick={{ fill: 'currentColor', fontSize: 12 }} />
               <YAxis tick={{ fill: 'currentColor', fontSize: 12 }} tickFormatter={(v) => `$${v}`} />
               <Tooltip
-                contentStyle={{ backgroundColor: 'var(--popover)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--popover-foreground)' }}
+                contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px', color: 'hsl(var(--popover-foreground))' }}
                 formatter={(value: number) => [`$${value.toFixed(2)}`]}
               />
               <Legend />

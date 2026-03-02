@@ -5,7 +5,11 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -84,8 +88,8 @@ function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string) => voi
             >
               <ChevronRight className="w-4 h-4" />
             </Button>
-            <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-              <DialogTrigger asChild>
+            <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+              <AlertDialogTrigger asChild>
                 <Button
                   size="sm"
                   variant="ghost"
@@ -94,22 +98,26 @@ function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string) => voi
                 >
                   <Trash2 className="w-4 h-4" />
                 </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Remove Team</DialogTitle>
-                  <DialogDescription>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Remove Team</AlertDialogTitle>
+                  <AlertDialogDescription>
                     Are you sure you want to remove <strong>{team.name}</strong>? All member access will be suspended. This action cannot be undone.
-                  </DialogDescription>
-                </DialogHeader>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setConfirmOpen(false)} data-testid="button-cancel-delete">Cancel</Button>
-                  <Button variant="destructive" onClick={() => { onDelete(team.id); setConfirmOpen(false); }} data-testid="button-confirm-delete">
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => { onDelete(team.id); setConfirmOpen(false); }}
+                    className="bg-red-600 text-white hover:bg-red-700"
+                    data-testid="button-confirm-delete"
+                  >
                     Remove Team
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
       </div>

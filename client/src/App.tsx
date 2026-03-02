@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider } from "@/lib/auth";
 import { DashboardShell } from "@/components/dashboard-shell";
+import { ErrorBoundary } from "@/components/error-boundary";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
 import LoginPage from "@/pages/login";
@@ -34,7 +35,9 @@ import UsagePage from "@/pages/dashboard/usage";
 function DashboardRoute({ component: Component }: { component: React.ComponentType }) {
   return (
     <DashboardShell>
-      <Component />
+      <ErrorBoundary>
+        <Component />
+      </ErrorBoundary>
     </DashboardShell>
   );
 }
