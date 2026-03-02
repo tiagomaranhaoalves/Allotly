@@ -23,6 +23,8 @@ export default function SignupPage() {
     setLoading(true);
     try {
       await apiRequest("POST", "/api/auth/signup", { name, email, password, orgName });
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await queryClient.invalidateQueries({ queryKey: ["/api/auth/session"] });
       await queryClient.refetchQueries({ queryKey: ["/api/auth/session"] });
       setLocation("/dashboard");
     } catch (err: any) {

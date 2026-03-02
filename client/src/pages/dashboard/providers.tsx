@@ -31,7 +31,7 @@ export default function ProvidersPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/providers"] });
-      toast({ title: "Provider connected successfully" });
+      toast({ title: "AI Provider connected successfully" });
       setOpen(false);
       setProvider("");
       setApiKey("");
@@ -48,7 +48,7 @@ export default function ProvidersPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/providers"] });
-      toast({ title: "Provider disconnected" });
+      toast({ title: "AI Provider disconnected" });
     },
   });
 
@@ -57,7 +57,7 @@ export default function ProvidersPage() {
       <EmptyState
         icon={<Shield className="w-8 h-8 text-muted-foreground" />}
         title="Access Restricted"
-        description="Only Root Admins can manage providers"
+        description="Only Root Admins can manage AI Providers"
       />
     );
   }
@@ -66,14 +66,14 @@ export default function ProvidersPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Providers</h1>
-          <p className="text-muted-foreground mt-1">Connect your AI provider accounts</p>
+          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-providers-heading">AI Providers</h1>
+          <p className="text-muted-foreground mt-1">Connect your AI Provider accounts (up to 3)</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button data-testid="button-connect-provider">
+            <Button data-testid="button-connect-provider" disabled={providers && providers.length >= 3}>
               <Plus className="w-4 h-4 mr-1.5" />
-              Connect Provider
+              Connect AI Provider
             </Button>
           </DialogTrigger>
           <DialogContent>
@@ -82,10 +82,10 @@ export default function ProvidersPage() {
             </DialogHeader>
             <div className="space-y-4 pt-2">
               <div className="space-y-2">
-                <Label>Provider</Label>
+                <Label>AI Provider</Label>
                 <Select value={provider} onValueChange={setProvider}>
                   <SelectTrigger data-testid="select-provider">
-                    <SelectValue placeholder="Select provider" />
+                    <SelectValue placeholder="Select AI Provider" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="OPENAI">OpenAI</SelectItem>
@@ -120,7 +120,7 @@ export default function ProvidersPage() {
                 disabled={!provider || !apiKey || addMutation.isPending}
                 data-testid="button-submit-provider"
               >
-                {addMutation.isPending ? "Connecting..." : "Connect Provider"}
+                {addMutation.isPending ? "Connecting..." : "Connect AI Provider"}
               </Button>
             </div>
           </DialogContent>
@@ -165,13 +165,18 @@ export default function ProvidersPage() {
               )}
             </Card>
           ))}
+          {providers.length < 3 && (
+            <p className="text-xs text-muted-foreground text-center">
+              {3 - providers.length} AI Provider connection{3 - providers.length !== 1 ? 's' : ''} remaining
+            </p>
+          )}
         </div>
       ) : (
         <EmptyState
           icon={<Plug className="w-10 h-10 text-muted-foreground" />}
-          title="No providers connected"
+          title="No AI Providers connected"
           description="Connect your OpenAI, Anthropic, or Google account to start provisioning API keys for your team."
-          action={{ label: "Connect Provider", onClick: () => setOpen(true) }}
+          action={{ label: "Connect AI Provider", onClick: () => setOpen(true) }}
         />
       )}
     </div>

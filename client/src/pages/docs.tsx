@@ -114,7 +114,7 @@ export default function DocsPage() {
             <h3 className="text-lg font-semibold mt-6">Quick Start Steps</h3>
             <ol className="space-y-2 text-sm">
               <li><strong>1. Sign up</strong> — Create your organization at <code>/signup</code></li>
-              <li><strong>2. Connect a provider</strong> — Add your OpenAI, Anthropic, or Google API key</li>
+              <li><strong>2. Connect an AI Provider</strong> — Add your OpenAI, Anthropic, or Google API key</li>
               <li><strong>3. Add members</strong> — Create teams and add members with budgets</li>
               <li><strong>4. Or create vouchers</strong> — Generate codes for external access</li>
             </ol>
@@ -128,7 +128,7 @@ export default function DocsPage() {
 
             <div className="not-prose my-4 space-y-2">
               {[
-                { role: "Root Admin", desc: "Full org control. Connects providers, creates Team Admins, manages billing.", color: "indigo" },
+                { role: "Root Admin", desc: "Full org control. Connects AI Providers, creates Team Admins, manages billing.", color: "indigo" },
                 { role: "Team Admin", desc: "Manages one team. Adds members, sets budgets, creates vouchers.", color: "cyan" },
                 { role: "Member", desc: "End user. Gets API keys, tracks usage, stays within budget.", color: "gray" },
               ].map(r => (
@@ -141,9 +141,9 @@ export default function DocsPage() {
               ))}
             </div>
 
-            <h3 className="text-lg font-semibold">Connecting Providers</h3>
+            <h3 className="text-lg font-semibold">Connecting AI Providers</h3>
             <p className="text-sm text-muted-foreground">
-              Navigate to <strong>Providers</strong> in the dashboard and click "Connect Provider".
+              Navigate to <strong>AI Providers</strong> in the dashboard and click "Connect AI Provider".
               Enter your admin API key — it's encrypted with AES-256-GCM and never stored in plaintext.
             </p>
 
@@ -151,7 +151,7 @@ export default function DocsPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-muted-foreground">
-                    <th className="pb-2">Provider</th>
+                    <th className="pb-2">AI Provider</th>
                     <th className="pb-2">Automation</th>
                     <th className="pb-2">Key Provisioning</th>
                   </tr>
@@ -172,7 +172,7 @@ export default function DocsPage() {
             </p>
             <ul className="text-sm space-y-1 text-muted-foreground">
               <li>Budget per recipient (in dollars)</li>
-              <li>Allowed providers (OpenAI, Anthropic, Google)</li>
+              <li>Allowed AI Providers (OpenAI, Anthropic, Google)</li>
               <li>Maximum number of redemptions</li>
               <li>Expiration date</li>
             </ul>
@@ -201,7 +201,7 @@ Example: ALLOT-7K3M-N9WT-4HVX`}</CodeBlock>
             </p>
             <ul className="text-sm space-y-1 text-muted-foreground">
               <li><strong>80% threshold</strong> — Warning notification sent</li>
-              <li><strong>100% threshold</strong> — Key automatically revoked at the provider level</li>
+              <li><strong>100% threshold</strong> — Key automatically revoked at the AI Provider level</li>
             </ul>
 
             <h3 className="text-lg font-semibold mt-6">Vouchers (Proxy Access)</h3>
@@ -267,8 +267,8 @@ print(response.choices[0].message.content)`}</CodeBlock>
                   <tr className="border-b"><td className="py-2"><code>401</code></td><td>Invalid or missing API key</td></tr>
                   <tr className="border-b"><td className="py-2"><code>402</code></td><td>Budget exhausted</td></tr>
                   <tr className="border-b"><td className="py-2"><code>403</code></td><td>Model not allowed for this key</td></tr>
-                  <tr className="border-b"><td className="py-2"><code>429</code></td><td>Rate limited by provider</td></tr>
-                  <tr><td className="py-2"><code>502</code></td><td>Provider API error</td></tr>
+                  <tr className="border-b"><td className="py-2"><code>429</code></td><td>Rate limited by AI Provider</td></tr>
+                  <tr><td className="py-2"><code>502</code></td><td>AI Provider API error</td></tr>
                 </tbody>
               </table>
             </div>
@@ -283,23 +283,23 @@ print(response.choices[0].message.content)`}</CodeBlock>
                 },
                 {
                   q: "What happens if Allotly goes down?",
-                  a: "For Teams (Direct access), your members' provider keys continue to work — they call providers directly. For Vouchers (Proxy access), proxy requests will fail until the service recovers."
+                  a: "For Teams (Direct access), your members' AI Provider keys continue to work — they call AI Providers directly. For Vouchers (Proxy access), proxy requests will fail until the service recovers."
                 },
                 {
                   q: "Are my prompts logged or stored?",
                   a: "Never. The proxy processes requests in-flight and only logs metadata (token counts, costs, timestamps). Your prompts and responses are never stored."
                 },
                 {
-                  q: "How is my provider API key secured?",
-                  a: "Provider keys are encrypted at rest using AES-256-GCM. The encryption key is stored as an environment variable, separate from the database."
+                  q: "How is my AI Provider API key secured?",
+                  a: "AI Provider keys are encrypted at rest using AES-256-GCM. The encryption key is stored as an environment variable, separate from the database."
                 },
                 {
                   q: "Can I use both Teams and Vouchers?",
-                  a: "Yes! Many organizations use Teams for their internal engineering team (direct provider access) and Vouchers for workshops, hackathons, or external contractors."
+                  a: "Yes! Many organizations use Teams for their internal engineering team (direct AI Provider access) and Vouchers for workshops, hackathons, or external contractors."
                 },
                 {
-                  q: "What's an External Access Bundle?",
-                  a: "Bundles are $10 one-time purchases that give you a pool of 50 voucher redemptions and 25,000 proxy requests. They're available on the Team plan and above."
+                  q: "What's a Voucher Bundle?",
+                  a: "Voucher Bundles are $10 one-time purchases that give you a pool of 50 voucher redemptions and 25,000 proxy requests. They're available on all plans, including Free."
                 },
               ].map((item, i) => (
                 <Card key={i} className="p-4">

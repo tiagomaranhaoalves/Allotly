@@ -48,9 +48,17 @@ export interface IStorage {
   getVoucherByCode(code: string): Promise<Voucher | undefined>;
   getVouchersByOrg(orgId: string): Promise<Voucher[]>;
   getVouchersByTeam(teamId: string): Promise<Voucher[]>;
+  getVouchersByBundle(bundleId: string): Promise<Voucher[]>;
+  getActiveVoucherCountByOrg(orgId: string): Promise<number>;
+  getActiveVoucherCountByCreator(createdById: string): Promise<number>;
   updateVoucher(id: string, data: Partial<Voucher>): Promise<Voucher | undefined>;
 
   createVoucherRedemption(data: { voucherId: string; userId: string }): Promise<VoucherRedemption>;
+
+  createVoucherBundle(data: any): Promise<VoucherBundle>;
+  getVoucherBundle(id: string): Promise<VoucherBundle | undefined>;
+  getVoucherBundlesByOrg(orgId: string): Promise<VoucherBundle[]>;
+  updateVoucherBundle(id: string, data: Partial<VoucherBundle>): Promise<VoucherBundle | undefined>;
 
   createAllotlyApiKey(data: { userId: string; membershipId: string; keyHash: string; keyPrefix: string }): Promise<AllotlyApiKey>;
   getApiKeyByHash(hash: string): Promise<AllotlyApiKey | undefined>;
@@ -209,6 +217,20 @@ export class DrizzleStorage implements IStorage {
     return db.select().from(vouchers).where(eq(vouchers.teamId, teamId)).orderBy(desc(vouchers.createdAt));
   }
 
+  async getVouchersByBundle(bundleId: string): Promise<Voucher[]> {
+    return db.select().from(vouchers).where(eq(vouchers.bundleId, bundleId)).orderBy(desc(vouchers.createdAt));
+  }
+
+  async getActiveVoucherCountByOrg(orgId: string): Promise<number> {
+    const [result] = await db.select({ count: count() }).from(vouchers).where(and(eq(vouchers.orgId, orgId), eq(vouchers.status, "ACTIVE")));
+    return result?.count || 0;
+  }
+
+  async getActiveVoucherCountByCreator(createdById: string): Promise<number> {
+    const [result] = await db.select({ count: count() }).from(vouchers).where(and(eq(vouchers.createdById, createdById), eq(vouchers.status, "ACTIVE")));
+    return result?.count || 0;
+  }
+
   async updateVoucher(id: string, data: Partial<Voucher>): Promise<Voucher | undefined> {
     const [result] = await db.update(vouchers).set({ ...data, updatedAt: new Date() }).where(eq(vouchers.id, id)).returning();
     return result;
@@ -216,6 +238,25 @@ export class DrizzleStorage implements IStorage {
 
   async createVoucherRedemption(data: { voucherId: string; userId: string }): Promise<VoucherRedemption> {
     const [result] = await db.insert(voucherRedemptions).values(data).returning();
+    return result;
+  }
+
+  async createVoucherBundle(data: any): Promise<VoucherBundle> {
+    const [result] = await db.insert(voucherBundles).values(data).returning();
+    return result;
+  }
+
+  async getVoucherBundle(id: string): Promise<VoucherBundle | undefined> {
+    const [result] = await db.select().from(voucherBundles).where(eq(voucherBundles.id, id));
+    return result;
+  }
+
+  async getVoucherBundlesByOrg(orgId: string): Promise<VoucherBundle[]> {
+    return db.select().from(voucherBundles).where(eq(voucherBundles.orgId, orgId)).orderBy(desc(voucherBundles.createdAt));
+  }
+
+  async updateVoucherBundle(id: string, data: Partial<VoucherBundle>): Promise<VoucherBundle | undefined> {
+    const [result] = await db.update(voucherBundles).set({ ...data, updatedAt: new Date() }).where(eq(voucherBundles.id, id)).returning();
     return result;
   }
 

@@ -21,7 +21,7 @@ import {
 
 const ROOT_ADMIN_NAV = [
   { title: "Overview", href: "/dashboard", icon: LayoutDashboard },
-  { title: "Providers", href: "/dashboard/providers", icon: Plug },
+  { title: "AI Providers", href: "/dashboard/providers", icon: Plug },
   { title: "Teams", href: "/dashboard/teams", icon: Users },
   { title: "Vouchers", href: "/dashboard/vouchers", icon: Ticket },
   { title: "Bundles", href: "/dashboard/bundles", icon: Package },
