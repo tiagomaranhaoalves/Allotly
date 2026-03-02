@@ -742,7 +742,6 @@ function SocialProof() {
         <FadeIn>
           <div className="text-center mb-14">
             <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">Built for Teams Like Yours</h2>
-            <p className="mt-4 text-lg text-muted-foreground">See how organizations use Allotly to govern AI spend.</p>
           </div>
         </FadeIn>
         <div className="grid md:grid-cols-3 gap-6 lg:gap-8">
