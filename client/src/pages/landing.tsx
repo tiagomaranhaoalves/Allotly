@@ -182,9 +182,9 @@ function FeaturesSection() {
             <Zap className="w-3 h-3 mr-1" />
             Two Approaches
           </Badge>
-          <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight">Two Features, One Dashboard</h2>
-          <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-            Choose the right approach for each use case. Use both from the same platform.
+          <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight">Internal Teams. External Users. One Control Plane.</h2>
+          <p className="mt-4 text-lg text-muted-foreground max-w-3xl mx-auto">
+            Allotly Teams gives your people direct API access with built-in budgets. Allotly Vouchers lets you distribute AI access to anyone — no accounts, no long-term commitments.
           </p>
         </div>
         <div className="grid md:grid-cols-2 gap-6 lg:gap-8">
