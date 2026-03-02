@@ -1,0 +1,74 @@
+MILESTONE 6: Redis Setup, Proxy Endpoint, Streaming, and Request Translation
+
+Referring to the full Allotly spec, complete Steps 19-22 from the build order. This is the most complex milestone — follow Section 9 exactly.
+
+BUILD THESE:
+
+1. REDIS CLIENT (Section 9.5)
+   - Create /lib/redis.ts with ioredis client using REDIS_URL
+   - Helper functions for all Redis key patterns:
+     - allotly:budget:{membershipId} — integer (remaining budget in cents)
+     - allotly:concurrent:{membershipId} — integer (active requests, 0-2)
+     - allotly:req:{requestId} — "1" with EX 120
+     - allotly:ratelimit:{membershipId} — integer (requests in 60s window)
+     - allotly:bundle:{bundleId}:redemptions — integer
+     - allotly:bundle:{bundleId}:requests — integer
+     - allotly:apikey:{keyHash} — JSON (cached key+membership, EX 60)
+     - allotly:modelprice:{provider}:{model} — JSON (cached pricing, EX 3600)
+
+2. ALLOTLY PROXY KEY GENERATION (Section 17.2)
+   - Create generateAllotlyKey() in /lib/encryption.ts:
+     - allotly_sk_ + 48 chars from crypto.randomBytes(36).toString('base64url')
+     - SHA-256 hash for storage
+     - Prefix (first 15 chars + "...") for display
+
+3. PROXY ENDPOINT — Full 12-Step Lifecycle (Section 9.3)
+   - Create /api/v1/chat/completions/route.ts (POST)
+   - Create /api/v1/models/route.ts (GET — list models for this key)
+   - Create /lib/proxy/handler.ts — main request handler
+   - Create /lib/proxy/safeguards.ts — budget, concurrency, token clamping
+
+   Implement EVERY step from Section 9.3 exactly:
+   - Step 1: AUTH — extract Bearer, check allotly_sk_ prefix, SHA-256 hash, lookup in AllotlyApiKey (cache in Redis 60s), load membership
+   - Step 2: CONCURRENCY CHECK — INCR concurrent, SET request safety net (EX 120), reject if > 2
+   - Step 3: RATE LIMIT — sliding window in Redis, reject if > plan limit (10 or 30 req/min)
+   - Step 4: BUNDLE REQUEST POOL — check bundle remaining requests if applicable
+   - Step 5: PARSE REQUEST — Zod validate, determine provider from model name, verify model + provider allowed
+   - Step 6: INPUT COST ESTIMATION — estimate tokens (chars/4), look up pricing, check budget
+   - Step 7: MAX TOKEN CLAMPING (Safeguard 3) — calculate maxAffordableOutput, floor of 50 tokens, inject effectiveMaxTokens
+   - Step 8: BUDGET RESERVATION (Safeguard 1) — DECRBY to reserve, rollback if negative
+   - Step 9: FORWARD TO PROVIDER — decrypt admin key, translate request, forward with streaming
+   - Step 10: ON RESPONSE COMPLETE — parse actual usage, calculate actual cost, INCRBY refund, release concurrency
+   - Step 11: ASYNC — insert ProxyRequestLog, update membership spend, update bundle counters, check alert thresholds
+   - Step 12: RESPONSE HEADERS — X-Allotly-Budget-Remaining, X-Allotly-Budget-Total, X-Allotly-Requests-Remaining, X-Allotly-Max-Tokens-Applied, X-Allotly-Expires
+
+   ON ERROR after reservation: full refund via INCRBY, release concurrency, return 502/504
+
+4. REQUEST TRANSLATION (Section 9.2)
+   - Create /lib/proxy/translate.ts
+   - gpt-*, o3*, o4* go to OpenAI (forward as-is to api.openai.com)
+   - claude-* goes to Anthropic: translate to /v1/messages format (move system message to top-level, adjust model name, max_tokens required)
+   - gemini-* goes to Google: translate to generateContent format (messages to contents, max_tokens to generationConfig.maxOutputTokens)
+   - Translate responses back to OpenAI format for all providers
+
+5. STREAMING (Section 9.1)
+   - Create /lib/proxy/streaming.ts
+   - Use Web Streams API (ReadableStream, TransformStream)
+   - SSE passthrough: stream chunks from provider back to client
+   - Buffer final chunk to extract usage metadata for billing
+   - Handle streaming for all three providers
+
+6. PROXY ERROR RESPONSES (Section 9.6)
+   - Implement ALL error types exactly: 401 (auth), 402 (budget exhausted, insufficient budget, requests exhausted), 403 (model not allowed, expired), 429 (rate limit, concurrency)
+   - Include actionable messages and suggested alternatives
+
+7. CONCURRENCY SELF-HEALING (Section 23, note 16)
+   - Every 30 seconds: if allotly:concurrent:{id} > 0 but no allotly:req:* keys exist for that member, reset to 0
+
+VERIFY BY:
+- Make a curl request through the proxy with a valid allotly_sk_ key and get a streamed response
+- Show the Redis keys being set and decremented during a request
+- Show token clamping working: set a low budget, make a request, confirm max_tokens was reduced
+- Show concurrency limit: fire 3 simultaneous requests, 1 gets 429
+- Show budget exhaustion: drain the budget, get 402 with helpful error message
+- Show request translation: send a claude-* model through the proxy, confirm it hits Anthropic API correctly

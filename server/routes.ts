@@ -12,6 +12,7 @@ import { stripeService } from "./stripeService";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
 import { runUsagePoll } from "./lib/jobs/usage-poll";
 import { runBudgetReset } from "./lib/jobs/budget-reset";
+import { handleChatCompletion, handleListModels } from "./lib/proxy/handler";
 import { z } from "zod";
 
 const VOUCHER_LIMITS = {
@@ -1553,6 +1554,9 @@ export async function registerRoutes(
     const updated = await storage.updateOrganization(user.orgId, { name, orgBudgetCeilingCents, defaultMemberBudgetCents });
     res.json(updated);
   });
+
+  app.post("/api/v1/chat/completions", handleChatCompletion);
+  app.get("/api/v1/models", handleListModels);
 
   return httpServer;
 }

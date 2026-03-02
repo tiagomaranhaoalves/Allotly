@@ -1,0 +1,283 @@
+export type ProviderType = "OPENAI" | "ANTHROPIC" | "GOOGLE";
+
+export function detectProvider(model: string): ProviderType | null {
+  if (model.startsWith("gpt-") || model.startsWith("o3") || model.startsWith("o4")) return "OPENAI";
+  if (model.startsWith("claude-")) return "ANTHROPIC";
+  if (model.startsWith("gemini-")) return "GOOGLE";
+  return null;
+}
+
+export function getProviderBaseUrl(provider: ProviderType): string {
+  switch (provider) {
+    case "OPENAI": return "https://api.openai.com";
+    case "ANTHROPIC": return "https://api.anthropic.com";
+    case "GOOGLE": return "https://generativelanguage.googleapis.com";
+  }
+}
+
+interface ChatMessage {
+  role: string;
+  content: string | any[];
+}
+
+interface OpenAIRequest {
+  model: string;
+  messages: ChatMessage[];
+  stream?: boolean;
+  max_tokens?: number;
+  temperature?: number;
+  top_p?: number;
+  [key: string]: any;
+}
+
+export function translateToProvider(
+  request: OpenAIRequest,
+  provider: ProviderType,
+  effectiveMaxTokens?: number
+): { url: string; body: any; headers: Record<string, string>; method: string } {
+  const maxTokens = effectiveMaxTokens ?? request.max_tokens;
+
+  if (provider === "OPENAI") {
+    return {
+      url: "https://api.openai.com/v1/chat/completions",
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: { ...request, max_tokens: maxTokens },
+    };
+  }
+
+  if (provider === "ANTHROPIC") {
+    const systemMessages = request.messages.filter(m => m.role === "system");
+    const nonSystemMessages = request.messages.filter(m => m.role !== "system");
+    const systemText = systemMessages.map(m => typeof m.content === "string" ? m.content : JSON.stringify(m.content)).join("\n");
+
+    const anthropicBody: any = {
+      model: request.model,
+      messages: nonSystemMessages.map(m => ({
+        role: m.role === "assistant" ? "assistant" : "user",
+        content: m.content,
+      })),
+      max_tokens: maxTokens || 4096,
+      stream: request.stream ?? false,
+    };
+
+    if (systemText) anthropicBody.system = systemText;
+    if (request.temperature !== undefined) anthropicBody.temperature = request.temperature;
+    if (request.top_p !== undefined) anthropicBody.top_p = request.top_p;
+
+    return {
+      url: "https://api.anthropic.com/v1/messages",
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "anthropic-version": "2023-06-01",
+      },
+      body: anthropicBody,
+    };
+  }
+
+  if (provider === "GOOGLE") {
+    const contents = request.messages
+      .filter(m => m.role !== "system")
+      .map(m => ({
+        role: m.role === "assistant" ? "model" : "user",
+        parts: [{ text: typeof m.content === "string" ? m.content : JSON.stringify(m.content) }],
+      }));
+
+    const systemInstruction = request.messages
+      .filter(m => m.role === "system")
+      .map(m => typeof m.content === "string" ? m.content : JSON.stringify(m.content))
+      .join("\n");
+
+    const googleBody: any = { contents };
+    if (systemInstruction) {
+      googleBody.systemInstruction = { parts: [{ text: systemInstruction }] };
+    }
+    googleBody.generationConfig = {};
+    if (maxTokens) googleBody.generationConfig.maxOutputTokens = maxTokens;
+    if (request.temperature !== undefined) googleBody.generationConfig.temperature = request.temperature;
+    if (request.top_p !== undefined) googleBody.generationConfig.topP = request.top_p;
+
+    const streamSuffix = request.stream ? ":streamGenerateContent?alt=sse" : ":generateContent";
+    return {
+      url: `https://generativelanguage.googleapis.com/v1beta/models/${request.model}${streamSuffix}`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: googleBody,
+    };
+  }
+
+  throw new Error(`Unsupported provider: ${provider}`);
+}
+
+export function setProviderAuth(
+  headers: Record<string, string>,
+  provider: ProviderType,
+  apiKey: string,
+  url: string
+): { headers: Record<string, string>; url: string } {
+  if (provider === "OPENAI") {
+    headers["Authorization"] = `Bearer ${apiKey}`;
+  } else if (provider === "ANTHROPIC") {
+    headers["x-api-key"] = apiKey;
+  } else if (provider === "GOOGLE") {
+    const separator = url.includes("?") ? "&" : "?";
+    url = `${url}${separator}key=${apiKey}`;
+  }
+  return { headers, url };
+}
+
+interface OpenAIChoice {
+  index: number;
+  message: { role: string; content: string | null };
+  finish_reason: string | null;
+}
+
+interface OpenAIResponse {
+  id: string;
+  object: string;
+  created: number;
+  model: string;
+  choices: OpenAIChoice[];
+  usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+}
+
+export function translateResponseToOpenAI(
+  provider: ProviderType,
+  body: any,
+  model: string
+): OpenAIResponse {
+  if (provider === "OPENAI") return body;
+
+  if (provider === "ANTHROPIC") {
+    const text = body.content?.map((c: any) => c.text || "").join("") || "";
+    return {
+      id: body.id || `chatcmpl-${Date.now()}`,
+      object: "chat.completion",
+      created: Math.floor(Date.now() / 1000),
+      model: body.model || model,
+      choices: [{
+        index: 0,
+        message: { role: "assistant", content: text },
+        finish_reason: body.stop_reason === "end_turn" ? "stop" : (body.stop_reason || "stop"),
+      }],
+      usage: {
+        prompt_tokens: body.usage?.input_tokens || 0,
+        completion_tokens: body.usage?.output_tokens || 0,
+        total_tokens: (body.usage?.input_tokens || 0) + (body.usage?.output_tokens || 0),
+      },
+    };
+  }
+
+  if (provider === "GOOGLE") {
+    const candidate = body.candidates?.[0];
+    const text = candidate?.content?.parts?.map((p: any) => p.text || "").join("") || "";
+    return {
+      id: `chatcmpl-${Date.now()}`,
+      object: "chat.completion",
+      created: Math.floor(Date.now() / 1000),
+      model,
+      choices: [{
+        index: 0,
+        message: { role: "assistant", content: text },
+        finish_reason: candidate?.finishReason === "STOP" ? "stop" : (candidate?.finishReason?.toLowerCase() || "stop"),
+      }],
+      usage: {
+        prompt_tokens: body.usageMetadata?.promptTokenCount || 0,
+        completion_tokens: body.usageMetadata?.candidatesTokenCount || 0,
+        total_tokens: body.usageMetadata?.totalTokenCount || 0,
+      },
+    };
+  }
+
+  throw new Error(`Unsupported provider: ${provider}`);
+}
+
+export function translateStreamChunkToOpenAI(
+  provider: ProviderType,
+  chunk: any,
+  model: string
+): { sseData: string; done: boolean; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } } | null {
+  if (provider === "OPENAI") {
+    if (chunk === "[DONE]") return { sseData: "data: [DONE]\n\n", done: true };
+    try {
+      const parsed = typeof chunk === "string" ? JSON.parse(chunk) : chunk;
+      const usage = parsed.usage || undefined;
+      return {
+        sseData: `data: ${JSON.stringify(parsed)}\n\n`,
+        done: parsed.choices?.[0]?.finish_reason != null,
+        usage,
+      };
+    } catch { return null; }
+  }
+
+  if (provider === "ANTHROPIC") {
+    try {
+      const parsed = typeof chunk === "string" ? JSON.parse(chunk) : chunk;
+      if (parsed.type === "message_start") return null;
+      if (parsed.type === "content_block_start") return null;
+      if (parsed.type === "ping") return null;
+
+      if (parsed.type === "content_block_delta") {
+        const text = parsed.delta?.text || "";
+        const sseChunk = {
+          id: `chatcmpl-${Date.now()}`,
+          object: "chat.completion.chunk",
+          created: Math.floor(Date.now() / 1000),
+          model,
+          choices: [{ index: 0, delta: { content: text }, finish_reason: null }],
+        };
+        return { sseData: `data: ${JSON.stringify(sseChunk)}\n\n`, done: false };
+      }
+
+      if (parsed.type === "message_delta") {
+        const sseChunk = {
+          id: `chatcmpl-${Date.now()}`,
+          object: "chat.completion.chunk",
+          created: Math.floor(Date.now() / 1000),
+          model,
+          choices: [{ index: 0, delta: {}, finish_reason: parsed.delta?.stop_reason === "end_turn" ? "stop" : "stop" }],
+        };
+        const usage = parsed.usage ? {
+          prompt_tokens: 0,
+          completion_tokens: parsed.usage.output_tokens || 0,
+          total_tokens: parsed.usage.output_tokens || 0,
+        } : undefined;
+        return { sseData: `data: ${JSON.stringify(sseChunk)}\n\n`, done: true, usage };
+      }
+
+      if (parsed.type === "message_stop") {
+        return { sseData: "data: [DONE]\n\n", done: true };
+      }
+
+      return null;
+    } catch { return null; }
+  }
+
+  if (provider === "GOOGLE") {
+    try {
+      const parsed = typeof chunk === "string" ? JSON.parse(chunk) : chunk;
+      const candidate = parsed.candidates?.[0];
+      const text = candidate?.content?.parts?.map((p: any) => p.text || "").join("") || "";
+      const done = candidate?.finishReason === "STOP" || candidate?.finishReason != null;
+
+      const sseChunk = {
+        id: `chatcmpl-${Date.now()}`,
+        object: "chat.completion.chunk",
+        created: Math.floor(Date.now() / 1000),
+        model,
+        choices: [{ index: 0, delta: { content: text }, finish_reason: done ? "stop" : null }],
+      };
+
+      const usage = parsed.usageMetadata ? {
+        prompt_tokens: parsed.usageMetadata.promptTokenCount || 0,
+        completion_tokens: parsed.usageMetadata.candidatesTokenCount || 0,
+        total_tokens: parsed.usageMetadata.totalTokenCount || 0,
+      } : undefined;
+
+      return { sseData: `data: ${JSON.stringify(sseChunk)}\n\n`, done, usage };
+    } catch { return null; }
+  }
+
+  return null;
+}

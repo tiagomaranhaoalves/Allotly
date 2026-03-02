@@ -146,9 +146,21 @@ Updated:
 - OpenAI provisioning sets providerBudgetCents at 110% of monthlyBudgetCents
 - Ensures Allotly's polling-based enforcement triggers before provider-side limits
 
+## Proxy Endpoint (Milestone 6)
+- `server/lib/redis.ts` — Redis client with ioredis (falls back to in-memory Map when no REDIS_URL)
+- `server/lib/proxy/handler.ts` — Full 12-step proxy lifecycle (auth, concurrency, rate limit, parse, cost estimation, token clamping, budget reservation, forward, response, refund, async logging, response headers)
+- `server/lib/proxy/safeguards.ts` — Budget checks, concurrency guard, rate limiting, token clamping, self-healing
+- `server/lib/proxy/translate.ts` — Request/response translation between OpenAI/Anthropic/Google formats
+- `server/lib/proxy/streaming.ts` — SSE streaming passthrough with usage metadata extraction
+- Routes: POST /api/v1/chat/completions, GET /api/v1/models
+- Redis key patterns: allotly:budget:{id}, allotly:concurrent:{id}, allotly:req:{id}, allotly:ratelimit:{id}, allotly:apikey:{hash}, allotly:modelprice:{provider}:{model}, allotly:bundle:{id}:redemptions, allotly:bundle:{id}:requests
+- Concurrency self-heal: every 30s resets stale counters
+- Error codes: 401 (auth), 402 (budget), 403 (model/provider not allowed), 429 (rate/concurrency), 502 (provider error)
+
 ## Milestone Status
 - Milestone 1 (Foundation, DB, Auth): COMPLETE
 - Milestone 2 (Brand Assets & Components): COMPLETE
 - Milestone 3 (Provider Connections & Model Allowlist): COMPLETE
 - Milestone 4 (Teams & Members): COMPLETE — Storage CRUD for providerMemberLinks, provisioning routes (OpenAI auto, Anthropic semi-auto, Google guided), member budget edit, member delete, team delete with confirmation, team stats, enhanced Teams/Members pages
 - Milestone 5 (Usage Polling, Budget Alerts, Enforcement): COMPLETE — Usage polling job with plan-based intervals, budget alert thresholds (80/90/100%), automatic key revocation at 100%, budget reset job with period rotation and member reactivation, background job scheduler, cron API routes with secret auth, 110% safety net budget on OpenAI provisioning
+- Milestone 6 (Redis, Proxy, Streaming, Translation): COMPLETE — Redis client with in-memory fallback, full 12-step proxy lifecycle, OpenAI/Anthropic/Google request translation, SSE streaming, budget reservation/refund, token clamping, concurrency self-healing every 30s
