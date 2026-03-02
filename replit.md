@@ -132,9 +132,13 @@ Updated:
 ## Background Jobs
 - `server/lib/jobs/usage-poll.ts` — Polls provider usage APIs per org (Free=60min, Team=15min, Enterprise=5min intervals)
 - `server/lib/jobs/budget-reset.ts` — Resets expired budget periods, reactivates BUDGET_EXHAUSTED members, re-provisions keys
-- `server/lib/jobs/scheduler.ts` — setInterval-based scheduler (usage poll every 5min, budget reset every 60min)
+- `server/lib/jobs/voucher-expiry.ts` — Expires vouchers past their expiresAt date, revokes associated API keys, deactivates memberships
+- `server/lib/jobs/bundle-expiry.ts` — Expires bundles past their expiresAt date, cascades to all child vouchers/keys/memberships
+- `server/lib/jobs/redis-reconciliation.ts` — Syncs Redis budget counters with Postgres (restores missing keys, corrects drift >$1.00)
+- `server/lib/jobs/scheduler.ts` — setInterval-based scheduler (usage poll 5min, budget reset 60min, voucher expiry 60min, bundle expiry 60min, redis reconciliation 60s, concurrency self-heal 30s)
 - Jobs start automatically on app startup via `startJobScheduler()` in server/index.ts
 - Cron routes protected by CRON_SECRET (defaults to "allotly-cron-dev-secret" in dev)
+- Additional cron routes: POST /api/cron/voucher-expiry, POST /api/cron/bundle-expiry, POST /api/cron/redis-reconciliation
 
 ## Budget Alerts
 - Thresholds: 80% (warning to member), 90% (warning to member + team admin), 100% (key revoked, status=BUDGET_EXHAUSTED)
@@ -164,3 +168,4 @@ Updated:
 - Milestone 4 (Teams & Members): COMPLETE — Storage CRUD for providerMemberLinks, provisioning routes (OpenAI auto, Anthropic semi-auto, Google guided), member budget edit, member delete, team delete with confirmation, team stats, enhanced Teams/Members pages
 - Milestone 5 (Usage Polling, Budget Alerts, Enforcement): COMPLETE — Usage polling job with plan-based intervals, budget alert thresholds (80/90/100%), automatic key revocation at 100%, budget reset job with period rotation and member reactivation, background job scheduler, cron API routes with secret auth, 110% safety net budget on OpenAI provisioning
 - Milestone 6 (Redis, Proxy, Streaming, Translation): COMPLETE — Redis client with in-memory fallback, full 12-step proxy lifecycle, OpenAI/Anthropic/Google request translation, SSE streaming, budget reservation/refund, token clamping, concurrency self-healing every 30s
+- Milestone 7 (Voucher Lifecycle Completion): COMPLETE — Redis budget init on redemption, voucherRedemptionId on membership, voucher code uniqueness, bundle capacity validation, voucher/bundle expiry jobs with key revocation cascade, Redis-Postgres reconciliation job, 3 new cron routes

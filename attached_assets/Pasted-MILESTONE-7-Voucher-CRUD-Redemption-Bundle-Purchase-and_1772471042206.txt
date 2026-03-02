@@ -1,0 +1,88 @@
+MILESTONE 7: Voucher CRUD, Redemption, Bundle Purchase, and Expiry Jobs
+
+Referring to the full Allotly spec, complete Steps 23-28 from the build order.
+
+BUILD THESE:
+
+1. VOUCHER CODE GENERATION (Section 8.2)
+   - Create /lib/voucher-codes.ts
+   - Format: ALLOT-XXXX-XXXX-XXXX
+   - Charset: 23456789ABCDEFGHJKMNPQRSTUVWXYZ (no 0/O/1/I/L)
+   - Generate with crypto.randomBytes(), map to charset
+   - Verify uniqueness against DB before saving
+
+2. VOUCHER CRUD (Section 8.5)
+   - Page: /dashboard/vouchers
+   - "Create Voucher" button opens modal with form:
+     - Source: "Plan Allowance" or select a purchased bundle
+     - Label: free text
+     - Budget per recipient: slider + input (max per source — see Section 8.3)
+     - Allowed providers: checkboxes (only connected providers)
+     - Allowed models: from org allowlist
+     - Expiry: date+time picker (max per source)
+     - Max redemptions: number input (draws from source pool)
+   - Validation from Section 8.5 step 3:
+     - Redemptions <= remaining in source pool
+     - Budget x redemptions <= source limits
+     - Providers are connected at org level
+     - Models within org allowlist
+   - Plan limits enforced (Section 8.3):
+     - Free: 1 active code, 2 redemptions, $5/recipient, $10 total, 200 requests, 1-day expiry
+     - Team included: 5 codes/admin, 5 redemptions/code, $20/recipient, $100 total/admin, 5,000 requests/admin, 30-day expiry
+     - Bundle: 10 codes/bundle, 50 redemptions (pool), $50/recipient, 25,000 requests, 30 days from purchase
+   - Success screen: voucher code (large JetBrains Mono + copy button), shareable link, QR code (downloadable), email send option, summary
+   - DataTable: code, label, source, budget, redemptions used/max, status, actions
+   - Click row to see detail view: recipient list, spend per recipient, copy code, QR download
+
+3. VOUCHER REDEMPTION PAGE (Section 8.6)
+   - Page: /redeem (public, no auth required)
+   - Clean input: format-masked ALLOT-____-____-____
+   - GET /api/vouchers/validate/[code] — check: exists, ACTIVE, not expired, redemptions available, bundle has capacity
+   - Show voucher details card: budget, models, expiry
+   - TWO PATHS side by side:
+     - "Get Key Instantly" — no account, creates placeholder user (voucher-{code}-{random}@allotly.local, isVoucherUser=true)
+     - "Create Account" — name, email, password form (isVoucherUser=true)
+   - POST /api/vouchers/redeem — backend processing:
+     a. Create user (or use existing)
+     b. Add to Team Admin's team as MEMBER with accessMode=PROXY
+     c. Create TeamMembership with voucher budget + models
+     d. Create VoucherRedemption, increment voucher.currentRedemptions
+     e. Decrement bundle redemptions pool (if bundle-sourced)
+     f. Generate allotly_sk_ key, SHA-256 hash, store in AllotlyApiKey
+     g. Initialize Redis: SET allotly:budget:{membershipId} {budgetCents}
+     h. Initialize bundle Redis counters if not already set
+   - "You're All Set!" page with:
+     - KeyRevealCard with FULL key (shown ONCE, copy button, warning)
+     - Quickstart code block (curl + Python examples using api.allotly.com/v1)
+     - Available models with provider badges
+     - Budget remaining, expiry countdown
+     - If account created: "View your dashboard" link
+     - Response header info: X-Allotly-Budget-Remaining
+
+4. BUNDLE PURCHASE (Section 8.4)
+   - POST /api/bundles/purchase creates Stripe Checkout session for $10 one-time
+   - Available to Root Admin and Team Admins on any plan, including Free. On the Free plan, the Root Admin (who acts as sole Team Admin) can purchase bundles. When a Free plan user purchases a bundle, the bundle's voucher specs apply (not the Free plan's limited voucher specs) — 10 codes, 50 redemptions, $50/recipient, 25,000 requests, 30-day expiry.
+   - Stripe webhook (checkout.session.completed for bundle):
+     - Create VoucherBundle record with: totalRedemptions=50, totalProxyRequests=25000, maxBudgetPerVoucherCents=10000, maxBudgetPerRecipientCents=5000, expiresAt=30 days from now
+     - SET allotly:bundle:{bundleId}:redemptions 50
+     - SET allotly:bundle:{bundleId}:requests 25000
+   - Page: /dashboard/bundles — list bundles with BundleCard showing progress bars
+
+5. VOUCHER FROM BUNDLE (Step 26)
+   - When creating a voucher, if source is a bundle:
+     - Draw redemptions from bundle.usedRedemptions pool
+     - Proxy requests shared across all recipients in bundle
+     - When either counter hits 0, all vouchers from that bundle return HTTP 402
+
+6. EXPIRY JOBS (Steps 27-28)
+   - /api/cron/voucher-expiry — hourly: find expired vouchers, set status=EXPIRED, revoke all associated allotly_sk_ keys, update membership status
+   - /api/cron/bundle-expiry — hourly: find expired bundles, set status=EXPIRED, expire all vouchers sourced from them
+   - /api/cron/redis-reconciliation — every 60 seconds: exact logic from Section 12 (Redis Reconciliation Job). Sync Redis budget with Postgres. If Redis key missing, restore. If >$1 drift, log warning, trust Postgres.
+
+VERIFY BY:
+- Create a voucher on Free plan, show limits enforced (1 code, 2 redemptions, $5 max, 1-day expiry)
+- Redeem a voucher via /redeem (both paths: instant key and create account)
+- Make a proxy request with the resulting allotly_sk_ key and get a response
+- Purchase a bundle, create a voucher from it, redeem, use
+- Show Redis reconciliation job syncing correctly
+- Expire a voucher, show keys revoked

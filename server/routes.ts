@@ -3,7 +3,9 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, requireAuth, requireRole } from "./auth";
 import { hashPassword, comparePasswords } from "./lib/password";
-import { signupSchema, loginSchema } from "@shared/schema";
+import { signupSchema, loginSchema, voucherBundles } from "@shared/schema";
+import { eq, and, sql } from "drizzle-orm";
+import { db } from "./db";
 import { encryptProviderKey, decryptProviderKey } from "./lib/encryption";
 import { generateVoucherCode } from "./lib/voucher-codes";
 import { generateAllotlyKey, hashKey } from "./lib/keys";
@@ -12,7 +14,11 @@ import { stripeService } from "./stripeService";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
 import { runUsagePoll } from "./lib/jobs/usage-poll";
 import { runBudgetReset } from "./lib/jobs/budget-reset";
+import { runVoucherExpiry } from "./lib/jobs/voucher-expiry";
+import { runBundleExpiry } from "./lib/jobs/bundle-expiry";
+import { runRedisReconciliation } from "./lib/jobs/redis-reconciliation";
 import { handleChatCompletion, handleListModels } from "./lib/proxy/handler";
+import { redisSet, redisGet, redisIncr, REDIS_KEYS } from "./lib/redis";
 import { z } from "zod";
 
 const VOUCHER_LIMITS = {
@@ -950,11 +956,48 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/cron/voucher-expiry", requireCronAuth, async (_req, res) => {
+    try {
+      console.log("[cron] Manual voucher expiry triggered");
+      const result = await runVoucherExpiry();
+      res.json({ message: "Voucher expiry completed", ...result });
+    } catch (e: any) {
+      console.error("[cron] Voucher expiry error:", e);
+      res.status(500).json({ message: "Voucher expiry failed", error: e.message });
+    }
+  });
+
+  app.post("/api/cron/bundle-expiry", requireCronAuth, async (_req, res) => {
+    try {
+      console.log("[cron] Manual bundle expiry triggered");
+      const result = await runBundleExpiry();
+      res.json({ message: "Bundle expiry completed", ...result });
+    } catch (e: any) {
+      console.error("[cron] Bundle expiry error:", e);
+      res.status(500).json({ message: "Bundle expiry failed", error: e.message });
+    }
+  });
+
+  app.post("/api/cron/redis-reconciliation", requireCronAuth, async (_req, res) => {
+    try {
+      console.log("[cron] Manual Redis reconciliation triggered");
+      const result = await runRedisReconciliation();
+      res.json({ message: "Redis reconciliation completed", ...result });
+    } catch (e: any) {
+      console.error("[cron] Redis reconciliation error:", e);
+      res.status(500).json({ message: "Redis reconciliation failed", error: e.message });
+    }
+  });
+
   app.get("/api/cron/status", requireCronAuth, async (_req, res) => {
     res.json({
       jobs: [
         { name: "usage-poll", description: "Polls provider usage APIs", intervalMinutes: 5 },
         { name: "budget-reset", description: "Resets expired budget periods", intervalMinutes: 60 },
+        { name: "voucher-expiry", description: "Expires vouchers and revokes keys", intervalMinutes: 60 },
+        { name: "bundle-expiry", description: "Expires bundles and associated vouchers", intervalMinutes: 60 },
+        { name: "redis-reconciliation", description: "Syncs Redis budget with Postgres", intervalSeconds: 60 },
+        { name: "concurrency-self-heal", description: "Resets stale concurrency counters", intervalSeconds: 30 },
       ],
       status: "running",
     });
@@ -1091,7 +1134,17 @@ export async function registerRoutes(
         }
       }
 
-      const code = generateVoucherCode();
+      let code = generateVoucherCode();
+      let existingCode = await storage.getVoucherByCode(code);
+      let attempts = 0;
+      while (existingCode && attempts < 10) {
+        code = generateVoucherCode();
+        existingCode = await storage.getVoucherByCode(code);
+        attempts++;
+      }
+      if (existingCode) {
+        return res.status(500).json({ message: "Failed to generate unique voucher code. Please try again." });
+      }
 
       const voucher = await storage.createVoucher({
         code,
@@ -1141,6 +1194,19 @@ export async function registerRoutes(
 
     if (voucher.currentRedemptions >= voucher.maxRedemptions) {
       return res.status(400).json({ message: "Voucher is fully redeemed" });
+    }
+
+    if (voucher.bundleId) {
+      const bundle = await storage.getVoucherBundle(voucher.bundleId);
+      if (!bundle || bundle.status !== "ACTIVE") {
+        return res.status(400).json({ message: "The bundle backing this voucher is no longer active" });
+      }
+      if (new Date(bundle.expiresAt) < new Date()) {
+        return res.status(400).json({ message: "The bundle backing this voucher has expired" });
+      }
+      if (bundle.usedRedemptions >= bundle.totalRedemptions) {
+        return res.status(400).json({ message: "The bundle's redemption pool is exhausted" });
+      }
     }
 
     const models = await storage.getModelPricing();
@@ -1214,6 +1280,7 @@ export async function registerRoutes(
         periodStart: now,
         periodEnd: new Date(voucher.expiresAt),
         status: "ACTIVE",
+        voucherRedemptionId: voucher.id,
       });
 
       await storage.createVoucherRedemption({ voucherId: voucher.id, userId: voucherUser.id });
@@ -1226,12 +1293,36 @@ export async function registerRoutes(
       if (voucher.bundleId) {
         const bundle = await storage.getVoucherBundle(voucher.bundleId);
         if (bundle) {
-          await storage.updateVoucherBundle(bundle.id, { usedRedemptions: bundle.usedRedemptions + 1 });
-          if (bundle.usedRedemptions + 1 >= bundle.totalRedemptions) {
-            await storage.updateVoucherBundle(bundle.id, { status: "EXHAUSTED" });
+          const updated = await db.update(voucherBundles)
+            .set({
+              usedRedemptions: sql`${voucherBundles.usedRedemptions} + 1`,
+              status: sql`CASE WHEN ${voucherBundles.usedRedemptions} + 1 >= ${voucherBundles.totalRedemptions} THEN 'EXHAUSTED' ELSE ${voucherBundles.status} END`,
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(voucherBundles.id, bundle.id),
+                sql`${voucherBundles.usedRedemptions} < ${voucherBundles.totalRedemptions}`,
+                eq(voucherBundles.status, "ACTIVE")
+              )
+            )
+            .returning();
+
+          if (updated.length === 0) {
+            return res.status(400).json({ message: "Bundle redemption pool is exhausted" });
           }
+
+          const bundleReqKey = REDIS_KEYS.bundleRequests(bundle.id);
+          const existingReqs = await redisGet(bundleReqKey);
+          if (existingReqs === null) {
+            await redisSet(bundleReqKey, String(bundle.usedProxyRequests));
+          }
+
+          await redisIncr(REDIS_KEYS.bundleRedemptions(bundle.id));
         }
       }
+
+      await redisSet(REDIS_KEYS.budget(membership.id), String(voucher.budgetCents));
 
       const { key, hash, prefix } = generateAllotlyKey();
       await storage.createAllotlyApiKey({
