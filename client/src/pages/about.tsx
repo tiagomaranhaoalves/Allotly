@@ -109,9 +109,7 @@ export default function About() {
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-2xl font-semibold text-foreground mb-4">The Team</h2>
           <p className="text-muted-foreground leading-relaxed">
-            Allotly is built by a small team of engineers and designers who have spent their careers
-            building infrastructure and developer tools. We're focused on shipping fast, staying
-            close to our users, and building something that lasts.
+            Allotly is a venture by <a href="https://divbz.vc/" target="_blank" rel="noopener noreferrer" className="text-indigo-500 hover:text-indigo-400 underline">DivBZ</a>. We're early-stage, shipping fast, and building the AI spend control plane we wished existed. If you're interested in what we're working on, see our <a href="/careers" className="text-indigo-500 hover:text-indigo-400 underline">open roles</a>.
           </p>
         </div>
       </section>
