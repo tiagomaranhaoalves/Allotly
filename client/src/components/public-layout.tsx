@@ -1,7 +1,7 @@
 import { LogoFull, LogoMono } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/components/theme-provider";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useState, useEffect } from "react";
 import { Sun, Moon, Menu, X, ArrowRight } from "lucide-react";
 
@@ -128,6 +128,11 @@ function PublicFooter() {
 }
 
 export default function PublicLayout({ children }: { children: React.ReactNode }) {
+  const [location] = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location]);
+
   return (
     <div className="min-h-screen bg-background">
       <PublicHeader />
