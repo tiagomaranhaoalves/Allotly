@@ -35,3 +35,13 @@ All money values are handled in integer cents to avoid floating-point inaccuraci
 - **Google AI API**: For AI provider integration and usage.
 - **Redis**: Used for real-time budget counters, concurrency control, and rate limiting within the proxy. Falls back to an in-memory Map if not available.
 - **Resend**: Integrated for sending transactional emails, with a console.log fallback for development.
+
+## Key Pages
+- `/` — Landing page (12 sections: header, hero, problem stats strip, solution intro, two features, voucher callout, how-it-works tabs, trust/security, pricing cards, social proof, final CTA, footer)
+- `/docs` — Documentation page (sidebar with 6 collapsible sections: Getting Started, Teams, Vouchers, Budget Enforcement, API Reference, FAQ; code blocks with copy; real content)
+- `/login`, `/signup`, `/redeem` — Auth and redemption pages
+- `/dashboard/*` — Protected dashboard routes (overview, providers, teams, members, vouchers, bundles, analytics, audit-log, settings, keys, usage)
+
+## Milestone Status
+- Milestones 1-9: COMPLETE
+- Milestone 10 (Landing Page + Docs Page): COMPLETE — Full landing page rewrite with 12 sections (sticky frosted header, hero with dashboard mockup, problem stats dark strip, solution intro, two feature cards with hover lift, voucher callout with code visual, tabbed how-it-works, dark trust section, 3-tier pricing with Most Popular ribbon, social proof vignettes, final CTA, dark footer), smooth scroll, fade-in animations via IntersectionObserver, mobile hamburger menu, dark mode support. Docs page with fixed sidebar (6 collapsible sections, 31 items), active section tracking, code blocks with copy buttons, comprehensive real documentation for all sections including API reference with curl examples, error codes table, response headers, streaming docs, and 5 FAQ answers.

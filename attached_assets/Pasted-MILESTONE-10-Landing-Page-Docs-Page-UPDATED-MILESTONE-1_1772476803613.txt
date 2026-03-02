@@ -1,0 +1,308 @@
+MILESTONE 10: Landing Page + Docs Page (UPDATED)
+MILESTONE 10: Landing Page and Documentation Page
+
+Referring to the full Allotly spec, complete Steps 37-38 from the build order. BUT USE THE COPY AND DESIGN DIRECTION BELOW instead of Section 11.1 — this is the updated version.
+
+This is the most important public-facing page. It must be conversion-focused, visually striking, and immediately clear about the problem we solve. Design benchmark: Linear's homepage meets Stripe's clarity. No generic SaaS template energy.
+
+BUILD THESE:
+
+1. LANDING PAGE (/)
+
+=== HEADER ===
+- Sticky, transparent on hero, gains subtle frosted-glass background on scroll
+- Left: LogoFull
+- Center nav: "How It Works" / "Pricing" / "Docs"
+- Right: "Log In" (text link) + "Start Free" (indigo pill button, subtle glow on hover)
+- Mobile: hamburger menu
+
+=== HERO SECTION ===
+Design: Full-width, generous whitespace. The headline should dominate. No clutter.
+
+Headline (large, Inter 700, 48-64px):
+  "You want your team on AI. They want every model.
+   Give them access.  Keep the control.”
+
+Subheadline (Neutral 600, 20px, max-width 600px):
+  "Allotly connects to your OpenAI, Anthropic, and Gemini accounts and puts you in control — per person, per model, per dollar."
+
+Single primary CTA: "Start Free" (large indigo button, no credit card copy below it)
+Secondary: "See How It Works" (text link with down arrow, smooth-scrolls)
+
+Right side / below on mobile: A stylized, slightly rotated dashboard card showing a BudgetBar at 73% with provider badges and a spend number. NOT a full screenshot — a designed, abstract representation that feels premium. Think of how Linear shows product glimpses, not screenshots.
+
+=== PROBLEM STATEMENT STRIP ===
+Design: Narrow dark band (Neutral 900 or Primary Dark) that breaks the white hero. Three short stats/pain-points in a row, monospaced numbers for impact:
+
+  "$8.4B"                                                  “67%”                                                “62%”
+  spent on enterprise LLM APIs               of companies have no                       of executives say over a quarter
+  In just the first half of 2025                    responsive AI controls in place         their spend delivers no value
+   “Menlo Ventures”				“EY, 2025”				            “Sweep, 2025”
+
+=== SOLUTION INTRO ===
+Design: Clean centered section. Short and confident.
+
+Section label (small caps, Primary color): "THE SOLUTION"
+
+Headline:
+  "One control plane. Every AI provider. Total spend visibility."
+
+Body (2 lines max, Neutral 600):
+  "Connect your provider accounts once. Then decide how to distribute access — permanent keys for your teams, or time-limited vouchers for everyone else."
+
+=== TWO FEATURES SECTION ===
+Section label (small caps, Primary color): "TWO ACCESS MODELS"
+
+Headline:
+  "Internal Teams. External Users. One Dashboard."
+
+Design: Two large cards, equal prominence, with a subtle visual distinction:
+- Left card: indigo left border accent + key icon
+- Right card: cyan left border accent + ticket icon
+- On hover: card lifts slightly with shadow
+- Cards sit on Neutral 50 background, white card surface
+
+LEFT CARD — ALLOTLY TEAMS
+  Icon: Key (indigo)
+  Tagline: "Direct Provider Access with Guardrails"
+
+  Body:
+  "Your team calls OpenAI, Anthropic, and Gemini directly — no proxy between them and the model. Allotly provisions scoped API keys at the provider level, so you get full control without adding latency or a single point of failure."
+
+  Benefits (use checkmark icons, not bullets):
+  - No proxy, no added latency
+  - Provider-native API keys per person
+  - Resilient by design — keys survive downtime
+  - Per-member budget monitoring
+  - Restrict models by team or role
+
+  "Built for:" tag line:
+  Engineering · R&D · Internal governance · Any team where latency matters
+
+  Small note: "Included in all plans"
+
+RIGHT CARD — ALLOTLY VOUCHERS
+  Icon: Ticket (cyan)
+  Tagline: "AI Access as a Shareable Link"
+
+  Body:
+  "Generate a voucher code, share it with anyone, and they get an API key instantly — no provider account needed. One unified endpoint (api.allotly.com) that works with every provider. Hard per-request budget enforcement, automatic token clamping, auto-expiry."
+
+  Benefits (use checkmark icons, not bullets):
+  - One API key, all providers
+  - Hard budget enforcement on every request
+  - No provider accounts needed for recipients
+  - Shareable codes with QR
+  - Works with any OpenAI-compatible SDK
+
+  "Built for:" tag line:
+  Hackathons · Workshops · Contractors · Agencies · Partners · Onboarding
+
+  Small note: "Included in all plans · $10 bundles available"
+
+=== VOUCHER CALLOUT SECTION ===
+Design: Standalone highlight block between the two feature cards and How It Works. Subtle cyan-tinted background (very light, almost white) with a left cyan border accent or a centered layout with generous whitespace. This section should feel like a "moment" on the page — a pause that makes the reader think "oh, that's clever."
+
+Headline (Inter 700, 32-40px):
+  "Think Gift Card. But for AI."
+
+Body (Neutral 600, 18px, max-width 640px, centered):
+  "Generate a code. Set a budget. Share a link. Recipients get their own scoped API key instantly — no provider account, no setup, no surprises. It works with any OpenAI-compatible SDK. When the budget runs out or the clock expires, it just stops.
+
+  Running a hackathon? Onboarding freelancers? Training a cohort? One voucher code, 50 people, 60 seconds. Everyone gets their own key. You see every dollar from your dashboard."
+
+Optional: Below the text, show a minimal visual of a voucher code (ALLOT-XXXX-XXXX-XXXX in JetBrains Mono) with a subtle QR code next to it and a small BudgetBar — just enough to hint at the product without being a full screenshot.
+
+=== HOW IT WORKS ===
+Section label (small caps, Primary color): "HOW IT WORKS"
+
+Design: Tabbed interface with two tabs: "For Your Team" and "For External Users"
+- Tabs are pill-shaped, active tab is filled Primary, inactive is outline
+- Content is a horizontal 3-step flow with numbered circles (1, 2, 3) connected by a subtle dashed line
+- Each step has an icon, title, and one-line description
+
+"For Your Team" tab:
+  1. CONNECT (icon: plug/link)
+     "Link your AI provider accounts. Admin keys encrypted with AES-256-GCM."
+  2. ALLOCATE (icon: sliders/controls)
+     "Create teams, set per-person budgets, choose which models each person can access."
+  3. MONITOR (icon: chart/pulse)
+     "Unified dashboard across all providers. Alerts at 80%. Automatic key revocation at 100%."
+
+"For External Users" tab:
+  1. CREATE (icon: sparkle/wand)
+     "Generate a voucher code with a budget, allowed models, and expiry date."
+  2. SHARE (icon: share/QR)
+     "Send the code via link, QR, or email. Recipients redeem it and get an API key instantly."
+  3. CONTROL (icon: shield/lock)
+     "Real-time spend tracking per recipient. Hard budget enforcement. Keys expire automatically."
+
+=== TRUST / SECURITY SECTION ===
+Design: Dark section (Neutral 900 background, white text). Feels different from the rest of the page — serious, reassuring.
+
+Headline:
+  "Your prompts are none of our business."
+
+Three columns:
+
+  Column 1 — "Teams: Zero Data Path"
+  "Your team calls providers directly. Allotly never sees, stores, or touches prompts or responses. We only read aggregated usage data via admin APIs."
+
+  Column 2 — "Vouchers: Process, Don't Persist"
+  "The proxy forwards requests in real time. Nothing is stored — no prompts, no completions, no conversation history. Only metadata: model, token count, cost."
+
+  Column 3 — "Enterprise-Grade Security"
+  Three badges/icons in a row:
+  - AES-256-GCM encryption (for stored keys)
+  - SOC 2 compliance (planned)
+  - GDPR-compliant architecture
+
+=== PRICING SECTION ===
+Section label (small caps, Primary color): "PRICING"
+
+Headline:
+  "Start free. Scale when you're ready."
+
+Design: Three cards, center card (Team) visually elevated with "Most Popular" ribbon and a subtle Primary border/glow.
+
+CARD 1 — FREE ($0/month)
+  - 1 admin (acts as team manager)
+  - Up to 5 team members with direct keys
+  - 1 provider connection
+  - Usage polling every 60 minutes
+  - Vouchers: 1 code, 2 redemptions, $5/recipient, 1-day expiry
+  - "+ $10 External Access Bundles available"
+  - CTA: "Get Started" (outline button)
+
+CARD 2 — TEAM ($20/month per admin seat) — MOST POPULAR
+  - 1 Root Admin (free) + up to 10 Team Admins ($20 each)
+  - Up to 20 members per team
+  - 3 provider connections
+  - Usage polling every 15 minutes
+  - 90-day data retention
+  - Audit log + CSV export
+  - Analytics dashboard
+  - Vouchers included: 5 codes/admin, 5 redemptions/code, $20/recipient, 30-day expiry
+  - "+ $10 External Access Bundles for more capacity"
+  - CTA: "Start Free, Upgrade Anytime" (filled Primary button)
+
+CARD 3 — ENTERPRISE (Custom)
+  - Unlimited admins, members, providers
+  - 5-minute polling
+  - 1-year data retention
+  - SSO / SAML
+  - Dedicated support
+  - Custom voucher limits
+  - CTA: "Contact Sales" (outline button)
+
+Below the cards, a single line:
+  "External Access Bundles: $10 one-time — 10 voucher codes, 50 redemptions, 25,000 proxy requests, 30-day expiry. Available on all plans."
+
+=== SOCIAL PROOF / USE CASES (optional — implement if time allows) ===
+Design: Light gray background. Three short use-case vignettes in cards.
+
+  "A startup CTO gave 12 engineers scoped GPT-4o keys with $50/month budgets. One dashboard, three providers, zero surprise bills."
+
+  "A bootcamp instructor created 200 voucher codes for students. Each got $5 of Claude Haiku access for the weekend. Total cost: the AI usage itself."
+
+  "An agency distributed temporary AI access to 8 client teams. Different models, different budgets, all tracked from one place."
+
+(These are illustrative — they paint a picture of the product in use without needing actual testimonials.)
+
+=== FINAL CTA SECTION ===
+Design: Centered, generous padding, clean.
+
+Headline:
+  "Stop guessing. Start governing."
+
+Subheadline:
+  "Set up in under 5 minutes. No credit card required."
+
+CTA: "Start Free" (large indigo button)
+
+=== FOOTER ===
+Design: Neutral 900 background, subtle. LogoMono top-left.
+
+Columns:
+  Product: Teams · Vouchers · Pricing · Docs
+  Company: About · Blog · Security · Contact
+  Legal: Privacy · Terms
+
+Bottom: "© 2026 Allotly. All rights reserved."
+
+=== TECHNICAL REQUIREMENTS ===
+- Static generation (next.js generateStaticParams or equivalent) for performance
+- Target Lighthouse score >90 on Performance, Accessibility, Best Practices, SEO
+- Fully responsive: test at 375px (mobile), 768px (tablet), 1024px (small desktop), 1440px (desktop)
+- Smooth scroll behavior for anchor links
+- Subtle entrance animations on scroll (fade-up, not flashy — use Intersection Observer or framer-motion)
+- Support both light and dark mode (the dark trust section stays dark in both modes)
+- All CTA buttons link to /signup
+- "Pricing" nav link scrolls to pricing section
+- "Docs" nav link goes to /docs
+- "Log In" goes to /login
+
+
+2. DOCS PAGE (/docs)
+
+Design: Clean sidebar layout, similar to Stripe Docs or Tailwind Docs.
+
+- Left sidebar: fixed, scrollable, collapsible sections
+- Main content: max-width 720px, generous line-height, readable
+- Code blocks: dark background (Neutral 900), syntax highlighting, copy button
+- Dark mode support throughout
+
+Sidebar sections:
+  GETTING STARTED
+    - What is Allotly
+    - Quick Start (5-minute setup)
+    - Key Concepts (Teams vs Vouchers, roles, budgets)
+
+  ALLOTLY TEAMS
+    - Connecting Providers
+    - OpenAI Setup (Instant — fully automated)
+    - Anthropic Setup (Quick — one manual step)
+    - Google Gemini Setup (Guided — manual with instructions)
+    - Setting Budgets
+    - Model Access Restrictions
+
+  ALLOTLY VOUCHERS
+    - Creating Vouchers
+    - Distributing (codes, QR, email)
+    - How Redemption Works
+    - Bundle Purchases
+    - Proxy API Reference
+
+  BUDGET ENFORCEMENT
+    - How Teams Budgets Work (polling-based)
+    - How Voucher Budgets Work (real-time)
+    - Alert Thresholds (80%, 90%, 100%)
+    - Budget Reset Cycles
+
+  API REFERENCE
+    - Proxy Endpoint: POST /v1/chat/completions
+    - Models Endpoint: GET /v1/models
+    - Request Format (OpenAI-compatible)
+    - Response Format
+    - Response Headers (X-Allotly-Budget-Remaining, etc.)
+    - Error Codes (full list from Section 9.6: 401, 402, 403, 429, 502, 504)
+    - Rate Limits
+    - Streaming
+
+  FAQ
+    - "What happens if Allotly goes down?" (Teams: keys keep working. Vouchers: proxy is down.)
+    - "Do you store my prompts?" (No. Never. Teams: direct calls. Vouchers: process in-flight only.)
+    - "How accurate are budgets?" (Teams: within polling interval. Vouchers: per-request, less than $0.05 gap.)
+    - "Can I use this with LangChain / LlamaIndex / Cursor?" (Yes — just change base_url.)
+    - "What is the difference between Teams and Vouchers?" (Permanent vs temporary. Direct vs proxy.)
+
+VERIFY BY:
+- Show me the full landing page rendered — every section described above must be present
+- The page must look premium and polished, not like a template
+- The hero headline should be the first thing that grabs attention
+- Run Lighthouse and show score >90
+- Test responsive layout at 375px, 768px, 1024px, 1440px
+- Scroll interactions should feel smooth
+- Show the docs page with sidebar navigation working, at least the API Reference and FAQ sections fully written
+- Confirm all links and CTAs work correctly
+- Toggle dark mode and confirm everything looks correct

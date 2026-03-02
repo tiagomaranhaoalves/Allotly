@@ -19,19 +19,18 @@ export async function runSpendAnomalyCheck(): Promise<void> {
           const sevenDaysAgo = new Date();
           sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-          const [avgResult] = await db.select({
-            avgCost: sql<number>`COALESCE(AVG(daily_cost), 0)`,
-          }).from(
-            sql`(
-              SELECT DATE(${proxyRequestLogs.requestedAt}) as day, SUM(${proxyRequestLogs.costCents}) as daily_cost
-              FROM ${proxyRequestLogs}
-              WHERE ${proxyRequestLogs.membershipId} = ${membership.id}
-                AND ${proxyRequestLogs.requestedAt} >= ${sevenDaysAgo}
-              GROUP BY DATE(${proxyRequestLogs.requestedAt})
-            ) as daily_costs`
-          );
+          const dailyCosts = await db.select({
+            dayCost: sql<number>`SUM(${proxyRequestLogs.costCents})`,
+          }).from(proxyRequestLogs)
+            .where(and(
+              eq(proxyRequestLogs.membershipId, membership.id),
+              gte(proxyRequestLogs.requestedAt, sevenDaysAgo)
+            ))
+            .groupBy(sql`DATE(${proxyRequestLogs.requestedAt})`);
 
-          const avgDaily = Number(avgResult?.avgCost || 0);
+          const avgDaily = dailyCosts.length > 0
+            ? dailyCosts.reduce((sum, d) => sum + Number(d.dayCost || 0), 0) / dailyCosts.length
+            : 0;
           if (avgDaily < 100) continue;
 
           const today = new Date();
