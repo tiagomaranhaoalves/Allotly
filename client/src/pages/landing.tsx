@@ -270,18 +270,18 @@ function ProblemStrip() {
             {[
               {
                 stat: "$8.4B",
-                desc: "spent on AI APIs by enterprises in 2024 — most without centralized controls.",
-                source: "Gartner, 2024",
+                desc: "spent on enterprise LLM APIs in just the first half of 2025",
+                source: "Menlo Ventures",
               },
               {
                 stat: "67%",
-                desc: "of engineering teams have no visibility into per-person or per-model AI spend.",
-                source: "McKinsey AI Survey, 2024",
+                desc: "of companies have no responsive AI controls in place",
+                source: "EY, 2025",
               },
               {
                 stat: "62%",
-                desc: "of orgs report at least one incident of shadow AI usage in the past year.",
-                source: "Forrester Research, 2024",
+                desc: "of executives say over a quarter of their spend delivers no value",
+                source: "Sweep, 2025",
               },
             ].map(item => (
               <div key={item.stat}>
