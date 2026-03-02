@@ -533,51 +533,86 @@ function HowItWorks() {
 
 function TrustSection() {
   return (
-    <section className="py-24 lg:py-28 bg-neutral-900 text-white">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section className="relative py-28 lg:py-36 bg-neutral-950 text-white overflow-hidden">
+      <div className="absolute inset-0">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-950/30 via-neutral-950 to-neutral-950" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[900px] h-[600px] bg-gradient-radial from-indigo-500/[0.07] to-transparent rounded-full blur-3xl" />
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:80px_80px]" />
+      </div>
+      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <FadeIn>
-          <div className="text-center mb-14">
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-white">Your prompts are none of our business.</h2>
-            <p className="mt-4 text-lg text-neutral-300 max-w-2xl mx-auto">
-              Allotly is a control plane, not a data plane. We manage access and budgets — your prompts and responses flow directly between you and the AI provider.
+          <div className="text-center mb-16 lg:mb-20">
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-xs font-semibold uppercase tracking-wider mb-6">
+              <Shield className="w-3.5 h-3.5" />
+              Security First
+            </div>
+            <h2 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white leading-tight">
+              Your prompts are none<br className="hidden sm:block" /> of our business.
+            </h2>
+            <p className="mt-5 text-lg text-neutral-400 max-w-2xl mx-auto leading-relaxed">
+              Allotly is a control plane, not a data plane. We manage access and budgets — your content flows directly between you and the AI provider.
             </p>
           </div>
         </FadeIn>
-        <div className="grid sm:grid-cols-3 gap-6 lg:gap-8">
+
+        <div className="grid lg:grid-cols-3 gap-5 lg:gap-6">
           {[
             {
-              icon: <Eye className="w-6 h-6" />,
-              title: "Zero Prompt Storage",
-              desc: "For Teams: traffic goes direct to providers. For Vouchers: the proxy processes requests in-flight only. Nothing stored, nothing logged.",
+              icon: <Eye className="w-5 h-5" />,
+              title: "Teams: Zero Data Path",
+              subtitle: "Direct provider access",
+              desc: "Your team calls providers directly. Allotly never sees, stores, or touches prompts or responses. We only read aggregated usage data via admin APIs.",
+              accent: "from-indigo-500 to-indigo-600",
+              accentBorder: "border-indigo-500/20",
+              accentBg: "bg-indigo-500/10",
+              accentText: "text-indigo-400",
             },
             {
-              icon: <Shield className="w-6 h-6" />,
-              title: "AES-256-GCM Encryption",
-              desc: "Provider API keys are encrypted at rest with AES-256-GCM. Keys are decrypted only in memory at the moment of use, then discarded.",
+              icon: <Zap className="w-5 h-5" />,
+              title: "Vouchers: Process, Don't Persist",
+              subtitle: "In-flight only",
+              desc: "The proxy forwards requests in real time. Nothing is stored — no prompts, no completions, no conversation history. Only metadata: model, token count, cost.",
+              accent: "from-cyan-500 to-cyan-600",
+              accentBorder: "border-cyan-500/20",
+              accentBg: "bg-cyan-500/10",
+              accentText: "text-cyan-400",
             },
             {
-              icon: <Lock className="w-6 h-6" />,
-              title: "Audit & Compliance",
-              desc: "Full audit trail for every admin action. GDPR-ready data practices. SOC 2 Type II on the roadmap. Your compliance team will thank you.",
+              icon: <Lock className="w-5 h-5" />,
+              title: "Enterprise-Grade Security",
+              subtitle: "Built for compliance",
+              desc: "AES-256-GCM encryption for stored keys. Full audit trail for every admin action. GDPR-compliant architecture. SOC 2 Type II on the roadmap.",
+              accent: "from-violet-500 to-violet-600",
+              accentBorder: "border-violet-500/20",
+              accentBg: "bg-violet-500/10",
+              accentText: "text-violet-400",
             },
           ].map((item, i) => (
-            <FadeIn key={item.title} delay={i * 100}>
-              <div className="p-7 rounded-xl bg-neutral-800/60 border border-neutral-700/40 text-center">
-                <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-neutral-700/60 text-neutral-200 mb-5">
+            <FadeIn key={item.title} delay={i * 120}>
+              <div className={`relative group h-full p-8 rounded-2xl bg-white/[0.03] border ${item.accentBorder} backdrop-blur-sm transition-all duration-300 hover:bg-white/[0.06] hover:border-opacity-40`}>
+                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-current to-transparent opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: item.accent.includes('indigo') ? '#6366f1' : item.accent.includes('cyan') ? '#06b6d4' : '#8b5cf6' }} />
+                <div className={`inline-flex items-center justify-center w-12 h-12 rounded-xl ${item.accentBg} ${item.accentText} mb-5`}>
                   {item.icon}
                 </div>
-                <h3 className="font-bold text-base mb-2 text-white">{item.title}</h3>
+                <h3 className="font-bold text-lg mb-1 text-white">{item.title}</h3>
+                <p className={`text-xs font-medium ${item.accentText} mb-3 uppercase tracking-wider`}>{item.subtitle}</p>
                 <p className="text-sm text-neutral-400 leading-relaxed">{item.desc}</p>
               </div>
             </FadeIn>
           ))}
         </div>
-        <FadeIn delay={300}>
-          <div className="flex flex-wrap justify-center gap-6 mt-12 pt-8 border-t border-neutral-700/40">
-            {["SOC 2 (in progress)", "GDPR Ready", "AES-256-GCM", "Zero Data Retention"].map(badge => (
-              <span key={badge} className="inline-flex items-center gap-1.5 text-xs font-medium text-neutral-400 px-3 py-1.5 rounded-full bg-neutral-800 border border-neutral-700/50">
-                <Shield className="w-3 h-3" />
-                {badge}
+
+        <FadeIn delay={400}>
+          <div className="mt-16 lg:mt-20 flex flex-wrap justify-center gap-4">
+            {[
+              { label: "AES-256-GCM", icon: <Lock className="w-3.5 h-3.5" /> },
+              { label: "SOC 2 (planned)", icon: <Shield className="w-3.5 h-3.5" /> },
+              { label: "GDPR Compliant", icon: <Globe className="w-3.5 h-3.5" /> },
+              { label: "Zero Data Retention", icon: <Eye className="w-3.5 h-3.5" /> },
+            ].map(badge => (
+              <span key={badge.label} className="inline-flex items-center gap-2 text-xs font-medium text-neutral-300 px-4 py-2 rounded-full bg-white/[0.05] border border-white/[0.08] backdrop-blur-sm">
+                {badge.icon}
+                {badge.label}
               </span>
             ))}
           </div>
