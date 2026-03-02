@@ -748,27 +748,68 @@ function SocialProof() {
         <div className="grid md:grid-cols-3 gap-6 lg:gap-8">
           {[
             {
-              quote: "We gave 200 workshop attendees AI access in under 5 minutes with voucher codes. No accounts, no credentials to manage. The budget limits meant we didn't wake up to a surprise bill.",
-              author: "Head of Developer Relations",
-              org: "AI Education Startup",
+              name: "Jon",
+              role: "Head of Developer Relations",
+              org: "EdTech Company",
+              avatar: "J",
+              color: "from-cyan-500 to-cyan-600",
+              challenge: "Runs workshops and hackathons monthly. Needs to give 200+ attendees instant AI access without creating accounts or managing credentials.",
+              solution: "Creates voucher codes with per-person budgets and 24-hour expiry. Attendees redeem a link and start coding in 60 seconds. Jon sees every dollar from his dashboard.",
+              result: "200 attendees onboarded in 5 minutes. Zero surprise bills.",
+              products: ["Allotly Vouchers", "Bundles"],
             },
             {
-              quote: "Our engineering team was burning through $4K/month on AI APIs with zero visibility. Allotly showed us exactly who was spending what, and the per-member budgets cut waste by 40%.",
-              author: "VP of Engineering",
-              org: "Series B SaaS Company",
+              name: "Priya",
+              role: "VP of Engineering",
+              org: "Series B SaaS",
+              avatar: "P",
+              color: "from-indigo-500 to-indigo-600",
+              challenge: "12-person engineering team using GPT-4o and Claude across three projects. Was burning $4K/month with zero visibility into who was spending what.",
+              solution: "Connected OpenAI and Anthropic in Allotly, created project-based teams, and set per-engineer budgets of $200/month with model restrictions per role.",
+              result: "40% cost reduction. Full spend visibility. No workflow changes for engineers.",
+              products: ["Allotly Teams"],
             },
             {
-              quote: "The voucher system is genius for agency work. We create a scoped code for each client project — they get AI access, we keep control, and billing is crystal clear.",
-              author: "Managing Partner",
+              name: "Marcus",
+              role: "Managing Partner",
               org: "Digital Agency",
+              avatar: "M",
+              color: "from-violet-500 to-violet-600",
+              challenge: "8 client teams, each needing different AI models and budgets. Billing was a nightmare — impossible to attribute spend to individual projects.",
+              solution: "Uses voucher codes per client engagement — each team gets scoped access with project-specific budgets and model allowlists. Internal team uses direct keys.",
+              result: "Crystal-clear per-client billing. Teams + Vouchers from one dashboard.",
+              products: ["Allotly Teams", "Allotly Vouchers"],
             },
           ].map((item, i) => (
             <FadeIn key={i} delay={i * 100}>
               <Card className="p-7 flex flex-col h-full" data-testid={`card-testimonial-${i}`}>
-                <p className="text-sm italic text-muted-foreground leading-relaxed flex-1">"{item.quote}"</p>
-                <div className="mt-6 pt-4 border-t">
-                  <p className="text-sm font-semibold">{item.author}</p>
-                  <p className="text-xs text-muted-foreground">{item.org}</p>
+                <div className="flex items-center gap-3 mb-5">
+                  <div className={`w-11 h-11 rounded-full bg-gradient-to-br ${item.color} flex items-center justify-center text-white font-bold text-sm shrink-0`}>
+                    {item.avatar}
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold">{item.name}</p>
+                    <p className="text-xs text-muted-foreground">{item.role}, {item.org}</p>
+                  </div>
+                </div>
+                <div className="space-y-3 flex-1">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 mb-1">Challenge</p>
+                    <p className="text-sm text-muted-foreground leading-relaxed">{item.challenge}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 mb-1">Solution</p>
+                    <p className="text-sm text-muted-foreground leading-relaxed">{item.solution}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-1">Result</p>
+                    <p className="text-sm font-medium text-foreground">{item.result}</p>
+                  </div>
+                </div>
+                <div className="mt-5 pt-4 border-t flex flex-wrap gap-1.5">
+                  {item.products.map(p => (
+                    <span key={p} className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-muted text-muted-foreground">{p}</span>
+                  ))}
                 </div>
               </Card>
             </FadeIn>
