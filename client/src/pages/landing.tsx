@@ -182,7 +182,7 @@ function Hero() {
           </FadeIn>
 
           <FadeIn delay={200} className="relative hidden lg:block">
-            <div className="relative transform rotate-2">
+            <div className="relative">
               <div className="rounded-2xl border border-border/60 bg-card/80 backdrop-blur p-1.5 shadow-2xl">
                 <div className="rounded-xl bg-background p-5 space-y-5">
                   <div className="flex items-center justify-between gap-2 pb-4 border-b">
