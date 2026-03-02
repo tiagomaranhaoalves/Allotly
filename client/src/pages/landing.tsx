@@ -654,7 +654,7 @@ function PricingSection() {
         "15-minute usage polling",
         "90-day retention + audit log",
         "5 voucher codes per admin, 50 redemptions",
-        "AI usage analytics",
+        "AI Usage Analytics",
         "$10 Voucher Bundles available",
       ],
       cta: "Start Free, Upgrade Anytime",
