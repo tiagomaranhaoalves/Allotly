@@ -1,9 +1,10 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
 import { rm, readFile } from "fs/promises";
+import { builtinModules } from "module";
 
-// server deps to bundle to reduce openat(2) syscalls
-// which helps cold start times
+const nodeBuiltins = builtinModules.flatMap((m) => [m, `node:${m}`]);
+
 const allowlist = [
   "@google/generative-ai",
   "axios",
@@ -52,11 +53,14 @@ async function buildAll() {
     bundle: true,
     format: "esm",
     outfile: "dist/index.mjs",
+    banner: {
+      js: `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`,
+    },
     define: {
       "process.env.NODE_ENV": '"production"',
     },
     minify: true,
-    external: externals,
+    external: [...externals, ...nodeBuiltins],
     logLevel: "info",
   });
 }
