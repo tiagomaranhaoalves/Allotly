@@ -35,6 +35,7 @@ const TEAM_ADMIN_NAV = [
   { title: "Members", href: "/dashboard/members", icon: Users },
   { title: "Vouchers", href: "/dashboard/vouchers", icon: Ticket },
   { title: "Bundles", href: "/dashboard/bundles", icon: Package },
+  { title: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
   { title: "Settings", href: "/dashboard/settings", icon: Settings },
 ];
 

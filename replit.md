@@ -45,3 +45,12 @@ All money values are handled in integer cents to avoid floating-point inaccuraci
 ## Milestone Status
 - Milestones 1-9: COMPLETE
 - Milestone 10 (Landing Page + Docs Page): COMPLETE — Full landing page rewrite with 12 sections (sticky frosted header, hero with dashboard mockup, problem stats dark strip, solution intro, two feature cards with hover lift, voucher callout with code visual, tabbed how-it-works, dark trust section, 3-tier pricing with Most Popular ribbon, social proof vignettes, final CTA, dark footer), smooth scroll, fade-in animations via IntersectionObserver, mobile hamburger menu, dark mode support. Docs page with fixed sidebar (6 collapsible sections, 31 items), active section tracking, code blocks with copy buttons, comprehensive real documentation for all sections including API reference with curl examples, error codes table, response headers, streaming docs, and 5 FAQ answers.
+- Footer Pages: COMPLETE — 6 pages (About, Careers, Contact, Privacy, Terms, Security) with shared PublicLayout (header+footer), scroll-to-top on route change.
+- Milestone 11 (Phase 2 Analytics): COMPLETE — Full analytics dashboard at /dashboard/analytics with 5 sections and 5 backend API endpoints:
+  - Cost per Model: Recharts BarChart with provider color coding (Cell per bar), time range selector (7d/30d/90d), aggregates UsageSnapshots (POLL) + ProxyRequestLogs (PROXY)
+  - Top Spenders: Ranked sortable table (client-side sort by spend/budget/utilization), BudgetBar, FeatureBadge (TEAMS/VOUCHERS)
+  - Spend Forecast: AreaChart with historical + linear regression projected line, budget reference line, stats cards (projected month-end, daily avg, days remaining, total budget), warning indicator
+  - Anomaly Detection: Table from audit_logs (spend.anomaly_detected), shows multiplier badges, links to spend-anomaly background job
+  - Optimization Recommendations: Model downgrade suggestions based on modelPricing differentials, budget reallocation tips
+  - RBAC: Team Admin scoped to their team only (via teams.adminId); Root Admin sees all org data
+  - Files: server/lib/analytics.ts (5 analytics functions), server/routes.ts (5 GET endpoints), client/src/pages/dashboard/analytics.tsx (Recharts + data tables)

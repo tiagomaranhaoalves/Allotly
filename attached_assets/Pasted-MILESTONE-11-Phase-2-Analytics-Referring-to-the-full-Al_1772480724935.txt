@@ -1,0 +1,46 @@
+MILESTONE 11: Phase 2 Analytics
+
+Referring to the full Allotly spec, complete Step 35 from the build order. See Section 18.
+
+BUILD THESE:
+
+1. ANALYTICS PAGE (/dashboard/analytics) — Root Admin + Team Admin (scoped)
+
+2. COST-PER-MODEL BREAKDOWN
+   - Bar chart (Recharts) showing spend by model across the org (Root Admin) or team (Team Admin)
+   - Shows both Teams (from UsageSnapshot source=POLL) and Vouchers (source=PROXY) data
+   - Provider color coding on each bar
+   - Time range selector: 7d, 30d, 90d
+   - API: GET /api/analytics/cost-per-model
+
+3. TOP SPENDERS
+   - Ranked table of highest-spending members
+   - Columns: rank, name, email, team, spend, budget, utilization BudgetBar, FeatureBadge (direct/proxy)
+   - Sortable by spend amount
+   - API: GET /api/analytics/top-spenders
+
+4. SPEND FORECAST
+   - Line chart with historical spend + projected month-end (linear regression)
+   - Show a warning indicator if projection exceeds total org/team budgets
+   - "At current rate, your org will spend $X by month end"
+   - API: GET /api/analytics/forecast
+
+5. ANOMALY DETECTION
+   - Table of flagged anomalies: member name, current spend rate, average rate, multiplier (e.g., "3.2x")
+   - Flag members spending >3x their 7-day rolling average
+   - This connects to the spend-anomaly background job built in Milestone 9
+   - API: GET /api/analytics/anomalies
+
+6. OPTIMIZATION RECOMMENDATIONS
+   - Analysis cards suggesting cost savings
+   - Example: "3 members are using GPT-4o for tasks GPT-4o-mini could handle — estimated savings: $45/month"
+   - Based on: model pricing differentials and usage volume from ModelPricing table
+   - Compare cost of models used vs cheaper alternatives that could serve the same purpose
+   - API: GET /api/analytics/optimization
+
+VERIFY BY:
+- Show the analytics page with all 5 sections rendering with real or seed data
+- Show the cost-per-model chart with provider color coding
+- Show the forecast projection line extending beyond current date
+- Confirm Team Admin only sees their own team's analytics
+- Toggle dark mode on the analytics page

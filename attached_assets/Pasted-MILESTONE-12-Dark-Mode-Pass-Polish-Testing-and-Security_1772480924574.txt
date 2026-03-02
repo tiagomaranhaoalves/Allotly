@@ -1,0 +1,82 @@
+MILESTONE 12: Dark Mode Pass, Polish, Testing, and Security Review
+
+Referring to the full Allotly spec, complete Steps 39-42 from the build order.
+
+BUILD/FIX THESE:
+
+1. COMPLETE DARK MODE PASS (Step 39)
+   - Go through EVERY page in the application and verify dark mode:
+     - Landing page, /redeem, /docs
+     - /login, /signup, /invite/[token]
+     - All dashboard pages for all three roles
+     - All modals, dropdowns, tooltips, toasts
+   - Dark backgrounds: #111827, dark cards: #1E293B, dark hover: #334155
+   - Text must be readable in both modes
+   - Charts (Recharts) must have appropriate colors in dark mode
+   - Fix every issue you find
+
+2. POLISH (Step 42)
+   - Loading skeletons on every page that fetches data (NOT spinners)
+   - Empty states with helpful messaging and CTAs on:
+     - No providers connected
+     - No team members
+     - No vouchers created
+     - No bundles purchased
+     - No usage data yet
+     - No analytics data
+   - Error boundaries on all dashboard pages
+   - Smooth transitions: page transitions, modal open/close, sidebar collapse
+   - Confirmation dialogs for ALL destructive actions: disconnect provider, remove member, revoke key, revoke voucher, remove team admin
+   - Toast notifications for success actions (copy key, create voucher, etc.)
+   - Responsive design: test at 375px, 768px, 1024px, 1440px
+   - Verify the Allotly logo appears on: landing page header, dashboard sidebar, favicon, login, signup, redeem page, docs page, email templates
+
+3. TESTING (Step 40, Section 19)
+
+   UNIT TESTS (Vitest):
+   - Encryption roundtrip (encrypt then decrypt matches original)
+   - Budget calculation (cents, thresholds at 80/90/100)
+   - Voucher code generation (format ALLOT-XXXX-XXXX-XXXX, charset compliance, no 0/O/1/I/L)
+   - Permission matrix (every role x every action from Section 7.2)
+   - Token clamping calculation (various models, various remaining budgets)
+   - Request translation (OpenAI to Anthropic format, OpenAI to Google format)
+   - Redis budget reservation/reconciliation logic
+   - Allotly proxy key generation (format, hash, prefix)
+
+   INTEGRATION TESTS:
+   - Teams lifecycle: provision, poll, alert at 80%, poll, alert at 90%, poll, revoke at 100%
+   - Voucher lifecycle: create, validate, redeem, proxy request, budget deduct, exhaust, 402
+   - Bundle lifecycle: purchase, create voucher from bundle, exhaust request pool, 402
+   - Proxy safeguards: fire 5 simultaneous requests, 3 get 429 (concurrency limit)
+   - Proxy safeguards: low budget, confirm max_tokens was clamped
+   - Redis reconciliation: corrupt Redis value, run job, confirm restored from Postgres
+
+   E2E TESTS (Playwright):
+   - Root Admin signup, connect provider, create Team Admin, see in dashboard
+   - Team Admin: accept invite, add direct member, provision key, see in member list
+   - Team Admin: create voucher, copy code, redeem in new browser context, get key, make proxy request
+   - Bundle: purchase, create voucher from bundle, redeem, use proxy
+
+   Run ALL tests. Fix ALL failures.
+
+4. SECURITY REVIEW (Step 41)
+   - Rate limiting (Redis-backed) on:
+     - /api/vouchers/redeem — 5 attempts/hour/IP
+     - /api/auth/login — 10 attempts/hour/IP
+     - /api/members/[id]/regenerate-key — 3/hour/member
+     - Proxy endpoint — per plan limit (10 or 30 req/min)
+   - RBAC verification: test every API route with wrong role, must get 403
+   - Zod validation on ALL API inputs — no route accepts unvalidated input
+   - Provider keys never appear in: API responses, logs, client-side code, error messages
+   - Allotly proxy keys: verify they are only shown once, only hash stored
+   - Audit log: verify it is truly append-only (no update/delete endpoints exist)
+   - All money calculations use integer cents (grep for any floating point money)
+   - Redis persistence: verify RDB or AOF is configured
+   - Helmet security headers on all responses
+
+VERIFY BY:
+- Show me screenshots of every page in both light and dark mode (or walk through them)
+- Show test results: all unit tests passing, all integration tests passing, all E2E tests passing
+- Show empty states rendering correctly on a fresh account
+- Show rate limiting working (hit the limit, get 429)
+- Confirm no provider keys are exposed anywhere

@@ -24,6 +24,7 @@ import { runSnapshotCleanup } from "./lib/jobs/snapshot-cleanup";
 import { runSpendAnomalyCheck } from "./lib/jobs/spend-anomaly";
 import { checkPlanLimit } from "./lib/plan-limits";
 import { sendEmail, emailTemplates } from "./lib/email";
+import { getCostPerModel, getTopSpenders, getSpendForecast, getAnomalies, getOptimizationRecommendations } from "./lib/analytics";
 import { z } from "zod";
 
 const VOUCHER_LIMITS = {
@@ -1949,6 +1950,73 @@ export async function registerRoutes(
     });
 
     res.json(updated);
+  });
+
+  // Analytics API routes
+  app.get("/api/analytics/cost-per-model", requireRole("ROOT_ADMIN", "TEAM_ADMIN"), async (req, res) => {
+    const user = (req as any).user;
+    const days = parseInt(req.query.days as string) || 30;
+    let teamId: string | undefined;
+    if (user.orgRole === "TEAM_ADMIN") {
+      const userTeams = await storage.getTeamsByOrg(user.orgId);
+      const adminTeam = userTeams.find(t => t.adminId === user.id);
+      if (!adminTeam) return res.json([]);
+      teamId = adminTeam.id;
+    }
+    const data = await getCostPerModel(user.orgId, teamId, days);
+    res.json(data);
+  });
+
+  app.get("/api/analytics/top-spenders", requireRole("ROOT_ADMIN", "TEAM_ADMIN"), async (req, res) => {
+    const user = (req as any).user;
+    let teamId: string | undefined;
+    if (user.orgRole === "TEAM_ADMIN") {
+      const userTeams = await storage.getTeamsByOrg(user.orgId);
+      const adminTeam = userTeams.find(t => t.adminId === user.id);
+      if (!adminTeam) return res.json([]);
+      teamId = adminTeam.id;
+    }
+    const data = await getTopSpenders(user.orgId, teamId);
+    res.json(data);
+  });
+
+  app.get("/api/analytics/forecast", requireRole("ROOT_ADMIN", "TEAM_ADMIN"), async (req, res) => {
+    const user = (req as any).user;
+    let teamId: string | undefined;
+    if (user.orgRole === "TEAM_ADMIN") {
+      const userTeams = await storage.getTeamsByOrg(user.orgId);
+      const adminTeam = userTeams.find(t => t.adminId === user.id);
+      if (!adminTeam) return res.json({ dailySpend: [], projectedMonthEnd: 0, daysRemaining: 0, dailyAvg: 0, totalBudget: 0, warningExceeds: false });
+      teamId = adminTeam.id;
+    }
+    const data = await getSpendForecast(user.orgId, teamId);
+    res.json(data);
+  });
+
+  app.get("/api/analytics/anomalies", requireRole("ROOT_ADMIN", "TEAM_ADMIN"), async (req, res) => {
+    const user = (req as any).user;
+    let teamId: string | undefined;
+    if (user.orgRole === "TEAM_ADMIN") {
+      const userTeams = await storage.getTeamsByOrg(user.orgId);
+      const adminTeam = userTeams.find(t => t.adminId === user.id);
+      if (!adminTeam) return res.json([]);
+      teamId = adminTeam.id;
+    }
+    const data = await getAnomalies(user.orgId, teamId);
+    res.json(data);
+  });
+
+  app.get("/api/analytics/optimization", requireRole("ROOT_ADMIN", "TEAM_ADMIN"), async (req, res) => {
+    const user = (req as any).user;
+    let teamId: string | undefined;
+    if (user.orgRole === "TEAM_ADMIN") {
+      const userTeams = await storage.getTeamsByOrg(user.orgId);
+      const adminTeam = userTeams.find(t => t.adminId === user.id);
+      if (!adminTeam) return res.json([]);
+      teamId = adminTeam.id;
+    }
+    const data = await getOptimizationRecommendations(user.orgId, teamId);
+    res.json(data);
   });
 
   app.post("/api/v1/chat/completions", handleChatCompletion);
