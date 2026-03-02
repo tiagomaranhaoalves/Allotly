@@ -4,7 +4,7 @@ import {
   type ProviderConnection, type InsertProviderConnection, type Voucher, type InsertVoucher,
   type AuditLog, type InsertAuditLog, type ModelPricing,
   type VoucherBundle, type ProxyRequestLog, type UsageSnapshot,
-  type AllotlyApiKey, type VoucherRedemption,
+  type AllotlyApiKey, type VoucherRedemption, type BudgetAlert,
   type ProviderMemberLink, type InsertProviderMemberLink,
   organizations, users, teams, teamMemberships, providerConnections,
   vouchers, voucherRedemptions, voucherBundles, auditLogs, modelPricing,
@@ -88,6 +88,16 @@ export interface IStorage {
 
   createProxyRequestLog(data: any): Promise<ProxyRequestLog>;
   getProxyRequestLogsByMembership(membershipId: string, limit?: number): Promise<ProxyRequestLog[]>;
+
+  getAllOrganizations(): Promise<Organization[]>;
+
+  createBudgetAlert(data: { membershipId: string; thresholdPercent: number; triggeredAt: Date; actionTaken?: string }): Promise<BudgetAlert>;
+  getBudgetAlertsByMembership(membershipId: string): Promise<BudgetAlert[]>;
+  getBudgetAlert(membershipId: string, thresholdPercent: number): Promise<BudgetAlert | undefined>;
+  deleteBudgetAlertsByMembership(membershipId: string): Promise<void>;
+
+  getActiveMembershipsByAccessMode(accessMode: string): Promise<TeamMembership[]>;
+  getActiveProviderMemberLinks(): Promise<ProviderMemberLink[]>;
 
   getDashboardStats(orgId: string): Promise<any>;
   getTeamDashboardStats(teamId: string): Promise<any>;
@@ -418,6 +428,42 @@ export class DrizzleStorage implements IStorage {
       proxyMemberCount: proxyMembers.length,
       totalMembers: memberships.length,
     };
+  }
+
+  async getAllOrganizations(): Promise<Organization[]> {
+    return db.select().from(organizations);
+  }
+
+  async createBudgetAlert(data: { membershipId: string; thresholdPercent: number; triggeredAt: Date; actionTaken?: string }): Promise<BudgetAlert> {
+    const [result] = await db.insert(budgetAlerts).values(data).returning();
+    return result;
+  }
+
+  async getBudgetAlertsByMembership(membershipId: string): Promise<BudgetAlert[]> {
+    return db.select().from(budgetAlerts).where(eq(budgetAlerts.membershipId, membershipId));
+  }
+
+  async getBudgetAlert(membershipId: string, thresholdPercent: number): Promise<BudgetAlert | undefined> {
+    const [result] = await db.select().from(budgetAlerts).where(
+      and(eq(budgetAlerts.membershipId, membershipId), eq(budgetAlerts.thresholdPercent, thresholdPercent))
+    );
+    return result;
+  }
+
+  async deleteBudgetAlertsByMembership(membershipId: string): Promise<void> {
+    await db.delete(budgetAlerts).where(eq(budgetAlerts.membershipId, membershipId));
+  }
+
+  async getActiveMembershipsByAccessMode(accessMode: string): Promise<TeamMembership[]> {
+    return db.select().from(teamMemberships).where(
+      and(eq(teamMemberships.accessMode, accessMode as any), eq(teamMemberships.status, "ACTIVE"))
+    );
+  }
+
+  async getActiveProviderMemberLinks(): Promise<ProviderMemberLink[]> {
+    return db.select().from(providerMemberLinks).where(
+      and(eq(providerMemberLinks.status, "ACTIVE"), eq(providerMemberLinks.setupStatus, "COMPLETE"))
+    );
   }
 }
 

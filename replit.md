@@ -125,9 +125,30 @@ Updated:
 - DELETE /api/teams/:id — Remove team, suspend all members (Root Admin only)
 - GET /api/teams/:id/stats — Get member count, admin info, spend totals
 - GET /api/providers/available — Lightweight provider list for Team Admins
+- POST /api/cron/usage-poll — Manual usage poll trigger (requires CRON_SECRET)
+- POST /api/cron/budget-reset — Manual budget reset trigger (requires CRON_SECRET)
+- GET /api/cron/status — Job scheduler status (requires CRON_SECRET)
+
+## Background Jobs
+- `server/lib/jobs/usage-poll.ts` — Polls provider usage APIs per org (Free=60min, Team=15min, Enterprise=5min intervals)
+- `server/lib/jobs/budget-reset.ts` — Resets expired budget periods, reactivates BUDGET_EXHAUSTED members, re-provisions keys
+- `server/lib/jobs/scheduler.ts` — setInterval-based scheduler (usage poll every 5min, budget reset every 60min)
+- Jobs start automatically on app startup via `startJobScheduler()` in server/index.ts
+- Cron routes protected by CRON_SECRET (defaults to "allotly-cron-dev-secret" in dev)
+
+## Budget Alerts
+- Thresholds: 80% (warning to member), 90% (warning to member + team admin), 100% (key revoked, status=BUDGET_EXHAUSTED)
+- Alerts stored in budget_alerts table with unique index on (membershipId, thresholdPercent)
+- At 100%: OpenAI service account deleted, link status=REVOKED, membership status=BUDGET_EXHAUSTED
+- Budget reset clears alerts, reactivates members, re-provisions keys
+
+## Provider-Side Safety Net
+- OpenAI provisioning sets providerBudgetCents at 110% of monthlyBudgetCents
+- Ensures Allotly's polling-based enforcement triggers before provider-side limits
 
 ## Milestone Status
-- Milestone 1 (Foundation, DB, Auth): COMPLETE — schema, auth, storage, all 15 tables, model pricing seeded, signup→login→dashboard flow verified
-- Milestone 2 (Brand Assets & Components): COMPLETE — all 14 brand components, logo variants, SVG favicon, dark mode, component showcase at /components, DataTable with sort/filter/pagination
-- Milestone 3 (Provider Connections & Model Allowlist): COMPLETE — provider adapters with real API validation, PATCH/validate routes with Zod validation, model allowlist toggles, confirmation dialog for disconnect, audit logging, RBAC enforced on all provider routes (ROOT_ADMIN only)
-- Milestone 4 (Teams & Members): IN PROGRESS — Storage CRUD for providerMemberLinks, provisioning routes (OpenAI auto, Anthropic semi-auto, Google guided), member budget edit, member delete, team delete with confirmation, team stats (member count/admin/spend), enhanced Teams page (stats, delete), enhanced Members page (expandable cards, provider provisioning, budget edit, remove)
+- Milestone 1 (Foundation, DB, Auth): COMPLETE
+- Milestone 2 (Brand Assets & Components): COMPLETE
+- Milestone 3 (Provider Connections & Model Allowlist): COMPLETE
+- Milestone 4 (Teams & Members): COMPLETE — Storage CRUD for providerMemberLinks, provisioning routes (OpenAI auto, Anthropic semi-auto, Google guided), member budget edit, member delete, team delete with confirmation, team stats, enhanced Teams/Members pages
+- Milestone 5 (Usage Polling, Budget Alerts, Enforcement): COMPLETE — Usage polling job with plan-based intervals, budget alert thresholds (80/90/100%), automatic key revocation at 100%, budget reset job with period rotation and member reactivation, background job scheduler, cron API routes with secret auth, 110% safety net budget on OpenAI provisioning

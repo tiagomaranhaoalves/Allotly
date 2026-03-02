@@ -1,0 +1,63 @@
+MILESTONE 5: Usage Polling, Budget Alerts, and Budget Enforcement
+
+Referring to the full Allotly spec, complete Steps 16-18 from the build order.
+
+BUILD THESE:
+
+1. USAGE POLLING JOB (Section 10.3 + Section 12)
+   - Create /api/cron/usage-poll/route.ts
+   - Create /lib/jobs/usage-poll.ts with the EXACT logic from Section 10.3:
+     - For each org, determine polling interval by plan (Free=60min, Team=15min, Enterprise=5min)
+     - Skip if not time to poll yet (track lastPolledAt)
+     - For each active ProviderConnection, for each active ProviderMemberLink (accessMode=DIRECT):
+       - Call provider Usage API with project/workspace filter
+       - OpenAI: GET /v1/organization/usage?project_ids[]={id}&start_time={periodStart}
+       - Anthropic: GET /v1/organizations/usage_report/messages?workspace_ids[]={id} + /v1/organizations/cost_report
+       - Parse response, calculate cost in cents
+       - Create UsageSnapshot record (source=POLL)
+       - Update TeamMembership.currentPeriodSpendCents
+     - Error handling: catch per-member, log error, continue to next member
+
+2. BUDGET ALERTS (Section 10.3)
+   After updating spend for each member:
+   - Calculate percentUsed = (currentPeriodSpendCents / monthlyBudgetCents) * 100
+   - IF >= 100 AND no existing 100% alert:
+     - Revoke provider key via Admin API
+     - Set membership.status = BUDGET_EXHAUSTED
+     - Set link.status = REVOKED
+     - Create BudgetAlert (thresholdPercent=100)
+     - Queue email to member + Team Admin (budget-exhausted template)
+     - Audit log: "budget.exhausted"
+   - ELSE IF >= 90 AND no existing 90% alert:
+     - Create BudgetAlert (thresholdPercent=90)
+     - Queue email to member + Team Admin (budget-warning-90)
+   - ELSE IF >= 80 AND no existing 80% alert:
+     - Create BudgetAlert (thresholdPercent=80)
+     - Queue email to member (budget-warning-80)
+
+3. BUDGET RESET JOB (Section 10.5)
+   - Create /api/cron/budget-reset/route.ts
+   - Create /lib/jobs/budget-reset.ts
+   - Runs daily at 00:05 UTC
+   - For each TeamMembership where accessMode=DIRECT and periodEnd <= now():
+     - Reset currentPeriodSpendCents = 0
+     - Update periodStart and periodEnd to new period
+     - Clear budget alerts for this membership
+     - If status was BUDGET_EXHAUSTED: set to ACTIVE, re-provision provider keys
+     - Queue email (budget-reset template)
+
+4. PROVIDER-SIDE BUDGET SAFETY NET
+   - When provisioning OpenAI keys, set provider-side budget at 110% of Allotly budget (Section 23, note 8)
+   - This ensures Allotly's polling-based enforcement triggers first
+
+5. BACKGROUND JOB SCHEDULING
+   - Set up /api/cron routes callable via setInterval or external cron
+   - Protect cron routes with a secret token (CRON_SECRET env var)
+   - Create a job runner that initializes on app startup
+
+VERIFY BY:
+- Trigger the usage-poll job manually and show it creating UsageSnapshot records
+- Simulate a member at 80% spend, show alert created + email queued
+- Simulate a member at 100% spend, show key revoked + status changed to BUDGET_EXHAUSTED
+- Trigger the budget-reset job, show spend reset to 0, member reactivated
+- Confirm the polling intervals differ by plan

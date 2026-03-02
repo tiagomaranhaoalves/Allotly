@@ -45,6 +45,7 @@ export const organizations = pgTable("organizations", {
   maxTeamAdmins: integer("max_team_admins").default(0).notNull(),
   orgBudgetCeilingCents: integer("org_budget_ceiling_cents"),
   defaultMemberBudgetCents: integer("default_member_budget_cents"),
+  lastPolledAt: timestamp("last_polled_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

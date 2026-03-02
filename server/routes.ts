@@ -10,6 +10,8 @@ import { generateAllotlyKey, hashKey } from "./lib/keys";
 import { getProviderAdapter } from "./lib/providers";
 import { stripeService } from "./stripeService";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
+import { runUsagePoll } from "./lib/jobs/usage-poll";
+import { runBudgetReset } from "./lib/jobs/budget-reset";
 import { z } from "zod";
 
 const VOUCHER_LIMITS = {
@@ -685,10 +687,11 @@ export async function registerRoutes(
       const memberSlug = (memberUser?.name || memberUser?.email || "member").toLowerCase().replace(/[^a-z0-9]/g, "-").slice(0, 20);
 
       const adminKey = decryptProviderKey(conn.adminApiKeyEncrypted, conn.adminApiKeyIv, conn.adminApiKeyTag);
+      const safetyNetBudgetCents = Math.round(membership.monthlyBudgetCents * 1.1);
       let linkData: any = {
         membershipId: membership.id,
         providerConnectionId: conn.id,
-        providerBudgetCents: membership.monthlyBudgetCents,
+        providerBudgetCents: safetyNetBudgetCents,
         setupStatus: "PENDING",
         status: "ACTIVE",
       };
@@ -906,6 +909,53 @@ export async function registerRoutes(
       adminEmail: admin?.email,
       totalSpendCents: totalSpend,
       totalBudgetCents: totalBudget,
+    });
+  });
+
+  const CRON_SECRET = process.env.NODE_ENV === "production"
+    ? process.env.CRON_SECRET
+    : (process.env.CRON_SECRET || "allotly-cron-dev-secret");
+
+  function requireCronAuth(req: any, res: any, next: any) {
+    if (!CRON_SECRET) {
+      return res.status(503).json({ message: "CRON_SECRET not configured" });
+    }
+    const token = req.headers["x-cron-secret"] || req.query.secret;
+    if (token !== CRON_SECRET) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    next();
+  }
+
+  app.post("/api/cron/usage-poll", requireCronAuth, async (_req, res) => {
+    try {
+      console.log("[cron] Manual usage poll triggered");
+      const result = await runUsagePoll();
+      res.json({ message: "Usage poll completed", ...result });
+    } catch (e: any) {
+      console.error("[cron] Usage poll error:", e);
+      res.status(500).json({ message: "Usage poll failed", error: e.message });
+    }
+  });
+
+  app.post("/api/cron/budget-reset", requireCronAuth, async (_req, res) => {
+    try {
+      console.log("[cron] Manual budget reset triggered");
+      const result = await runBudgetReset();
+      res.json({ message: "Budget reset completed", ...result });
+    } catch (e: any) {
+      console.error("[cron] Budget reset error:", e);
+      res.status(500).json({ message: "Budget reset failed", error: e.message });
+    }
+  });
+
+  app.get("/api/cron/status", requireCronAuth, async (_req, res) => {
+    res.json({
+      jobs: [
+        { name: "usage-poll", description: "Polls provider usage APIs", intervalMinutes: 5 },
+        { name: "budget-reset", description: "Resets expired budget periods", intervalMinutes: 60 },
+      ],
+      status: "running",
     });
   });
 
