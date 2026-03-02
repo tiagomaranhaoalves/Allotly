@@ -276,6 +276,7 @@ export const insertUserSchema = createInsertSchema(users).omit({ id: true, creat
 export const insertTeamSchema = createInsertSchema(teams).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertTeamMembershipSchema = createInsertSchema(teamMemberships).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertProviderConnectionSchema = createInsertSchema(providerConnections).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertProviderMemberLinkSchema = createInsertSchema(providerMemberLinks).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertVoucherSchema = createInsertSchema(vouchers).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({ id: true, createdAt: true });
 export const insertModelPricingSchema = createInsertSchema(modelPricing).omit({ id: true, updatedAt: true });
@@ -300,6 +301,7 @@ export type ProxyRequestLog = typeof proxyRequestLogs.$inferSelect;
 export type UsageSnapshot = typeof usageSnapshots.$inferSelect;
 export type BudgetAlert = typeof budgetAlerts.$inferSelect;
 export type ProviderMemberLink = typeof providerMemberLinks.$inferSelect;
+export type InsertProviderMemberLink = z.infer<typeof insertProviderMemberLinkSchema>;
 export type AllotlyApiKey = typeof allotlyApiKeys.$inferSelect;
 export type VoucherRedemption = typeof voucherRedemptions.$inferSelect;
 

@@ -114,7 +114,20 @@ Branching-nodes motif: central hub with 3 branch nodes representing allocation/d
 - Google: GUIDED — no validation (always returns valid, manual setup required)
 - Audit helper: server/lib/audit.ts (logAudit function)
 
+## API Routes
+Updated:
+- PATCH /api/members/:id/budget — Update member budget (Root Admin, Team Admin)
+- DELETE /api/members/:id — Remove member + delete user/links (Root Admin, Team Admin)
+- GET /api/members/:id/provider-links — Get provider setup status for a member
+- POST /api/members/:id/provision — Provision provider access (creates project/workspace/instructions)
+- POST /api/members/:id/mark-complete/:linkId — Mark manual setup as complete
+- POST /api/members/:id/revoke-key/:linkId — Revoke a provisioned key
+- DELETE /api/teams/:id — Remove team, suspend all members (Root Admin only)
+- GET /api/teams/:id/stats — Get member count, admin info, spend totals
+- GET /api/providers/available — Lightweight provider list for Team Admins
+
 ## Milestone Status
 - Milestone 1 (Foundation, DB, Auth): COMPLETE — schema, auth, storage, all 15 tables, model pricing seeded, signup→login→dashboard flow verified
 - Milestone 2 (Brand Assets & Components): COMPLETE — all 14 brand components, logo variants, SVG favicon, dark mode, component showcase at /components, DataTable with sort/filter/pagination
 - Milestone 3 (Provider Connections & Model Allowlist): COMPLETE — provider adapters with real API validation, PATCH/validate routes with Zod validation, model allowlist toggles, confirmation dialog for disconnect, audit logging, RBAC enforced on all provider routes (ROOT_ADMIN only)
+- Milestone 4 (Teams & Members): IN PROGRESS — Storage CRUD for providerMemberLinks, provisioning routes (OpenAI auto, Anthropic semi-auto, Google guided), member budget edit, member delete, team delete with confirmation, team stats (member count/admin/spend), enhanced Teams page (stats, delete), enhanced Members page (expandable cards, provider provisioning, budget edit, remove)

@@ -5,12 +5,132 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Users, Plus, Shield } from "lucide-react";
+import { Users, Plus, Shield, DollarSign, Trash2, User, ChevronRight } from "lucide-react";
 import { useState } from "react";
+import { useLocation } from "wouter";
+
+function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string) => void }) {
+  const [, navigate] = useLocation();
+  const { data: stats } = useQuery<any>({
+    queryKey: ["/api/teams", team.id, "stats"],
+    queryFn: async () => {
+      const res = await fetch(`/api/teams/${team.id}/stats`, { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json();
+    },
+  });
+
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const budgetUsedPct = stats?.totalBudgetCents
+    ? Math.min(100, Math.round((stats.totalSpendCents / stats.totalBudgetCents) * 100))
+    : 0;
+
+  return (
+    <Card className="p-5 hover:shadow-md transition-shadow" data-testid={`team-card-${team.id}`}>
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-3 flex-1 min-w-0">
+          <div className="p-2.5 rounded-lg bg-primary/10 shrink-0">
+            <Users className="w-5 h-5 text-primary" />
+          </div>
+          <div className="min-w-0">
+            <h3 className="font-semibold text-base truncate">{team.name}</h3>
+            {stats?.adminName && (
+              <div className="flex items-center gap-1.5 mt-1">
+                <User className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground truncate">
+                  Admin: {stats.adminName}
+                  {stats.adminEmail && <span className="opacity-60"> ({stats.adminEmail})</span>}
+                </span>
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground mt-0.5">Created {new Date(team.createdAt).toLocaleDateString()}</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-6 shrink-0">
+          <div className="text-right">
+            <div className="flex items-center gap-1.5 justify-end">
+              <Users className="w-3.5 h-3.5 text-muted-foreground" />
+              <span className="text-sm font-medium" data-testid={`member-count-${team.id}`}>
+                {stats?.memberCount ?? "–"}
+              </span>
+              <span className="text-xs text-muted-foreground">members</span>
+            </div>
+            {stats && stats.totalBudgetCents > 0 && (
+              <div className="flex items-center gap-1.5 justify-end mt-1">
+                <DollarSign className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-sm font-medium" data-testid={`team-spend-${team.id}`}>
+                  ${(stats.totalSpendCents / 100).toFixed(2)}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  / ${(stats.totalBudgetCents / 100).toFixed(2)}
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-muted-foreground hover:text-foreground"
+              onClick={() => navigate("/dashboard/members")}
+              data-testid={`button-view-members-${team.id}`}
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+            <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-muted-foreground hover:text-destructive"
+                  data-testid={`button-delete-team-${team.id}`}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Remove Team</DialogTitle>
+                  <DialogDescription>
+                    Are you sure you want to remove <strong>{team.name}</strong>? All member access will be suspended. This action cannot be undone.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setConfirmOpen(false)} data-testid="button-cancel-delete">Cancel</Button>
+                  <Button variant="destructive" onClick={() => { onDelete(team.id); setConfirmOpen(false); }} data-testid="button-confirm-delete">
+                    Remove Team
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </div>
+      </div>
+
+      {stats && stats.totalBudgetCents > 0 && (
+        <div className="mt-4">
+          <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all duration-500"
+              style={{
+                width: `${budgetUsedPct}%`,
+                backgroundColor: budgetUsedPct >= 90 ? "#EF4444" : budgetUsedPct >= 75 ? "#F59E0B" : "#10B981",
+              }}
+            />
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-1">{budgetUsedPct}% of total team budget used</p>
+        </div>
+      )}
+    </Card>
+  );
+}
 
 export default function TeamsPage() {
   const { user } = useAuth();
@@ -41,6 +161,19 @@ export default function TeamsPage() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/teams/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
+      toast({ title: "Team removed successfully" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to remove team", description: err.message, variant: "destructive" });
+    },
+  });
+
   if (user?.orgRole !== "ROOT_ADMIN") {
     return (
       <EmptyState
@@ -56,7 +189,12 @@ export default function TeamsPage() {
       <div className="flex items-center justify-between gap-2">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Teams</h1>
-          <p className="text-muted-foreground mt-1">Manage your organization's teams</p>
+          <p className="text-muted-foreground mt-1">
+            Manage your organization's teams
+            {teams && teams.length > 0 && (
+              <span className="ml-1">· {teams.length} team{teams.length !== 1 ? "s" : ""}</span>
+            )}
+          </p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
@@ -68,6 +206,7 @@ export default function TeamsPage() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Create New Team</DialogTitle>
+              <DialogDescription>A new team admin account will be created with the credentials you provide.</DialogDescription>
             </DialogHeader>
             <div className="space-y-4 pt-2">
               <div className="space-y-2">
@@ -95,23 +234,11 @@ export default function TeamsPage() {
       </div>
 
       {isLoading ? (
-        <div className="space-y-4">{[1, 2].map(i => <Skeleton key={i} className="h-24" />)}</div>
+        <div className="space-y-4">{[1, 2].map(i => <Skeleton key={i} className="h-28" />)}</div>
       ) : teams && teams.length > 0 ? (
         <div className="space-y-4">
           {teams.map((team: any) => (
-            <Card key={team.id} className="p-5">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-primary/10">
-                    <Users className="w-5 h-5 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold">{team.name}</h3>
-                    <p className="text-xs text-muted-foreground">Created {new Date(team.createdAt).toLocaleDateString()}</p>
-                  </div>
-                </div>
-              </div>
-            </Card>
+            <TeamCard key={team.id} team={team} onDelete={(id) => deleteMutation.mutate(id)} />
           ))}
         </div>
       ) : (

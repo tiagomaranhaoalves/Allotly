@@ -1,0 +1,72 @@
+MILESTONE 4: Team Admin Management, Direct Members, and Provider Key Provisioning
+
+Referring to the full Allotly spec, complete Steps 9-15 from the build order.
+
+BUILD THESE:
+
+1. TEAM ADMIN MANAGEMENT (Root Admin only)
+   - Page: /dashboard/teams
+   - "Create Team Admin" button: form with email, name, team name
+   - Creates User (role=TEAM_ADMIN, status=INVITED) + Team (admin=new user)
+   - Sends team-admin-invite email (for now, just log the invite — email templates come later)
+   - List all teams with: team name, admin name, member count (X/20), total spend, budget utilization
+   - Root Admin can remove a Team Admin (confirmation dialog, suspends all team members)
+
+2. TEAM ADMIN INVITE ACCEPTANCE
+   - Page: /invite/[token]
+   - Team Admin sets password, activates account
+   - Redirect to /dashboard (now sees Team Admin sidebar)
+
+3. DIRECT MEMBER MANAGEMENT (Team Admin: own team. Root Admin: any team)
+   - Page: /dashboard/members
+   - "Add Member" button: form with email, name, monthly budget (cents), allowed models (subset of org allowlist), allowed providers
+   - Creates User (role=MEMBER) + TeamMembership (accessMode=DIRECT, budget, models, periodStart/End)
+   - Member count enforced: max 5 on Free, max 20 on Team plan
+   - List members in DataTable: name, email, budget, spend, BudgetBar, status, provider setup status
+   - Actions: edit budget/models, suspend, reactivate, remove
+
+4. PROVIDER KEY PROVISIONING — All Three Providers (Section 5.3)
+
+   OpenAI (FULL_AUTO):
+   - POST /api/members/[id]/provision
+   - Creates project: POST /v1/organization/projects { name: "allotly-{teamSlug}-{memberSlug}" }
+   - Creates service account: POST /v1/organization/projects/{projectId}/service_accounts { name: "allotly-managed" }
+   - Response includes api_key.value — this is the member's key
+   - Save project ID + service account ID + key ID to ProviderMemberLink
+   - Show key to member ONCE via KeyRevealCard
+   - SetupStatus: PENDING, PROVISIONING, COMPLETE
+
+   Anthropic (SEMI_AUTO):
+   - Creates workspace: POST /v1/organizations/workspaces { name: "allotly-{teamSlug}-{memberSlug}" }
+   - Save workspace ID to ProviderMemberLink
+   - Cannot create key via API — generate setup instructions (markdown) telling member to create key in Anthropic Console
+   - SetupStatus: PENDING, PROVISIONING, AWAITING_MEMBER
+   - "Mark as Complete" button for when member confirms setup
+
+   Google (GUIDED):
+   - No API calls. Generate step-by-step markdown instructions for manual setup.
+   - SetupStatus: PENDING, AWAITING_MEMBER
+   - "Mark as Complete" button
+
+5. KEY MANAGEMENT
+   - POST /api/members/[id]/regenerate-key/[provider] — revoke old key via provider API + create new one
+   - POST /api/members/[id]/revoke-key/[provider] — revoke only
+   - POST /api/members/[id]/mark-complete/[provider] — mark guided/semi-auto setup as done
+   - OpenAI revocation: DELETE /v1/organization/projects/{projectId}/service_accounts/{svcAcctId}
+   - Anthropic revocation: List keys GET /v1/organizations/api_keys?workspace_id={id}, then POST each to inactive
+
+6. PERMISSION ENFORCEMENT (Section 7.2)
+   - Every API route checks orgRole
+   - Team Admins can only access their own team's members
+   - Root Admin can access any team
+   - Members cannot access these routes at all
+
+7. AUDIT LOGGING
+   - Log: "team.created", "team.removed", "member.created", "member.suspended", "member.reactivated", "key.provisioned", "key.revoked", "key.regenerated"
+
+VERIFY BY:
+- Show me: Root Admin creates Team Admin, Team Admin logs in, adds a member, provisions OpenAI key, key shown once
+- Show the Anthropic flow: workspace created, setup instructions displayed, "Mark Complete" works
+- Show the Google flow: guided instructions displayed
+- Confirm Team Admin cannot see other teams' members
+- Confirm member count limits are enforced (try to exceed 5 on Free)

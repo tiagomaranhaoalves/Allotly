@@ -149,6 +149,19 @@ export async function registerRoutes(
     });
   });
 
+  app.get("/api/providers/available", requireAuth, async (req, res) => {
+    const user = await storage.getUser(req.session.userId!);
+    if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
+    const connections = await storage.getProviderConnectionsByOrg(user.orgId);
+    const safe = connections.filter(c => c.status === "ACTIVE" || c.status === "CONNECTED").map(c => ({
+      id: c.id,
+      provider: c.provider,
+      displayName: c.displayName,
+      automationLevel: c.automationLevel,
+    }));
+    res.json(safe);
+  });
+
   app.get("/api/providers", requireRole("ROOT_ADMIN"), async (req, res) => {
     const user = (req as any).user;
     const connections = await storage.getProviderConnectionsByOrg(user.orgId);
@@ -456,6 +469,15 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Missing or invalid required fields" });
       }
 
+      const org = await storage.getOrganization(user.orgId);
+      if (!org) return res.status(404).json({ message: "Organization not found" });
+
+      const maxMembers = org.plan === "FREE" ? 5 : 20;
+      const currentMemberCount = await storage.getMemberCountByTeam(targetTeamId);
+      if (currentMemberCount >= maxMembers) {
+        return res.status(400).json({ message: `Maximum ${maxMembers} members per team on the ${org.plan} plan` });
+      }
+
       const passwordHash = password ? await hashPassword(password) : await hashPassword("changeme123");
       const memberUser = await storage.createUser({
         email,
@@ -515,6 +537,15 @@ export async function registerRoutes(
     if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
 
     await storage.updateMembership(membership.id, { status: "SUSPENDED" });
+
+    await storage.createAuditLog({
+      orgId: user.orgId,
+      actorId: user.id,
+      action: "member.suspended",
+      targetType: "team_membership",
+      targetId: membership.id,
+    });
+
     res.json({ message: "Suspended" });
   });
 
@@ -530,7 +561,352 @@ export async function registerRoutes(
     if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
 
     await storage.updateMembership(membership.id, { status: "ACTIVE" });
+
+    await storage.createAuditLog({
+      orgId: user.orgId,
+      actorId: user.id,
+      action: "member.reactivated",
+      targetType: "team_membership",
+      targetId: membership.id,
+    });
+
     res.json({ message: "Reactivated" });
+  });
+
+  app.patch("/api/members/:id/budget", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
+
+      const membership = await storage.getMembership(req.params.id);
+      if (!membership) return res.status(404).json({ message: "Not found" });
+
+      const team = await storage.getTeam(membership.teamId);
+      if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
+      if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
+
+      const schema = z.object({
+        monthlyBudgetCents: z.number().min(100).optional(),
+        allowedModels: z.array(z.string()).nullable().optional(),
+        allowedProviders: z.array(z.string()).nullable().optional(),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+
+      const updated = await storage.updateMembership(membership.id, parsed.data);
+      res.json(updated);
+    } catch (e: any) {
+      console.error("Member budget update error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/members/:id", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
+
+      const membership = await storage.getMembership(req.params.id);
+      if (!membership) return res.status(404).json({ message: "Not found" });
+
+      const team = await storage.getTeam(membership.teamId);
+      if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
+      if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
+
+      await storage.deleteMembership(membership.id);
+      await storage.deleteUser(membership.userId);
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "member.removed",
+        targetType: "team_membership",
+        targetId: membership.id,
+      });
+
+      res.json({ message: "Member removed" });
+    } catch (e: any) {
+      console.error("Member remove error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/members/:id/provider-links", requireAuth, async (req, res) => {
+    const user = await storage.getUser(req.session.userId!);
+    if (!user) return res.status(401).json({ message: "Unauthorized" });
+
+    const membership = await storage.getMembership(req.params.id);
+    if (!membership) return res.status(404).json({ message: "Not found" });
+
+    const team = await storage.getTeam(membership.teamId);
+    if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
+    if (user.orgRole === "MEMBER" && membership.userId !== user.id) return res.status(403).json({ message: "Forbidden" });
+    if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
+
+    const links = await storage.getProviderMemberLinksByMembership(membership.id);
+    const providers = await storage.getProviderConnectionsByOrg(user.orgId);
+
+    const enrichedLinks = links.map(link => {
+      const conn = providers.find(p => p.id === link.providerConnectionId);
+      return {
+        ...link,
+        provider: conn?.provider,
+        providerDisplayName: conn?.displayName,
+        automationLevel: conn?.automationLevel,
+      };
+    });
+
+    res.json(enrichedLinks);
+  });
+
+  app.post("/api/members/:id/provision", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
+
+      const membership = await storage.getMembership(req.params.id);
+      if (!membership) return res.status(404).json({ message: "Not found" });
+
+      const team = await storage.getTeam(membership.teamId);
+      if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
+      if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
+
+      const { providerConnectionId } = req.body;
+      if (!providerConnectionId) return res.status(400).json({ message: "providerConnectionId is required" });
+
+      const conn = await storage.getProviderConnection(providerConnectionId);
+      if (!conn || conn.orgId !== user.orgId) return res.status(404).json({ message: "Provider connection not found" });
+
+      const existing = await storage.getProviderMemberLinkByMembershipAndConnection(membership.id, conn.id);
+      if (existing) return res.status(400).json({ message: "Already provisioned for this provider" });
+
+      const memberUser = await storage.getUser(membership.userId);
+      const teamSlug = team.name.toLowerCase().replace(/[^a-z0-9]/g, "-").slice(0, 20);
+      const memberSlug = (memberUser?.name || memberUser?.email || "member").toLowerCase().replace(/[^a-z0-9]/g, "-").slice(0, 20);
+
+      const adminKey = decryptProviderKey(conn.adminApiKeyEncrypted, conn.adminApiKeyIv, conn.adminApiKeyTag);
+      let linkData: any = {
+        membershipId: membership.id,
+        providerConnectionId: conn.id,
+        providerBudgetCents: membership.monthlyBudgetCents,
+        setupStatus: "PENDING",
+        status: "ACTIVE",
+      };
+      let provisionedKey: string | null = null;
+
+      if (conn.provider === "OPENAI") {
+        linkData.setupStatus = "PROVISIONING";
+        try {
+          const projectRes = await fetch("https://api.openai.com/v1/organization/projects", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${adminKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ name: `allotly-${teamSlug}-${memberSlug}` }),
+          });
+          if (!projectRes.ok) {
+            const err = await projectRes.text();
+            linkData.setupStatus = "PENDING";
+            linkData.setupInstructions = `OpenAI project creation failed: ${err.slice(0, 500)}. Please create project manually and update.`;
+          } else {
+            const project = await projectRes.json();
+            linkData.providerProjectId = project.id;
+
+            const svcRes = await fetch(`https://api.openai.com/v1/organization/projects/${project.id}/service_accounts`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${adminKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ name: "allotly-managed" }),
+            });
+            if (!svcRes.ok) {
+              linkData.setupStatus = "PENDING";
+              linkData.setupInstructions = `Service account creation failed. Project created (${project.id}).`;
+            } else {
+              const svcAcct = await svcRes.json();
+              linkData.providerSvcAcctId = svcAcct.id;
+              linkData.providerApiKeyId = svcAcct.api_key?.id;
+              provisionedKey = svcAcct.api_key?.value || null;
+              linkData.setupStatus = "COMPLETE";
+              linkData.keyDeliveredAt = new Date();
+            }
+          }
+        } catch (e: any) {
+          linkData.setupStatus = "PENDING";
+          linkData.setupInstructions = `OpenAI provisioning error: ${e.message}`;
+        }
+      } else if (conn.provider === "ANTHROPIC") {
+        linkData.setupStatus = "PROVISIONING";
+        try {
+          const wsRes = await fetch("https://api.anthropic.com/v1/organizations/workspaces", {
+            method: "POST",
+            headers: {
+              "x-api-key": adminKey,
+              "anthropic-version": "2023-06-01",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ name: `allotly-${teamSlug}-${memberSlug}` }),
+          });
+          if (!wsRes.ok) {
+            linkData.setupStatus = "AWAITING_MEMBER";
+            linkData.setupInstructions = `## Manual Anthropic Setup\n\n1. Go to [Anthropic Console](https://console.anthropic.com)\n2. Create a workspace named \`allotly-${teamSlug}-${memberSlug}\`\n3. Create an API key within that workspace\n4. Share the key securely with the team member\n5. Click "Mark as Complete" when done`;
+          } else {
+            const ws = await wsRes.json();
+            linkData.providerWorkspaceId = ws.id;
+            linkData.setupStatus = "AWAITING_MEMBER";
+            linkData.setupInstructions = `## Anthropic Workspace Created\n\nWorkspace **\`allotly-${teamSlug}-${memberSlug}\`** has been created (ID: ${ws.id}).\n\n### Next Steps\n1. Go to [Anthropic Console](https://console.anthropic.com)\n2. Navigate to the workspace \`allotly-${teamSlug}-${memberSlug}\`\n3. Create an API key within that workspace\n4. Share the key securely with the team member\n5. Click "Mark as Complete" when done`;
+          }
+        } catch (e: any) {
+          linkData.setupStatus = "AWAITING_MEMBER";
+          linkData.setupInstructions = `## Manual Anthropic Setup\n\nAutomatic workspace creation failed: ${e.message}\n\n1. Go to [Anthropic Console](https://console.anthropic.com)\n2. Create a workspace named \`allotly-${teamSlug}-${memberSlug}\`\n3. Create an API key within that workspace\n4. Share the key securely with the team member\n5. Click "Mark as Complete" when done`;
+        }
+      } else if (conn.provider === "GOOGLE") {
+        linkData.setupStatus = "AWAITING_MEMBER";
+        linkData.setupInstructions = `## Google AI Setup Guide\n\n1. Go to [Google AI Studio](https://aistudio.google.com)\n2. Create a new API key or use an existing one\n3. Optionally restrict the key to specific APIs (Generative Language API)\n4. Share the key securely with the team member\n5. Click "Mark as Complete" when done\n\n**Note:** Google does not support project-scoped keys via API, so this is a guided manual process.`;
+      }
+
+      const link = await storage.createProviderMemberLink(linkData);
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "key.provisioned",
+        targetType: "provider_member_link",
+        targetId: link.id,
+        metadata: { provider: conn.provider, membershipId: membership.id, setupStatus: link.setupStatus },
+      });
+
+      res.json({ link, provisionedKey });
+    } catch (e: any) {
+      console.error("Provision error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/members/:id/mark-complete/:linkId", requireAuth, async (req, res) => {
+    const user = await storage.getUser(req.session.userId!);
+    if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
+
+    const link = await storage.getProviderMemberLink(req.params.linkId);
+    if (!link || link.membershipId !== req.params.id) return res.status(404).json({ message: "Not found" });
+
+    const membership = await storage.getMembership(link.membershipId);
+    if (!membership) return res.status(404).json({ message: "Not found" });
+
+    const team = await storage.getTeam(membership.teamId);
+    if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
+    if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
+
+    await storage.updateProviderMemberLink(link.id, { setupStatus: "COMPLETE" as any, keyDeliveredAt: new Date() });
+
+    await storage.createAuditLog({
+      orgId: user.orgId,
+      actorId: user.id,
+      action: "key.marked_complete",
+      targetType: "provider_member_link",
+      targetId: link.id,
+    });
+
+    res.json({ message: "Marked as complete" });
+  });
+
+  app.post("/api/members/:id/revoke-key/:linkId", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
+
+      const link = await storage.getProviderMemberLink(req.params.linkId);
+      if (!link || link.membershipId !== req.params.id) return res.status(404).json({ message: "Not found" });
+
+      const membership = await storage.getMembership(link.membershipId);
+      if (!membership) return res.status(404).json({ message: "Not found" });
+
+      const team = await storage.getTeam(membership.teamId);
+      if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
+      if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
+
+      const conn = await storage.getProviderConnection(link.providerConnectionId);
+      if (conn && conn.provider === "OPENAI" && link.providerProjectId && link.providerSvcAcctId) {
+        try {
+          const adminKey = decryptProviderKey(conn.adminApiKeyEncrypted, conn.adminApiKeyIv, conn.adminApiKeyTag);
+          await fetch(`https://api.openai.com/v1/organization/projects/${link.providerProjectId}/service_accounts/${link.providerSvcAcctId}`, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${adminKey}` },
+          });
+        } catch (e: any) {
+          console.error("OpenAI revocation error:", e);
+        }
+      }
+
+      await storage.updateProviderMemberLink(link.id, { status: "REVOKED" as any, setupStatus: "PENDING" as any });
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "key.revoked",
+        targetType: "provider_member_link",
+        targetId: link.id,
+        metadata: { provider: conn?.provider },
+      });
+
+      res.json({ message: "Key revoked" });
+    } catch (e: any) {
+      console.error("Revoke error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/teams/:id", requireRole("ROOT_ADMIN"), async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const team = await storage.getTeam(req.params.id);
+      if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
+
+      const memberships = await storage.getMembershipsByTeam(team.id);
+      for (const m of memberships) {
+        await storage.updateMembership(m.id, { status: "SUSPENDED" });
+      }
+
+      const teamAdmin = await storage.getUser(team.adminId);
+      if (teamAdmin) {
+        await storage.updateUser(teamAdmin.id, { status: "SUSPENDED" as any });
+      }
+
+      await storage.deleteTeam(team.id);
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "team.removed",
+        targetType: "team",
+        targetId: team.id,
+        metadata: { teamName: team.name, adminId: team.adminId, suspendedMembers: memberships.length },
+      });
+
+      res.json({ message: "Team removed" });
+    } catch (e: any) {
+      console.error("Team delete error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/teams/:id/stats", requireAuth, async (req, res) => {
+    const user = await storage.getUser(req.session.userId!);
+    if (!user) return res.status(401).json({ message: "Unauthorized" });
+
+    const team = await storage.getTeam(req.params.id);
+    if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
+    if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
+    if (user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
+
+    const memberships = await storage.getMembershipsByTeam(team.id);
+    const admin = await storage.getUser(team.adminId);
+    const totalSpend = memberships.reduce((sum, m) => sum + m.currentPeriodSpendCents, 0);
+    const totalBudget = memberships.reduce((sum, m) => sum + m.monthlyBudgetCents, 0);
+
+    res.json({
+      memberCount: memberships.length,
+      adminName: admin?.name || admin?.email,
+      adminEmail: admin?.email,
+      totalSpendCents: totalSpend,
+      totalBudgetCents: totalBudget,
+    });
   });
 
   app.get("/api/vouchers", requireAuth, async (req, res) => {

@@ -5,6 +5,7 @@ import {
   type AuditLog, type InsertAuditLog, type ModelPricing,
   type VoucherBundle, type ProxyRequestLog, type UsageSnapshot,
   type AllotlyApiKey, type VoucherRedemption,
+  type ProviderMemberLink, type InsertProviderMemberLink,
   organizations, users, teams, teamMemberships, providerConnections,
   vouchers, voucherRedemptions, voucherBundles, auditLogs, modelPricing,
   allotlyApiKeys, usageSnapshots, proxyRequestLogs, budgetAlerts,
@@ -59,6 +60,19 @@ export interface IStorage {
   getVoucherBundle(id: string): Promise<VoucherBundle | undefined>;
   getVoucherBundlesByOrg(orgId: string): Promise<VoucherBundle[]>;
   updateVoucherBundle(id: string, data: Partial<VoucherBundle>): Promise<VoucherBundle | undefined>;
+
+  createProviderMemberLink(link: InsertProviderMemberLink): Promise<ProviderMemberLink>;
+  getProviderMemberLink(id: string): Promise<ProviderMemberLink | undefined>;
+  getProviderMemberLinksByMembership(membershipId: string): Promise<ProviderMemberLink[]>;
+  getProviderMemberLinksByConnection(connectionId: string): Promise<ProviderMemberLink[]>;
+  getProviderMemberLinkByMembershipAndConnection(membershipId: string, connectionId: string): Promise<ProviderMemberLink | undefined>;
+  updateProviderMemberLink(id: string, data: Partial<ProviderMemberLink>): Promise<ProviderMemberLink | undefined>;
+  deleteProviderMemberLink(id: string): Promise<void>;
+
+  getMemberCountByTeam(teamId: string): Promise<number>;
+  getMemberCountByOrg(orgId: string): Promise<number>;
+  deleteMembership(id: string): Promise<void>;
+  deleteUser(id: string): Promise<void>;
 
   createAllotlyApiKey(data: { userId: string; membershipId: string; keyHash: string; keyPrefix: string }): Promise<AllotlyApiKey>;
   getApiKeyByHash(hash: string): Promise<AllotlyApiKey | undefined>;
@@ -144,6 +158,11 @@ export class DrizzleStorage implements IStorage {
   }
 
   async deleteTeam(id: string): Promise<void> {
+    const memberships = await this.getMembershipsByTeam(id);
+    for (const m of memberships) {
+      await db.delete(providerMemberLinks).where(eq(providerMemberLinks.membershipId, m.id));
+    }
+    await db.delete(teamMemberships).where(eq(teamMemberships.teamId, id));
     await db.delete(teams).where(eq(teams.id, id));
   }
 
@@ -258,6 +277,63 @@ export class DrizzleStorage implements IStorage {
   async updateVoucherBundle(id: string, data: Partial<VoucherBundle>): Promise<VoucherBundle | undefined> {
     const [result] = await db.update(voucherBundles).set({ ...data, updatedAt: new Date() }).where(eq(voucherBundles.id, id)).returning();
     return result;
+  }
+
+  async createProviderMemberLink(link: InsertProviderMemberLink): Promise<ProviderMemberLink> {
+    const [result] = await db.insert(providerMemberLinks).values(link).returning();
+    return result;
+  }
+
+  async getProviderMemberLink(id: string): Promise<ProviderMemberLink | undefined> {
+    const [result] = await db.select().from(providerMemberLinks).where(eq(providerMemberLinks.id, id));
+    return result;
+  }
+
+  async getProviderMemberLinksByMembership(membershipId: string): Promise<ProviderMemberLink[]> {
+    return db.select().from(providerMemberLinks).where(eq(providerMemberLinks.membershipId, membershipId));
+  }
+
+  async getProviderMemberLinksByConnection(connectionId: string): Promise<ProviderMemberLink[]> {
+    return db.select().from(providerMemberLinks).where(eq(providerMemberLinks.providerConnectionId, connectionId));
+  }
+
+  async getProviderMemberLinkByMembershipAndConnection(membershipId: string, connectionId: string): Promise<ProviderMemberLink | undefined> {
+    const [result] = await db.select().from(providerMemberLinks).where(
+      and(eq(providerMemberLinks.membershipId, membershipId), eq(providerMemberLinks.providerConnectionId, connectionId))
+    );
+    return result;
+  }
+
+  async updateProviderMemberLink(id: string, data: Partial<ProviderMemberLink>): Promise<ProviderMemberLink | undefined> {
+    const [result] = await db.update(providerMemberLinks).set({ ...data, updatedAt: new Date() }).where(eq(providerMemberLinks.id, id)).returning();
+    return result;
+  }
+
+  async deleteProviderMemberLink(id: string): Promise<void> {
+    await db.delete(providerMemberLinks).where(eq(providerMemberLinks.id, id));
+  }
+
+  async getMemberCountByTeam(teamId: string): Promise<number> {
+    const [result] = await db.select({ count: count() }).from(teamMemberships).where(eq(teamMemberships.teamId, teamId));
+    return result?.count || 0;
+  }
+
+  async getMemberCountByOrg(orgId: string): Promise<number> {
+    const orgTeams = await this.getTeamsByOrg(orgId);
+    let total = 0;
+    for (const team of orgTeams) {
+      total += await this.getMemberCountByTeam(team.id);
+    }
+    return total;
+  }
+
+  async deleteMembership(id: string): Promise<void> {
+    await db.delete(providerMemberLinks).where(eq(providerMemberLinks.membershipId, id));
+    await db.delete(teamMemberships).where(eq(teamMemberships.id, id));
+  }
+
+  async deleteUser(id: string): Promise<void> {
+    await db.delete(users).where(eq(users.id, id));
   }
 
   async createAllotlyApiKey(data: { userId: string; membershipId: string; keyHash: string; keyPrefix: string }): Promise<AllotlyApiKey> {
