@@ -39,13 +39,12 @@ interface RedeemResult {
 }
 
 function formatCode(raw: string): string {
-  const clean = raw.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 16);
-  const prefix = clean.startsWith("ALLOT") ? clean : clean;
+  const clean = raw.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 17);
   const parts = [];
-  if (prefix.length > 0) parts.push(prefix.slice(0, 5));
-  if (prefix.length > 5) parts.push(prefix.slice(5, 9));
-  if (prefix.length > 9) parts.push(prefix.slice(9, 13));
-  if (prefix.length > 13) parts.push(prefix.slice(13, 17));
+  if (clean.length > 0) parts.push(clean.slice(0, 5));
+  if (clean.length > 5) parts.push(clean.slice(5, 9));
+  if (clean.length > 9) parts.push(clean.slice(9, 13));
+  if (clean.length > 13) parts.push(clean.slice(13, 17));
   return parts.join("-");
 }
 
