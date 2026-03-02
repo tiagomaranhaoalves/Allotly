@@ -1586,6 +1586,134 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/dashboard/member-overview", requireAuth, async (req, res) => {
+    const user = await storage.getUser(req.session.userId!);
+    if (!user) return res.status(401).json({ message: "Unauthorized" });
+    const data = await storage.getMemberDashboardData(user.id);
+    if (!data) return res.json({ membership: null });
+    res.json(data);
+  });
+
+  app.get("/api/dashboard/team-overview", requireAuth, async (req, res) => {
+    const user = await storage.getUser(req.session.userId!);
+    if (!user) return res.status(401).json({ message: "Unauthorized" });
+
+    if (user.orgRole !== "TEAM_ADMIN" && user.orgRole !== "ROOT_ADMIN") {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const team = user.orgRole === "TEAM_ADMIN"
+      ? await storage.getTeamByAdmin(user.id)
+      : (await storage.getTeamsByOrg(user.orgId))[0];
+    if (!team) return res.json({ members: [], stats: {} });
+
+    const members = await storage.getMemberDetailsForTeam(team.id);
+    const directMembers = members.filter((m: any) => m.accessMode === "DIRECT");
+    const proxyMembers = members.filter((m: any) => m.accessMode === "PROXY");
+    const stats = await storage.getTeamDashboardStats(team.id);
+
+    const teamVouchers = await storage.getVouchersByTeam(team.id);
+    let bundleCapacity = 0;
+    for (const v of teamVouchers) {
+      if (v.bundleId) {
+        const bundle = await storage.getVoucherBundle(v.bundleId);
+        if (bundle && bundle.status === "ACTIVE") {
+          bundleCapacity += (bundle.totalRedemptions - bundle.usedRedemptions);
+        }
+      }
+    }
+
+    res.json({
+      teamId: team.id,
+      teamName: team.name,
+      stats: { ...stats, bundleCapacityRemaining: bundleCapacity },
+      directMembers,
+      proxyMembers,
+    });
+  });
+
+  app.get("/api/dashboard/root-overview", requireAuth, async (req, res) => {
+    const user = await storage.getUser(req.session.userId!);
+    if (!user || user.orgRole !== "ROOT_ADMIN") return res.status(403).json({ message: "Forbidden" });
+
+    const stats = await storage.getDashboardStats(user.orgId);
+    const spendByTeam = await storage.getSpendByTeam(user.orgId);
+    const spendByProvider = await storage.getSpendByProvider(user.orgId);
+    const alerts = await storage.getRecentAlerts(user.orgId, 10);
+    const providers = await storage.getProviderConnectionsByOrg(user.orgId);
+
+    res.json({
+      ...stats,
+      spendByTeam,
+      spendByProvider,
+      recentAlerts: alerts,
+      providerHealth: providers.map(p => ({
+        provider: p.provider,
+        status: p.status,
+        lastValidatedAt: p.lastValidatedAt,
+      })),
+    });
+  });
+
+  app.get("/api/dashboard/spend-by-provider", requireAuth, async (req, res) => {
+    const user = await storage.getUser(req.session.userId!);
+    if (!user || user.orgRole !== "ROOT_ADMIN") return res.status(403).json({ message: "Forbidden" });
+    const data = await storage.getSpendByProvider(user.orgId);
+    res.json(data);
+  });
+
+  app.get("/api/dashboard/spend-by-team", requireAuth, async (req, res) => {
+    const user = await storage.getUser(req.session.userId!);
+    if (!user || user.orgRole !== "ROOT_ADMIN") return res.status(403).json({ message: "Forbidden" });
+    const data = await storage.getSpendByTeam(user.orgId);
+    res.json(data);
+  });
+
+  app.get("/api/dashboard/alerts", requireAuth, async (req, res) => {
+    const user = await storage.getUser(req.session.userId!);
+    if (!user || user.orgRole !== "ROOT_ADMIN") return res.status(403).json({ message: "Forbidden" });
+    const alerts = await storage.getRecentAlerts(user.orgId, 20);
+    res.json(alerts);
+  });
+
+  app.get("/api/dashboard/voucher-stats", requireAuth, async (req, res) => {
+    const user = await storage.getUser(req.session.userId!);
+    if (!user) return res.status(401).json({ message: "Unauthorized" });
+
+    let orgVouchers;
+    if (user.orgRole === "ROOT_ADMIN") {
+      orgVouchers = await storage.getVouchersByOrg(user.orgId);
+    } else if (user.orgRole === "TEAM_ADMIN") {
+      const team = await storage.getTeamByAdmin(user.id);
+      orgVouchers = team ? await storage.getVouchersByTeam(team.id) : [];
+    } else {
+      return res.json({ total: 0, active: 0, redeemed: 0, expired: 0 });
+    }
+
+    res.json({
+      total: orgVouchers.length,
+      active: orgVouchers.filter(v => v.status === "ACTIVE").length,
+      redeemed: orgVouchers.filter(v => v.status === "FULLY_REDEEMED").length,
+      expired: orgVouchers.filter(v => v.status === "EXPIRED").length,
+      totalRedemptions: orgVouchers.reduce((sum, v) => sum + v.currentRedemptions, 0),
+    });
+  });
+
+  app.get("/api/my-keys", requireAuth, async (req, res) => {
+    const user = await storage.getUser(req.session.userId!);
+    if (!user) return res.status(401).json({ message: "Unauthorized" });
+    const membership = await storage.getMembershipByUser(user.id);
+    if (!membership) return res.json([]);
+    const keys = await storage.getApiKeysByMembership(membership.id);
+    res.json(keys.map(k => ({
+      id: k.id,
+      keyPrefix: k.keyPrefix,
+      status: k.status,
+      lastUsedAt: k.lastUsedAt,
+      createdAt: k.createdAt,
+    })));
+  });
+
   app.get("/api/dashboard/usage/:membershipId", requireAuth, async (req, res) => {
     const user = await storage.getUser(req.session.userId!);
     if (!user) return res.status(401).json({ message: "Unauthorized" });

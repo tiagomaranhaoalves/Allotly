@@ -21,7 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Users, Plus, UserMinus, UserCheck, Key, CheckCircle2,
   Clock, AlertTriangle, Trash2, DollarSign, Pencil, Link2,
-  Copy, RotateCcw, Ban, BookOpen,
+  Copy, RotateCcw, Ban, BookOpen, Ticket,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -570,9 +570,18 @@ export default function MembersPage() {
       ) : members && members.length > 0 ? (
         <Tabs defaultValue="all">
           <TabsList data-testid="tabs-members">
-            <TabsTrigger value="all" data-testid="tab-all">All ({members.length})</TabsTrigger>
-            <TabsTrigger value="direct" data-testid="tab-direct">Direct ({directMembers.length})</TabsTrigger>
-            <TabsTrigger value="proxy" data-testid="tab-proxy">Voucher ({proxyMembers.length})</TabsTrigger>
+            <TabsTrigger value="all" data-testid="tab-all">
+              <Users className="w-3.5 h-3.5 mr-1.5" />
+              All ({members.length})
+            </TabsTrigger>
+            <TabsTrigger value="direct" data-testid="tab-direct">
+              <Key className="w-3.5 h-3.5 mr-1.5" />
+              Direct Members ({directMembers.length})
+            </TabsTrigger>
+            <TabsTrigger value="proxy" data-testid="tab-proxy">
+              <Ticket className="w-3.5 h-3.5 mr-1.5" />
+              Voucher Recipients ({proxyMembers.length})
+            </TabsTrigger>
           </TabsList>
           <TabsContent value="all" className="space-y-3 mt-4">
             {members.map(m => <MemberCard key={m.id} member={m} providers={providers || []} onRemove={(id) => removeMutation.mutate(id)} />)}

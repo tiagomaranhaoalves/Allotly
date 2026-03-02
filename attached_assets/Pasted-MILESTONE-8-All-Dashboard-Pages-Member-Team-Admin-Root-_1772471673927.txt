@@ -1,0 +1,72 @@
+MILESTONE 8: All Dashboard Pages (Member, Team Admin, Root Admin)
+
+Referring to the full Allotly spec, complete Steps 29-32 from the build order. Follow Section 11.5 exactly.
+
+BUILD THESE:
+
+1. MEMBER DASHBOARD — PROXY (voucher recipients) (Section 11.5)
+   - /dashboard overview for members with accessMode=PROXY:
+     - Large BudgetBar showing real-time Redis balance
+     - Models available with ProviderBadge
+     - Requests used count
+     - Voucher expiry countdown
+     - "Your API Key" section: masked key + base URL reminder (api.allotly.com/v1)
+     - Recent requests table: timestamp, model, tokens in/out, cost (from ProxyRequestLog)
+   - API route: GET /api/dashboard/member-overview
+
+2. MEMBER DASHBOARD — DIRECT (team members) (Section 11.5)
+   - /dashboard overview for members with accessMode=DIRECT:
+     - Large BudgetBar with current period spend vs budget
+     - Per-provider SpendCards
+     - Usage trend chart (Recharts line chart from UsageSnapshots)
+     - API Keys tab: per-provider KeyRevealCard (masked), setup status, regenerate button
+   - For semi-auto/guided providers: show remaining setup instructions
+
+3. TEAM ADMIN DASHBOARD (Section 11.5)
+   - /dashboard overview:
+     - StatsCards: team spend this period, direct member count, voucher recipient count, bundle capacity remaining
+     - Split view with FeatureBadge labels:
+       - "Team Members" table: name, email, budget, spend, BudgetBar, provider setup status
+       - "Voucher Recipients" table: name/email (or "Anonymous"), voucher code, budget, spend, requests used, expiry
+     - Spend chart with two series: direct vs proxy spend over time (Recharts)
+   - /dashboard/members page:
+     - Two tabs: "Direct Members" (Teams) and "Voucher Recipients" (Vouchers)
+     - Direct tab: full member management (add, edit, suspend, provision keys)
+     - Voucher tab: read-only list of redeemed voucher recipients with usage
+   - /dashboard/vouchers page: voucher management (already built in Milestone 7, connect it here)
+   - API route: GET /api/dashboard/team-overview
+
+4. ROOT ADMIN DASHBOARD (Section 11.5)
+   - /dashboard overview:
+     - StatsCards: total org spend, total members (direct + proxy), active vouchers, provider health (green/red per provider)
+     - Spend-by-team bar chart (Recharts)
+     - Spend-by-provider donut chart (Recharts, using provider colors)
+     - Recent alerts feed (budget warnings, key revocations)
+     - Quick actions: "Add Team Admin", "Connect Provider", "Create Voucher", "Buy Bundle"
+   - /dashboard/bundles page: list purchased bundles with BundleCard, "Buy Bundle" button
+   - API routes: GET /api/dashboard/root-overview, /api/dashboard/spend-by-provider, /api/dashboard/spend-by-team, /api/dashboard/spend-trend, /api/dashboard/alerts
+
+5. DASHBOARD DATA ROUTES
+   - All dashboard API routes must be scoped by role:
+     - Root Admin: sees all org data
+     - Team Admin: sees only own team data
+     - Member: sees only own data
+   - GET /api/dashboard/voucher-stats — voucher usage statistics
+
+6. DESIGN QUALITY
+   - Follow Section 2.4 design principles exactly:
+     - Stripe/Linear/Vercel quality dashboards
+     - Data-dense but uncluttered
+     - Status-forward: color-code budget utilization everywhere
+     - Provider-aware: show provider colors alongside provider data
+     - Feature-aware: FeatureBadge on everything that is Teams vs Vouchers
+   - Loading skeletons (not spinners) for all data-loading states
+   - Empty states with helpful CTAs when no data exists
+
+VERIFY BY:
+- Log in as a PROXY member, show real-time budget, recent requests, expiry countdown
+- Log in as a DIRECT member, show spend by provider, usage chart, API keys
+- Log in as Team Admin, show split view of direct vs proxy members, spend chart
+- Log in as Root Admin, show org overview with all teams, providers, alerts
+- Confirm role scoping: Team Admin cannot see other teams' data
+- Toggle dark mode on every dashboard page

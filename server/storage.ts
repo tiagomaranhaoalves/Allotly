@@ -101,6 +101,14 @@ export interface IStorage {
 
   getDashboardStats(orgId: string): Promise<any>;
   getTeamDashboardStats(teamId: string): Promise<any>;
+
+  getSpendByTeam(orgId: string): Promise<{ teamId: string; teamName: string; spendCents: number }[]>;
+  getSpendByProvider(orgId: string): Promise<{ provider: string; spendCents: number }[]>;
+  getMemberDetailsForTeam(teamId: string): Promise<any[]>;
+  getApiKeysByMembership(membershipId: string): Promise<AllotlyApiKey[]>;
+  getRecentAlerts(orgId: string, limit?: number): Promise<any[]>;
+  getMemberDashboardData(userId: string): Promise<any>;
+  getVoucherById(id: string): Promise<Voucher | undefined>;
 }
 
 export class DrizzleStorage implements IStorage {
@@ -464,6 +472,183 @@ export class DrizzleStorage implements IStorage {
     return db.select().from(providerMemberLinks).where(
       and(eq(providerMemberLinks.status, "ACTIVE"), eq(providerMemberLinks.setupStatus, "COMPLETE"))
     );
+  }
+
+  async getSpendByTeam(orgId: string): Promise<{ teamId: string; teamName: string; spendCents: number }[]> {
+    const orgTeams = await this.getTeamsByOrg(orgId);
+    const result: { teamId: string; teamName: string; spendCents: number }[] = [];
+    for (const team of orgTeams) {
+      const memberships = await this.getMembershipsByTeam(team.id);
+      const spendCents = memberships.reduce((sum, m) => sum + m.currentPeriodSpendCents, 0);
+      result.push({ teamId: team.id, teamName: team.name, spendCents });
+    }
+    return result;
+  }
+
+  async getSpendByProvider(orgId: string): Promise<{ provider: string; spendCents: number }[]> {
+    const orgTeams = await this.getTeamsByOrg(orgId);
+    const providerMap: Record<string, number> = {};
+    for (const team of orgTeams) {
+      const memberships = await this.getMembershipsByTeam(team.id);
+      for (const m of memberships) {
+        const logs = await db.select({
+          provider: proxyRequestLogs.provider,
+          total: sql<number>`COALESCE(SUM(${proxyRequestLogs.costCents}), 0)`,
+        }).from(proxyRequestLogs)
+          .where(eq(proxyRequestLogs.membershipId, m.id))
+          .groupBy(proxyRequestLogs.provider);
+        for (const log of logs) {
+          providerMap[log.provider] = (providerMap[log.provider] || 0) + Number(log.total);
+        }
+
+        const links = await this.getProviderMemberLinksByMembership(m.id);
+        for (const link of links) {
+          const conn = await this.getProviderConnection(link.providerConnectionId);
+          if (conn) {
+            const snapshots = await db.select({
+              total: sql<number>`COALESCE(SUM(${usageSnapshots.periodCostCents}), 0)`,
+            }).from(usageSnapshots)
+              .where(eq(usageSnapshots.providerMemberLinkId, link.id));
+            if (snapshots[0]) {
+              providerMap[conn.provider] = (providerMap[conn.provider] || 0) + Number(snapshots[0].total);
+            }
+          }
+        }
+      }
+    }
+    return Object.entries(providerMap).map(([provider, spendCents]) => ({ provider, spendCents }));
+  }
+
+  async getMemberDetailsForTeam(teamId: string): Promise<any[]> {
+    const memberships = await this.getMembershipsByTeam(teamId);
+    const result: any[] = [];
+    for (const m of memberships) {
+      const user = await this.getUser(m.userId);
+      const keys = await db.select().from(allotlyApiKeys).where(eq(allotlyApiKeys.membershipId, m.id));
+      const proxyLogCount = await db.select({ count: count() }).from(proxyRequestLogs).where(eq(proxyRequestLogs.membershipId, m.id));
+      const providerLinks = await this.getProviderMemberLinksByMembership(m.id);
+
+      let voucherCode: string | null = null;
+      if (m.voucherRedemptionId) {
+        const voucher = await this.getVoucher(m.voucherRedemptionId);
+        voucherCode = voucher?.code || null;
+      }
+
+      result.push({
+        ...m,
+        userName: user?.name || user?.email?.split("@")[0] || "Unknown",
+        userEmail: user?.email || "",
+        isVoucherUser: user?.isVoucherUser || false,
+        voucherCode,
+        keyPrefix: keys.find(k => k.status === "ACTIVE")?.keyPrefix || null,
+        proxyRequestCount: Number(proxyLogCount[0]?.count || 0),
+        providerLinks: providerLinks.map(l => ({
+          id: l.id,
+          provider: l.providerConnectionId,
+          setupStatus: l.setupStatus,
+          status: l.status,
+        })),
+      });
+    }
+    return result;
+  }
+
+  async getApiKeysByMembership(membershipId: string): Promise<AllotlyApiKey[]> {
+    return db.select().from(allotlyApiKeys).where(eq(allotlyApiKeys.membershipId, membershipId));
+  }
+
+  async getRecentAlerts(orgId: string, limit = 20): Promise<any[]> {
+    const orgTeams = await this.getTeamsByOrg(orgId);
+    const allAlerts: any[] = [];
+    for (const team of orgTeams) {
+      const memberships = await this.getMembershipsByTeam(team.id);
+      for (const m of memberships) {
+        const alerts = await db.select().from(budgetAlerts)
+          .where(eq(budgetAlerts.membershipId, m.id))
+          .orderBy(desc(budgetAlerts.triggeredAt))
+          .limit(5);
+        const user = await this.getUser(m.userId);
+        for (const alert of alerts) {
+          allAlerts.push({
+            ...alert,
+            userName: user?.name || user?.email || "Unknown",
+            userEmail: user?.email || "",
+            teamName: team.name,
+            accessMode: m.accessMode,
+          });
+        }
+      }
+    }
+    allAlerts.sort((a, b) => new Date(b.triggeredAt).getTime() - new Date(a.triggeredAt).getTime());
+    return allAlerts.slice(0, limit);
+  }
+
+  async getMemberDashboardData(userId: string): Promise<any> {
+    const membership = await this.getMembershipByUser(userId);
+    if (!membership) return null;
+
+    const user = await this.getUser(userId);
+    const keys = await this.getApiKeysByMembership(membership.id);
+    const activeKey = keys.find(k => k.status === "ACTIVE");
+    const proxyLogs = await this.getProxyRequestLogsByMembership(membership.id, 50);
+    const usageSnapshots = await this.getUsageSnapshotsByMembership(membership.id, 100);
+    const providerLinks = await this.getProviderMemberLinksByMembership(membership.id);
+    const models = await this.getModelPricing();
+
+    let voucherInfo: any = null;
+    if (membership.voucherRedemptionId) {
+      const voucher = await this.getVoucher(membership.voucherRedemptionId);
+      if (voucher) {
+        voucherInfo = {
+          code: voucher.code,
+          expiresAt: voucher.expiresAt,
+          budgetCents: voucher.budgetCents,
+          allowedProviders: voucher.allowedProviders,
+          allowedModels: voucher.allowedModels,
+        };
+      }
+    }
+
+    const allowedProviders = (membership.allowedProviders as string[]) || [];
+    const allowedModelIds = (membership.allowedModels as string[]) || [];
+    const availableModels = models.filter(m => {
+      if (allowedModelIds.length > 0) return allowedModelIds.includes(m.modelId);
+      return allowedProviders.includes(m.provider);
+    });
+
+    const team = await this.getTeam(membership.teamId);
+
+    const providerLinksWithInfo = [];
+    for (const link of providerLinks) {
+      const conn = await this.getProviderConnection(link.providerConnectionId);
+      providerLinksWithInfo.push({
+        ...link,
+        provider: conn?.provider || "UNKNOWN",
+        providerDisplayName: conn?.displayName || conn?.provider || "Unknown",
+      });
+    }
+
+    return {
+      membership,
+      accessMode: membership.accessMode,
+      budgetCents: membership.monthlyBudgetCents,
+      spendCents: membership.currentPeriodSpendCents,
+      periodStart: membership.periodStart,
+      periodEnd: membership.periodEnd,
+      status: membership.status,
+      teamName: team?.name || "Unknown",
+      keyPrefix: activeKey?.keyPrefix || null,
+      proxyLogs,
+      usageSnapshots,
+      providerLinks: providerLinksWithInfo,
+      availableModels,
+      voucherInfo,
+      proxyRequestCount: proxyLogs.length,
+    };
+  }
+
+  async getVoucherById(id: string): Promise<Voucher | undefined> {
+    return this.getVoucher(id);
   }
 }
 

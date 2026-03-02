@@ -81,7 +81,8 @@ ROOT_ADMIN > TEAM_ADMIN > MEMBER — enforced on every API route
 - Bundles: GET /api/bundles
 - Stripe: GET /api/stripe/publishable-key, POST /api/stripe/create-checkout, POST /api/stripe/portal, POST /api/stripe/handle-success
 - Stripe Webhook: POST /api/stripe/webhook (registered BEFORE express.json())
-- Dashboard: GET /api/dashboard/overview, /usage/:id, /proxy-logs/:id
+- Dashboard: GET /api/dashboard/overview, /member-overview, /team-overview, /root-overview, /spend-by-provider, /spend-by-team, /alerts, /voucher-stats, /usage/:id, /proxy-logs/:id
+- Member Keys: GET /api/my-keys
 - Models: GET /api/models (public)
 - Audit: GET /api/audit-log (Root Admin)
 - Settings: GET/PATCH /api/org/settings
@@ -169,3 +170,4 @@ Updated:
 - Milestone 5 (Usage Polling, Budget Alerts, Enforcement): COMPLETE — Usage polling job with plan-based intervals, budget alert thresholds (80/90/100%), automatic key revocation at 100%, budget reset job with period rotation and member reactivation, background job scheduler, cron API routes with secret auth, 110% safety net budget on OpenAI provisioning
 - Milestone 6 (Redis, Proxy, Streaming, Translation): COMPLETE — Redis client with in-memory fallback, full 12-step proxy lifecycle, OpenAI/Anthropic/Google request translation, SSE streaming, budget reservation/refund, token clamping, concurrency self-healing every 30s
 - Milestone 7 (Voucher Lifecycle Completion): COMPLETE — Redis budget init on redemption, voucherRedemptionId on membership, voucher code uniqueness, bundle capacity validation, voucher/bundle expiry jobs with key revocation cascade, Redis-Postgres reconciliation job, 3 new cron routes
+- Milestone 8 (Dashboard Pages): COMPLETE — Root Admin overview with Recharts (bar+pie charts, alerts, quick actions, provider health), Team Admin overview with split direct/proxy view + AreaChart + bundle capacity stat, Member PROXY dashboard (budget, API key, models, expiry countdown, proxy request logs), Member DIRECT dashboard (budget, provider SpendCards, usage LineChart, provider setup status), enhanced Members page tabs with icons, new storage methods (getSpendByTeam, getSpendByProvider with direct+proxy, getMemberDetailsForTeam, getMemberDashboardData), 8 new API routes
