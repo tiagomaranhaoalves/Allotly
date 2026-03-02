@@ -495,14 +495,14 @@ function HowItWorks() {
                 className={`px-6 py-2.5 rounded-lg text-sm font-semibold transition-all ${activeTab === "team" ? "bg-indigo-500 text-white shadow-sm" : "border border-border text-muted-foreground"}`}
                 data-testid="tab-team"
               >
-                For Your Team
+                Allotly Teams
               </button>
               <button
                 onClick={() => setActiveTab("voucher")}
                 className={`px-6 py-2.5 rounded-lg text-sm font-semibold transition-all ${activeTab === "voucher" ? "bg-indigo-500 text-white shadow-sm" : "border border-border text-muted-foreground"}`}
                 data-testid="tab-voucher"
               >
-                For External Users
+                Allotly Vouchers
               </button>
             </div>
           </div>
