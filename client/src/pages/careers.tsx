@@ -70,8 +70,7 @@ export default function Careers() {
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-2xl font-semibold text-foreground mb-6">Open Positions</h2>
           <p className="text-muted-foreground leading-relaxed mb-6">
-            We're a small team and not actively hiring right now, but we're always interested in
-            hearing from exceptional people. If you're passionate about developer tools,
+            If you're passionate about developer tools,
             infrastructure, or the future of AI access, we'd love to hear from you.
           </p>
           <a
