@@ -60,5 +60,15 @@ All money values are handled in integer cents to avoid floating-point inaccuraci
   - Confirmation Dialogs: AlertDialog on all destructive actions (member remove, member suspend, team delete, provider disconnect)
   - Dark Mode Pass: Fixed Recharts tooltip contentStyle to use hsl(var(--popover)), PieChart labels with explicit fill, all pages audited for hardcoded colors
   - Empty States & Skeletons: All dashboard pages verified for loading skeletons and empty state CTAs
-  - Unit Tests: vitest.config.ts + 5 test files (88 tests): encryption roundtrip, budget thresholds, voucher code format/charset, key generation/hashing, permission matrix (3 roles × 19 actions)
+  - Unit Tests: vitest.config.ts + 8 test files (155 tests passing):
+    - encryption.test.ts: roundtrip, uniqueness, wrong tag, empty/long keys
+    - budget.test.ts: thresholds at 80/90/100, integer cents, zero budget, sequential triggers
+    - voucher-code.test.ts: ALLOT-XXXX-XXXX-XXXX format, charset (no 0/O/1/I/L), uniqueness
+    - permissions.test.ts: 3 roles × 19 actions permission matrix
+    - key-generation.test.ts: allotly_sk_ prefix, SHA-256 hash, prefix truncation, consistency
+    - token-clamping.test.ts: clamp at low budget, minimum 50 tokens, GPT-4o/Claude/Gemini pricing, cost calculations
+    - request-translation.test.ts: OpenAI→Anthropic (system extraction, role mapping), OpenAI→Google (parts format, systemInstruction), response translation, detectProvider, setProviderAuth
+    - redis-budget.test.ts: budget reservation/refund/adjustment, reconciliation drift detection/restore, concurrency tracking, rate limiting, bundle request pool, REDIS_KEYS format
+  - Security Audit: Provider keys never in responses, audit log append-only (no PUT/PATCH/DELETE), all money integer cents, Helmet configured, rate limiters on login/redeem/key-revoke, Zod on all body-accepting routes
+  - E2E Tests (Playwright): Root Admin signup+dashboard navigation, voucher create+redeem+key generation, dark mode toggle+empty states, rate limiting 429 verification — ALL PASSING
   - Files: server/lib/rate-limiter.ts, server/index.ts, server/routes.ts, client/src/components/error-boundary.tsx, client/src/App.tsx, vitest.config.ts, tests/*.test.ts
