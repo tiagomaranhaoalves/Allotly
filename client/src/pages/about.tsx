@@ -105,15 +105,6 @@ export default function About() {
         </div>
       </section>
 
-      <section className="bg-muted/40 dark:bg-muted/20 py-16">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-2xl font-semibold text-foreground mb-4">The Team</h2>
-          <p className="text-muted-foreground leading-relaxed">
-            Allotly is a venture by <a href="https://divbz.vc/" target="_blank" rel="noopener noreferrer" className="text-indigo-500 hover:text-indigo-400 underline">DivBZ</a>. We're early-stage, shipping fast, and building the AI spend control plane we wished existed. If you're interested in what we're working on, see our <a href="/careers" className="text-indigo-500 hover:text-indigo-400 underline">open roles</a>.
-          </p>
-        </div>
-      </section>
-
       <section className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-20 text-center">
         <h2 className="text-2xl font-semibold text-foreground mb-4">
           Ready to take control of your AI spend?
