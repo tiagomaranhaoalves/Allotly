@@ -136,7 +136,7 @@ export default function SignupPage() {
                 {loading ? "Creating account..." : <>Create account <ArrowRight className="w-4 h-4" /></>}
               </Button>
               <p className="text-xs text-muted-foreground text-center">
-                By signing up, you agree to our Terms of Service and Privacy Policy.
+                By signing up, you agree to our <a href="/terms" className="text-primary hover:underline" data-testid="link-terms">Terms of Service</a> and <a href="/privacy" className="text-primary hover:underline" data-testid="link-privacy">Privacy Policy</a>.
               </p>
             </form>
           </Card>
