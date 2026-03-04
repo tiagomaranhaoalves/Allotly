@@ -121,6 +121,16 @@ export default function About() {
           </Button>
         </Link>
       </section>
+
+      <section className="border-t border-border py-10">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Allotly is a venture by <a href="https://divbz.co.uk/" target="_blank" rel="noopener noreferrer" className="text-indigo-500 hover:text-indigo-400 underline">DivBZ Ventures Ltd</a>.<br />
+            Registered in England &amp; Wales. Company No. 13691920<br />
+            Registered Office: 71-75 Shelton Street, Covent Garden, London, United Kingdom, WC2H 9JQ
+          </p>
+        </div>
+      </section>
     </PublicLayout>
   );
 }
