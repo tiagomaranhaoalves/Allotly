@@ -6,7 +6,7 @@ export const openaiAdapter: ProviderAdapter = {
 
   async validateAdminKey(apiKey: string): Promise<ValidationResult> {
     try {
-      const res = await fetch("https://api.openai.com/v1/organization/projects?limit=1", {
+      const res = await fetch("https://api.openai.com/v1/models?limit=1", {
         headers: { Authorization: `Bearer ${apiKey}` },
       });
 
@@ -15,7 +15,7 @@ export const openaiAdapter: ProviderAdapter = {
       }
 
       if (res.status === 403) {
-        return { valid: false, error: "API key lacks required permissions" };
+        return { valid: false, error: "API key lacks required permissions. Ensure the key has access to the Models API." };
       }
 
       if (!res.ok) {
