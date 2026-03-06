@@ -1,24 +1,65 @@
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const FROM_EMAIL = process.env.FROM_EMAIL || "Allotly <noreply@allotly.com>";
+import { Resend } from "resend";
+
+const DEFAULT_FROM_EMAIL = "Allotly <onboarding@resend.dev>";
+
+let connectionSettings: any;
+
+async function getResendCredentials(): Promise<{ apiKey: string; fromEmail: string } | null> {
+  try {
+    const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
+    const xReplitToken = process.env.REPL_IDENTITY
+      ? "repl " + process.env.REPL_IDENTITY
+      : process.env.WEB_REPL_RENEWAL
+      ? "depl " + process.env.WEB_REPL_RENEWAL
+      : null;
+
+    if (!hostname || !xReplitToken) {
+      return null;
+    }
+
+    connectionSettings = await fetch(
+      "https://" + hostname + "/api/v2/connection?include_secrets=true&connector_names=resend",
+      {
+        headers: {
+          "Accept": "application/json",
+          "X-Replit-Token": xReplitToken,
+        },
+      }
+    ).then((res) => res.json()).then((data) => data.items?.[0]);
+
+    if (!connectionSettings || !connectionSettings.settings.api_key) {
+      return null;
+    }
+
+    return {
+      apiKey: connectionSettings.settings.api_key,
+      fromEmail: connectionSettings.settings.from_email || DEFAULT_FROM_EMAIL,
+    };
+  } catch {
+    return null;
+  }
+}
 
 async function sendEmail(to: string, subject: string, html: string): Promise<void> {
-  if (!RESEND_API_KEY) {
-    console.log(`[email] (no RESEND_API_KEY) To: ${to} | Subject: ${subject}`);
+  const credentials = await getResendCredentials();
+
+  if (!credentials) {
+    console.log(`[email] (Resend not connected) To: ${to} | Subject: ${subject}`);
     return;
   }
 
   try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ from: FROM_EMAIL, to, subject, html }),
+    const resend = new Resend(credentials.apiKey);
+    const { error } = await resend.emails.send({
+      from: credentials.fromEmail,
+      to,
+      subject,
+      html,
     });
-    if (!res.ok) {
-      const err = await res.text();
-      console.error(`[email] Failed to send to ${to}: ${err}`);
+    if (error) {
+      console.error(`[email] Failed to send to ${to}: ${JSON.stringify(error)}`);
+    } else {
+      console.log(`[email] Sent to ${to}: ${subject}`);
     }
   } catch (e: any) {
     console.error(`[email] Error sending to ${to}: ${e.message}`);
