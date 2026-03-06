@@ -55,6 +55,18 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     ],
   },
   {
+    id: "where-to-use",
+    label: "WHERE TO USE YOUR KEY",
+    icon: Plug,
+    items: [
+      { id: "code-editors", title: "Code Editors & IDEs" },
+      { id: "ai-frameworks", title: "AI Frameworks" },
+      { id: "custom-apps", title: "Custom Applications" },
+      { id: "no-code-platforms", title: "No-Code Platforms" },
+      { id: "workshops-education", title: "Workshops & Education" },
+    ],
+  },
+  {
     id: "budget-enforcement",
     label: "BUDGET ENFORCEMENT",
     icon: BarChart3,
@@ -669,6 +681,108 @@ Authentication:
             <code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">gpt-4o</code> routes to OpenAI,
             <code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">claude-sonnet-4-20250514</code> routes to Anthropic, and
             <code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">gemini-2.5-flash</code> routes to Google.
+          </p>
+
+          <SectionHeading id="code-editors" title="Where to Use Your Key" />
+          <p className="text-muted-foreground leading-relaxed mb-4">
+            Your Allotly API key works anywhere that accepts a custom OpenAI-compatible endpoint. Here are the most common environments:
+          </p>
+
+          <SubHeading id="code-editors" title="Code Editors & IDEs" />
+          <p className="text-muted-foreground leading-relaxed mb-4">
+            AI-powered code editors are the most popular use case. Configure your editor to use Allotly instead of calling OpenAI directly:
+          </p>
+          <div className="space-y-3 my-4">
+            <div className="flex items-start gap-3 p-3 rounded-md bg-muted/50 text-sm">
+              <Terminal className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+              <div>
+                <strong className="block mb-0.5">Cursor</strong>
+                <span className="text-muted-foreground">Settings &rarr; Models &rarr; OpenAI API Key &rarr; paste your <code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">allotly_sk_...</code> key. Set the API base URL to your Allotly proxy URL.</span>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 p-3 rounded-md bg-muted/50 text-sm">
+              <Terminal className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+              <div>
+                <strong className="block mb-0.5">VS Code (Continue / Copilot alternatives)</strong>
+                <span className="text-muted-foreground">Install the Continue extension, then set <code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">apiBase</code> and <code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">apiKey</code> in your Continue config to point to Allotly.</span>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 p-3 rounded-md bg-muted/50 text-sm">
+              <Terminal className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+              <div>
+                <strong className="block mb-0.5">Windsurf / JetBrains AI</strong>
+                <span className="text-muted-foreground">Any editor that supports custom OpenAI-compatible endpoints can be pointed at Allotly. Look for "API Base URL" or "Custom Endpoint" in the AI settings.</span>
+              </div>
+            </div>
+          </div>
+
+          <SubHeading id="ai-frameworks" title="AI Frameworks & Libraries" />
+          <p className="text-muted-foreground leading-relaxed mb-4">
+            Allotly works as a drop-in replacement with popular AI development frameworks:
+          </p>
+          <CodeBlock>{`# LangChain
+from langchain_openai import ChatOpenAI
+llm = ChatOpenAI(
+    model="gpt-4o",
+    openai_api_key="allotly_sk_...",
+    openai_api_base="https://your-app.replit.app/api/v1"
+)
+
+# LlamaIndex
+from llama_index.llms.openai import OpenAI
+llm = OpenAI(
+    model="gpt-4o",
+    api_key="allotly_sk_...",
+    api_base="https://your-app.replit.app/api/v1"
+)
+
+# CrewAI / AutoGen / any OpenAI-compatible framework
+# Set OPENAI_API_KEY and OPENAI_API_BASE environment variables:
+export OPENAI_API_KEY="allotly_sk_..."
+export OPENAI_API_BASE="https://your-app.replit.app/api/v1"`}</CodeBlock>
+
+          <SubHeading id="custom-apps" title="Custom Applications" />
+          <p className="text-muted-foreground leading-relaxed mb-4">
+            Build AI-powered applications in any language. Use the standard OpenAI SDK and just swap the base URL:
+          </p>
+          <div className="space-y-3 my-4">
+            <div className="flex items-start gap-3 p-3 rounded-md bg-muted/50 text-sm">
+              <Code className="w-4 h-4 text-cyan-500 shrink-0 mt-0.5" />
+              <div>
+                <strong className="block mb-0.5">Python, JavaScript/TypeScript, Go, Ruby, Java</strong>
+                <span className="text-muted-foreground">All official OpenAI SDKs support a <code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">base_url</code> parameter. Set it to your Allotly proxy URL and use your Allotly key as the API key.</span>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 p-3 rounded-md bg-muted/50 text-sm">
+              <Code className="w-4 h-4 text-cyan-500 shrink-0 mt-0.5" />
+              <div>
+                <strong className="block mb-0.5">Raw HTTP / cURL</strong>
+                <span className="text-muted-foreground">Make direct HTTP requests to <code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">POST /api/v1/chat/completions</code> with your Allotly key in the Authorization header. No SDK required.</span>
+              </div>
+            </div>
+          </div>
+
+          <SubHeading id="no-code-platforms" title="No-Code / Low-Code Platforms" />
+          <p className="text-muted-foreground leading-relaxed mb-4">
+            Many no-code platforms support custom AI endpoints. Paste your Allotly base URL and API key into:
+          </p>
+          <ul className="space-y-2 text-sm text-muted-foreground mb-4">
+            <li className="flex gap-2"><Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" /><span><strong>Zapier / Make / n8n:</strong> Use the OpenAI integration and override the API base URL with your Allotly endpoint.</span></li>
+            <li className="flex gap-2"><Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" /><span><strong>Retool / Appsmith:</strong> Configure a custom REST API resource pointing to your Allotly proxy.</span></li>
+            <li className="flex gap-2"><Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" /><span><strong>Jupyter / Google Colab:</strong> Install the OpenAI Python SDK and set the <code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">base_url</code> in your notebook.</span></li>
+          </ul>
+
+          <SubHeading id="workshops-education" title="Workshops & Education" />
+          <p className="text-muted-foreground leading-relaxed mb-4">
+            Vouchers are ideal for educational settings. Distribute budget-controlled AI access to students or workshop attendees:
+          </p>
+          <ul className="space-y-2 text-sm text-muted-foreground mb-4">
+            <li className="flex gap-2"><Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" /><span><strong>Classroom labs:</strong> Create a batch of vouchers with per-student budgets. Students redeem and get their own keys to use in any environment they prefer.</span></li>
+            <li className="flex gap-2"><Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" /><span><strong>Hackathons:</strong> Issue time-limited vouchers that expire when the event ends. Monitor spend in real time from the admin dashboard.</span></li>
+            <li className="flex gap-2"><Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" /><span><strong>Training sessions:</strong> Give each participant a voucher with access to specific models. Keys work in notebooks, scripts, or any tool they bring.</span></li>
+          </ul>
+          <p className="text-sm text-muted-foreground mb-4">
+            The key advantage: students and participants use their preferred development environment. You maintain full spending control from the Allotly dashboard.
           </p>
 
           <SectionHeading id="teams-budgets" title="How Teams Budgets Work" />

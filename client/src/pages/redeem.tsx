@@ -14,7 +14,7 @@ import { useState, useEffect, useRef } from "react";
 import { apiRequest } from "@/lib/queryClient";
 import {
   Ticket, ArrowRight, Check, AlertTriangle, Copy, Clock, Shield,
-  Zap, Code, Terminal, ExternalLink,
+  Zap, Code, Terminal, ExternalLink, Monitor, Wrench, GraduationCap, Blocks,
 } from "lucide-react";
 
 type RedeemState = "input" | "preview" | "choose" | "redeeming" | "success";
@@ -414,6 +414,48 @@ print(response.choices[0].message.content)`}
                   </pre>
                 </TabsContent>
               </Tabs>
+            </Card>
+
+            <Card className="p-5 space-y-3">
+              <h3 className="font-semibold">Where to Use Your Key</h3>
+              <p className="text-xs text-muted-foreground">
+                Your Allotly key works anywhere that accepts a custom OpenAI-compatible endpoint. Just set the base URL and API key.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="p-3 rounded-lg bg-muted/50 space-y-1" data-testid="use-case-editors">
+                  <div className="flex items-center gap-1.5">
+                    <Monitor className="w-3.5 h-3.5 text-indigo-500" />
+                    <span className="text-xs font-medium">Code Editors</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-tight">Cursor, VS Code + Continue, Windsurf, JetBrains</p>
+                </div>
+                <div className="p-3 rounded-lg bg-muted/50 space-y-1" data-testid="use-case-frameworks">
+                  <div className="flex items-center gap-1.5">
+                    <Blocks className="w-3.5 h-3.5 text-cyan-500" />
+                    <span className="text-xs font-medium">AI Frameworks</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-tight">LangChain, LlamaIndex, CrewAI, AutoGen</p>
+                </div>
+                <div className="p-3 rounded-lg bg-muted/50 space-y-1" data-testid="use-case-apps">
+                  <div className="flex items-center gap-1.5">
+                    <Code className="w-3.5 h-3.5 text-emerald-500" />
+                    <span className="text-xs font-medium">Custom Apps</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-tight">Python, JS, Go, Ruby — any OpenAI SDK</p>
+                </div>
+                <div className="p-3 rounded-lg bg-muted/50 space-y-1" data-testid="use-case-nocode">
+                  <div className="flex items-center gap-1.5">
+                    <Wrench className="w-3.5 h-3.5 text-amber-500" />
+                    <span className="text-xs font-medium">No-Code / Notebooks</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-tight">Zapier, Make, Retool, Jupyter, Colab</p>
+                </div>
+              </div>
+              <Link href="/docs#code-editors">
+                <Button variant="outline" size="sm" className="w-full text-xs" data-testid="button-see-setup-guides">
+                  See setup guides <ExternalLink className="w-3 h-3 ml-1" />
+                </Button>
+              </Link>
             </Card>
 
             <Card className="p-5 space-y-3">
