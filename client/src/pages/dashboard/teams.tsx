@@ -110,7 +110,7 @@ function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string) => voi
                   <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
                   <AlertDialogAction
                     onClick={() => { onDelete(team.id); setConfirmOpen(false); }}
-                    className="bg-red-600 text-white hover:bg-red-700"
+                    className="bg-destructive text-destructive-foreground"
                     data-testid="button-confirm-delete"
                   >
                     Remove Team

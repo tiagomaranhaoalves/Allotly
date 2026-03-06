@@ -116,17 +116,38 @@ function ProviderLinkRow({
           </Button>
         )}
         {link.setupStatus === "COMPLETE" && link.status !== "REVOKED" && (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 px-2 text-xs text-destructive hover:text-destructive"
-            onClick={() => revokeMutation.mutate()}
-            disabled={revokeMutation.isPending}
-            data-testid={`button-revoke-${link.id}`}
-          >
-            <Ban className="w-3.5 h-3.5 mr-1" />
-            Revoke
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                disabled={revokeMutation.isPending}
+                data-testid={`button-revoke-${link.id}`}
+              >
+                <Ban className="w-3.5 h-3.5 mr-1" />
+                Revoke
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Revoke API Key?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will permanently revoke the API key for this provider. The member will no longer be able to make API calls with this key. This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel data-testid="button-cancel-revoke-key">Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => revokeMutation.mutate()}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  data-testid="button-confirm-revoke-key"
+                >
+                  Revoke Key
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         )}
         {link.status === "REVOKED" && (
           <Badge variant="secondary" className="bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 text-[10px]">
@@ -292,7 +313,7 @@ function MemberCard({ member, providers, onRemove }: { member: any; providers: a
                               <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                               <span className="font-medium text-sm text-emerald-700 dark:text-emerald-300">Key Provisioned</span>
                             </div>
-                            <div className="bg-white dark:bg-gray-900 rounded-md p-3 font-mono text-xs break-all border" data-testid="provisioned-key-value">
+                            <div className="bg-background rounded-md p-3 font-mono text-xs break-all border" data-testid="provisioned-key-value">
                               {provisionedKey}
                             </div>
                             <Button
@@ -449,7 +470,7 @@ function MemberCard({ member, providers, onRemove }: { member: any; providers: a
                       <AlertDialogCancel data-testid="button-cancel-suspend">Cancel</AlertDialogCancel>
                       <AlertDialogAction
                         onClick={() => suspendMutation.mutate()}
-                        className="bg-red-600 text-white hover:bg-red-700"
+                        className="bg-destructive text-destructive-foreground"
                         data-testid="button-confirm-suspend"
                       >
                         Suspend Member
@@ -490,7 +511,7 @@ function MemberCard({ member, providers, onRemove }: { member: any; providers: a
                   <AlertDialogCancel data-testid="button-cancel-remove">Cancel</AlertDialogCancel>
                   <AlertDialogAction
                     onClick={() => { onRemove(member.id); setConfirmRemoveOpen(false); }}
-                    className="bg-red-600 text-white hover:bg-red-700"
+                    className="bg-destructive text-destructive-foreground"
                     data-testid="button-confirm-remove"
                   >
                     Remove Member

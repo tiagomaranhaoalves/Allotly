@@ -9,11 +9,15 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Ticket, Plus, Copy, Check, Info, AlertTriangle } from "lucide-react";
+import { Ticket, Plus, Copy, Check, Info, AlertTriangle, Link2, Mail, Send, Ban } from "lucide-react";
 import { useState } from "react";
 
 export default function VouchersPage() {
@@ -70,11 +74,56 @@ export default function VouchersPage() {
   };
 
   const [copied, setCopied] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [emailTo, setEmailTo] = useState("");
+  const [showEmailForm, setShowEmailForm] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
+
   const copyCode = () => {
     navigator.clipboard.writeText(createdCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const redeemLink = createdCode ? `${window.location.origin}/redeem?code=${createdCode}` : "";
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(redeemLink);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
+  };
+
+  const sendVoucherEmail = async () => {
+    if (!emailTo || !createdCode) return;
+    setSendingEmail(true);
+    try {
+      await apiRequest("POST", "/api/vouchers/send-email", {
+        email: emailTo,
+        code: createdCode,
+      });
+      toast({ title: "Invite sent", description: `Voucher link sent to ${emailTo}` });
+      setEmailTo("");
+      setShowEmailForm(false);
+    } catch (err: any) {
+      toast({ title: "Failed to send", description: err.message, variant: "destructive" });
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
+  const revokeMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("PATCH", `/api/vouchers/${id}/revoke`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vouchers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/voucher-limits"] });
+      toast({ title: "Voucher revoked" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to revoke voucher", description: err.message, variant: "destructive" });
+    },
+  });
 
   const resetForm = () => {
     setLabel("");
@@ -135,14 +184,41 @@ export default function VouchersPage() {
                     {createdCode}
                   </code>
                 </div>
-                <Button className="w-full" onClick={copyCode} data-testid="button-copy-created-code">
-                  {copied ? <Check className="w-4 h-4 mr-1.5" /> : <Copy className="w-4 h-4 mr-1.5" />}
-                  {copied ? "Copied!" : "Copy Code"}
-                </Button>
-                <div className="p-3 rounded-lg bg-muted/50">
-                  <p className="text-xs text-muted-foreground mb-1">Redemption Link</p>
-                  <code className="text-xs font-mono break-all">{window.location.origin}/redeem?code={createdCode}</code>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button variant="outline" onClick={copyCode} data-testid="button-copy-created-code">
+                    {copied ? <Check className="w-4 h-4 mr-1.5" /> : <Copy className="w-4 h-4 mr-1.5" />}
+                    {copied ? "Copied!" : "Copy Code"}
+                  </Button>
+                  <Button variant="outline" onClick={copyLink} data-testid="button-copy-redeem-link">
+                    {copiedLink ? <Check className="w-4 h-4 mr-1.5" /> : <Link2 className="w-4 h-4 mr-1.5" />}
+                    {copiedLink ? "Copied!" : "Copy Link"}
+                  </Button>
                 </div>
+
+                {showEmailForm ? (
+                  <div className="space-y-2 p-3 rounded-lg border bg-muted/30">
+                    <Label className="text-xs">Recipient email</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="email"
+                        placeholder="recipient@company.com"
+                        value={emailTo}
+                        onChange={e => setEmailTo(e.target.value)}
+                        className="h-9 text-sm"
+                        data-testid="input-voucher-email"
+                      />
+                      <Button size="sm" className="h-9 shrink-0" onClick={sendVoucherEmail} disabled={!emailTo || sendingEmail} data-testid="button-send-voucher-email">
+                        {sendingEmail ? "Sending..." : <><Send className="w-3.5 h-3.5 mr-1" /> Send</>}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button variant="outline" className="w-full" onClick={() => setShowEmailForm(true)} data-testid="button-show-email-form">
+                    <Mail className="w-4 h-4 mr-1.5" />
+                    Send via Email
+                  </Button>
+                )}
+
                 <Button variant="secondary" className="w-full" onClick={() => handleOpenChange(false)} data-testid="button-done">
                   Done
                 </Button>
@@ -265,16 +341,53 @@ export default function VouchersPage() {
       ) : vouchers && vouchers.length > 0 ? (
         <div className="grid sm:grid-cols-2 gap-4">
           {vouchers.map((v: any) => (
-            <VoucherCard
-              key={v.id}
-              code={v.code}
-              status={v.status}
-              budgetCents={v.budgetCents}
-              label={v.label}
-              expiresAt={v.expiresAt}
-              redemptions={v.currentRedemptions}
-              maxRedemptions={v.maxRedemptions}
-            />
+            <div key={v.id} className="relative">
+              <VoucherCard
+                code={v.code}
+                status={v.status}
+                budgetCents={v.budgetCents}
+                label={v.label}
+                expiresAt={v.expiresAt}
+                redemptions={v.currentRedemptions}
+                maxRedemptions={v.maxRedemptions}
+              />
+              {v.status === "ACTIVE" && (
+                <div className="absolute top-3 right-14">
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                        disabled={revokeMutation.isPending}
+                        data-testid={`button-revoke-voucher-${v.id}`}
+                      >
+                        <Ban className="w-3.5 h-3.5 mr-1" />
+                        Revoke
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Revoke Voucher?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Are you sure you want to revoke voucher <strong>{v.code}</strong>? This will prevent any new redemptions. Existing members who already redeemed this voucher will not be affected. This action cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel data-testid="button-cancel-revoke-voucher">Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => revokeMutation.mutate(v.id)}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          data-testid="button-confirm-revoke-voucher"
+                        >
+                          Revoke Voucher
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              )}
+            </div>
           ))}
         </div>
       ) : (

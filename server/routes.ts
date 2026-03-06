@@ -713,7 +713,7 @@ export async function registerRoutes(
       if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
 
       const schema = z.object({
-        monthlyBudgetCents: z.number().min(100).optional(),
+        monthlyBudgetCents: z.number().int().min(100).optional(),
         allowedModels: z.array(z.string()).nullable().optional(),
         allowedProviders: z.array(z.string()).nullable().optional(),
         accessMode: z.enum(["DIRECT", "PROXY"]).optional(),
@@ -799,8 +799,12 @@ export async function registerRoutes(
       if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
       if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
 
-      const { providerConnectionId } = req.body;
-      if (!providerConnectionId) return res.status(400).json({ message: "providerConnectionId is required" });
+      const provisionSchema = z.object({
+        providerConnectionId: z.string().min(1, "providerConnectionId is required"),
+      });
+      const provisionParsed = provisionSchema.safeParse(req.body);
+      if (!provisionParsed.success) return res.status(400).json({ message: "Validation error", errors: provisionParsed.error.errors });
+      const { providerConnectionId } = provisionParsed.data;
 
       const conn = await storage.getProviderConnection(providerConnectionId);
       if (!conn || conn.orgId !== user.orgId) return res.status(404).json({ message: "Provider connection not found" });
@@ -1345,6 +1349,38 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/vouchers/:id/revoke", requireAuth, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (!user.orgId) return res.status(403).json({ message: "Not authorized" });
+
+      const voucher = await storage.getVoucherById(req.params.id);
+      if (!voucher || voucher.orgId !== user.orgId) {
+        return res.status(404).json({ message: "Voucher not found" });
+      }
+
+      if (voucher.status !== "ACTIVE") {
+        return res.status(400).json({ message: `Voucher is already ${voucher.status.toLowerCase()}` });
+      }
+
+      const updated = await storage.updateVoucher(voucher.id, { status: "REVOKED" });
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "voucher.revoked",
+        targetType: "voucher",
+        targetId: voucher.id,
+        metadata: { code: voucher.code },
+      });
+
+      res.json(updated);
+    } catch (e: any) {
+      console.error("Voucher revoke error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get("/api/vouchers/validate/:code", async (req, res) => {
     const voucher = await storage.getVoucherByCode(req.params.code.toUpperCase());
     if (!voucher) {
@@ -1611,7 +1647,12 @@ export async function registerRoutes(
       const org = await storage.getOrganization(user.orgId);
       if (!org) return res.status(404).json({ message: "Organization not found" });
 
-      const { type } = req.body;
+      const checkoutSchema = z.object({
+        type: z.enum(["team_upgrade", "voucher_bundle"]),
+      });
+      const checkoutParsed = checkoutSchema.safeParse(req.body);
+      if (!checkoutParsed.success) return res.status(400).json({ message: "Validation error", errors: checkoutParsed.error.errors });
+      const { type } = checkoutParsed.data;
 
       let customerId = org.stripeCustomerId;
       if (!customerId) {
@@ -1701,7 +1742,13 @@ export async function registerRoutes(
       const org = await storage.getOrganization(user.orgId);
       if (!org) return res.status(404).json({ message: "Organization not found" });
 
-      const { type, sessionId } = req.body;
+      const handleSuccessSchema = z.object({
+        type: z.enum(["team_upgrade", "voucher_bundle"]),
+        sessionId: z.string().optional(),
+      });
+      const handleSuccessParsed = handleSuccessSchema.safeParse(req.body);
+      if (!handleSuccessParsed.success) return res.status(400).json({ message: "Validation error", errors: handleSuccessParsed.error.errors });
+      const { type, sessionId } = handleSuccessParsed.data;
 
       if (!org.stripeCustomerId) {
         return res.json({ success: false, message: "No billing information" });
