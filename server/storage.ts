@@ -9,7 +9,7 @@ import {
   organizations, users, teams, teamMemberships, providerConnections,
   vouchers, voucherRedemptions, voucherBundles, auditLogs, modelPricing,
   allotlyApiKeys, usageSnapshots, proxyRequestLogs, budgetAlerts,
-  providerMemberLinks,
+  providerMemberLinks, passwordResetTokens,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, asc, gte, lte, count } from "drizzle-orm";
@@ -113,6 +113,12 @@ export interface IStorage {
   getRecentAlerts(orgId: string, limit?: number): Promise<any[]>;
   getMemberDashboardData(userId: string): Promise<any>;
   getVoucherById(id: string): Promise<Voucher | undefined>;
+
+  createPasswordResetToken(data: { userId: string; tokenHash: string; expiresAt: Date }): Promise<any>;
+  getPasswordResetToken(tokenHash: string): Promise<any>;
+  markPasswordResetTokenUsed(id: string): Promise<void>;
+  deletePasswordResetTokensForUser(userId: string): Promise<void>;
+  resetPasswordAtomically(tokenHash: string, newPasswordHash: string): Promise<{ success: boolean; userId?: string }>;
 }
 
 export class DrizzleStorage implements IStorage {
@@ -674,6 +680,55 @@ export class DrizzleStorage implements IStorage {
 
   async getVoucherById(id: string): Promise<Voucher | undefined> {
     return this.getVoucher(id);
+  }
+
+  async createPasswordResetToken(data: { userId: string; tokenHash: string; expiresAt: Date }): Promise<any> {
+    const [result] = await db.insert(passwordResetTokens).values(data).returning();
+    return result;
+  }
+
+  async getPasswordResetToken(tokenHash: string): Promise<any> {
+    const [result] = await db.select().from(passwordResetTokens)
+      .where(and(eq(passwordResetTokens.tokenHash, tokenHash), sql`${passwordResetTokens.usedAt} IS NULL`));
+    return result;
+  }
+
+  async markPasswordResetTokenUsed(id: string): Promise<void> {
+    await db.update(passwordResetTokens).set({ usedAt: new Date() }).where(eq(passwordResetTokens.id, id));
+  }
+
+  async deletePasswordResetTokensForUser(userId: string): Promise<void> {
+    await db.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, userId));
+  }
+
+  async resetPasswordAtomically(tokenHash: string, newPasswordHash: string): Promise<{ success: boolean; userId?: string }> {
+    return await db.transaction(async (tx) => {
+      const [token] = await tx.select().from(passwordResetTokens)
+        .where(and(
+          eq(passwordResetTokens.tokenHash, tokenHash),
+          sql`${passwordResetTokens.usedAt} IS NULL`,
+          sql`${passwordResetTokens.expiresAt} > NOW()`
+        ))
+        .for("update");
+
+      if (!token) return { success: false };
+
+      await tx.update(passwordResetTokens)
+        .set({ usedAt: new Date() })
+        .where(eq(passwordResetTokens.id, token.id));
+
+      await tx.update(users)
+        .set({ passwordHash: newPasswordHash })
+        .where(eq(users.id, token.userId));
+
+      await tx.delete(passwordResetTokens)
+        .where(and(
+          eq(passwordResetTokens.userId, token.userId),
+          sql`${passwordResetTokens.id} != ${token.id}`
+        ));
+
+      return { success: true, userId: token.userId };
+    });
   }
 }
 

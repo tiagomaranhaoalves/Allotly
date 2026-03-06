@@ -270,6 +270,19 @@ ${steps.map(s => `<li>${s}</li>`).join("")}
       ].join("")),
     };
   },
+
+  passwordReset(userName: string, resetUrl: string) {
+    return {
+      subject: "Reset your Allotly password",
+      html: layout("Password Reset", [
+        p(`Hi ${userName},`),
+        p("We received a request to reset the password for your Allotly account."),
+        btn("Reset Password", resetUrl),
+        p("This link will expire in 1 hour. If you didn't request a password reset, you can safely ignore this email."),
+        p("For security, this link can only be used once."),
+      ].join("")),
+    };
+  },
 };
 
 export { sendEmail };

@@ -40,6 +40,8 @@ All money values are handled in integer cents to avoid floating-point inaccuraci
 - `/` — Landing page (12 sections: header, hero, problem stats strip, solution intro, two features, voucher callout, how-it-works tabs, trust/security, pricing cards, social proof, final CTA, footer)
 - `/docs` — Documentation page (sidebar with 6 collapsible sections: Getting Started, Teams, Vouchers, Budget Enforcement, API Reference, FAQ; code blocks with copy; real content)
 - `/login`, `/signup`, `/redeem` — Auth and redemption pages
+- `/forgot-password` — Forgot password page (email entry, sends reset link via email)
+- `/reset-password` — Reset password page (requires ?token= query param, sets new password)
 - `/dashboard/*` — Protected dashboard routes (overview, providers, teams, members, vouchers, bundles, analytics, audit-log, settings, keys, usage)
 
 ## Milestone Status

@@ -169,6 +169,68 @@ export async function registerRoutes(
     });
   });
 
+  app.post("/api/auth/forgot-password", loginLimiter, async (req, res) => {
+    try {
+      const { email } = z.object({ email: z.string().email() }).parse(req.body);
+      const user = await storage.getUserByEmail(email);
+      if (!user || !user.passwordHash) {
+        return res.json({ message: "If an account with that email exists, a reset link has been sent." });
+      }
+
+      await storage.deletePasswordResetTokensForUser(user.id);
+
+      const crypto = await import("crypto");
+      const rawToken = crypto.randomBytes(32).toString("hex");
+      const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
+      await storage.createPasswordResetToken({ userId: user.id, tokenHash, expiresAt });
+
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const resetUrl = `${baseUrl}/reset-password?token=${rawToken}`;
+      const emailContent = emailTemplates.passwordReset(user.name, resetUrl);
+      sendEmail(user.email, emailContent.subject, emailContent.html);
+
+      res.json({ message: "If an account with that email exists, a reset link has been sent." });
+    } catch (e: any) {
+      if (e instanceof z.ZodError) {
+        return res.status(400).json({ message: "Please enter a valid email address." });
+      }
+      console.error("Forgot password error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/auth/reset-password", loginLimiter, async (req, res) => {
+    try {
+      const { token, password } = z.object({
+        token: z.string().min(1),
+        password: z.string().min(8, "Password must be at least 8 characters"),
+      }).parse(req.body);
+
+      const crypto = await import("crypto");
+      const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+      const newHash = await hashPassword(password);
+      const result = await storage.resetPasswordAtomically(tokenHash, newHash);
+
+      if (!result.success) {
+        return res.status(400).json({ message: "Invalid or expired reset link. Please request a new one." });
+      }
+
+      if (result.userId) {
+        await db.execute(sql`DELETE FROM session WHERE sess::jsonb->>'userId' = ${result.userId}`).catch(() => {});
+      }
+
+      res.json({ message: "Password has been reset successfully. You can now sign in." });
+    } catch (e: any) {
+      if (e instanceof z.ZodError) {
+        return res.status(400).json({ message: e.errors[0]?.message || "Validation error" });
+      }
+      console.error("Reset password error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get("/api/providers/available", requireAuth, async (req, res) => {
     const user = await storage.getUser(req.session.userId!);
     if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
