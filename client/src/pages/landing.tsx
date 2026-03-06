@@ -154,13 +154,12 @@ function Hero() {
             <div className="space-y-8">
               <div>
                 <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.08]" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
-                  You want your team on AI.{" "}
-                  <span className="text-muted-foreground">They want every model.</span>
+                  Great teams use many models.{" "}
+                  <span className="text-muted-foreground">Smart teams</span>
                   <br />
                   <span className="bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 bg-clip-text text-transparent">
-                    Give them access.
-                  </span>{" "}
-                  Keep the control.
+                    run one budget.
+                  </span>
                 </h1>
                 <p className="mt-6 text-lg sm:text-xl text-muted-foreground max-w-[600px] leading-relaxed">
                   Allotly connects to your OpenAI, Anthropic, and Gemini accounts and puts you in control — per person, per model, per dollar.
