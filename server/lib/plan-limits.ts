@@ -5,7 +5,7 @@ export const PLAN_LIMITS = {
     maxTeams: 1,
     maxTeamAdmins: 0,
     maxMembersPerTeam: 5,
-    maxProviders: 1,
+    maxProviders: 3,
     maxActiveVouchers: 1,
     maxRedemptionsPerVoucher: 25,
     retentionDays: 7,

@@ -18,7 +18,7 @@ import { useState, useEffect } from "react";
 const PLAN_LIMITS = {
   FREE: {
     maxTeams: 1, maxTeamAdmins: 0, maxMembersPerTeam: 5,
-    maxProviders: 1, maxActiveVouchers: 1, retentionDays: 7,
+    maxProviders: 3, maxActiveVouchers: 1, retentionDays: 7,
     pollingInterval: "60 min",
   },
   TEAM: {
