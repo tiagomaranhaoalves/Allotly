@@ -198,7 +198,7 @@ function MemberCard({ member, providers, onRemove }: { member: any; providers: a
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/members"] });
-      toast({ title: `Switched to ${member.accessMode === "DIRECT" ? "Proxy" : "Direct"} mode` });
+      toast({ title: `Switched to ${member.accessMode === "DIRECT" ? "Voucher" : "Teams"} mode` });
     },
     onError: (err: any) => {
       toast({ title: "Failed to switch mode", description: err.message, variant: "destructive" });
@@ -375,7 +375,7 @@ function MemberCard({ member, providers, onRemove }: { member: any; providers: a
                     data-testid={`button-switch-mode-${member.id}`}
                   >
                     <ArrowLeftRight className="w-3 h-3 mr-1" />
-                    Switch to {member.accessMode === "DIRECT" ? "Proxy" : "Direct"}
+                    Switch to {member.accessMode === "DIRECT" ? "Voucher" : "Teams"}
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
@@ -383,11 +383,11 @@ function MemberCard({ member, providers, onRemove }: { member: any; providers: a
                     <AlertDialogTitle>Switch Access Mode?</AlertDialogTitle>
                     <AlertDialogDescription>
                       Switch <strong>{member.user?.name || member.user?.email}</strong> from{" "}
-                      <strong>{member.accessMode}</strong> to{" "}
-                      <strong>{member.accessMode === "DIRECT" ? "PROXY" : "DIRECT"}</strong> mode?
+                      <strong>{member.accessMode === "DIRECT" ? "Teams" : "Voucher"}</strong> to{" "}
+                      <strong>{member.accessMode === "DIRECT" ? "Voucher" : "Teams"}</strong> mode?
                       {member.accessMode === "DIRECT"
-                        ? " In Proxy mode, requests route through Allotly for real-time budget enforcement."
-                        : " In Direct mode, the member uses scoped provider keys directly. You'll need to provision provider access separately."}
+                        ? " In Voucher mode, requests route through Allotly for real-time budget enforcement."
+                        : " In Teams mode, the member uses scoped provider keys directly. You'll need to provision provider access separately."}
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -624,8 +624,8 @@ export default function MembersPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="DIRECT">Direct (Teams)</SelectItem>
-                      <SelectItem value="PROXY">Proxy (Vouchers)</SelectItem>
+                      <SelectItem value="DIRECT">Teams</SelectItem>
+                      <SelectItem value="PROXY">Voucher</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -649,7 +649,7 @@ export default function MembersPage() {
             </TabsTrigger>
             <TabsTrigger value="direct" data-testid="tab-direct">
               <Key className="w-3.5 h-3.5 mr-1.5" />
-              Direct Members ({directMembers.length})
+              Teams Members ({directMembers.length})
             </TabsTrigger>
             <TabsTrigger value="proxy" data-testid="tab-proxy">
               <Ticket className="w-3.5 h-3.5 mr-1.5" />
