@@ -25,9 +25,10 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Users, Plus, UserMinus, UserCheck, Key, CheckCircle2,
   Clock, AlertTriangle, Trash2, DollarSign, Pencil, Link2,
-  Copy, RotateCcw, Ban, BookOpen, Ticket, ArrowLeftRight,
+  Copy, RotateCcw, Ban, BookOpen, Ticket, ArrowLeftRight, ExternalLink,
 } from "lucide-react";
 import { useState } from "react";
+import { useLocation } from "wouter";
 
 const STATUS_STYLES: Record<string, string> = {
   ACTIVE: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
@@ -161,6 +162,7 @@ function ProviderLinkRow({
 
 function MemberCard({ member, providers, onRemove }: { member: any; providers: any[]; onRemove: (id: string) => void }) {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [expanded, setExpanded] = useState(false);
   const [budgetOpen, setBudgetOpen] = useState(false);
   const [newBudget, setNewBudget] = useState(String(member.monthlyBudgetCents));
@@ -287,6 +289,27 @@ function MemberCard({ member, providers, onRemove }: { member: any; providers: a
 
       {expanded && (
         <div className="border-t px-4 py-3 space-y-3 bg-muted/20">
+          {member.accessMode === "PROXY" && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Voucher Access</h4>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  onClick={() => navigate("/dashboard/vouchers")}
+                  data-testid={`button-go-vouchers-${member.id}`}
+                >
+                  <Ticket className="w-3.5 h-3.5 mr-1" />
+                  Manage Vouchers
+                </Button>
+              </div>
+              <div className="p-3 rounded-lg bg-muted/50 text-xs text-muted-foreground">
+                <p>This member uses <strong className="text-foreground">Voucher mode</strong> — requests route through Allotly's proxy for real-time budget enforcement.</p>
+                <p className="mt-1.5">Create a voucher code and share it with the member so they can access AI providers.</p>
+              </div>
+            </div>
+          )}
           {member.accessMode === "DIRECT" && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -529,7 +552,9 @@ function MemberCard({ member, providers, onRemove }: { member: any; providers: a
 export default function MembersPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [open, setOpen] = useState(false);
+  const [showVoucherPrompt, setShowVoucherPrompt] = useState(false);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [budgetCents, setBudgetCents] = useState("5000");
@@ -552,11 +577,14 @@ export default function MembersPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/members"] });
-      toast({ title: "Member added successfully" });
-      setOpen(false);
+      if (accessMode === "PROXY") {
+        setShowVoucherPrompt(true);
+      } else {
+        toast({ title: "Member added successfully" });
+        setOpen(false);
+      }
       setEmail("");
       setName("");
-      
     },
     onError: (err: any) => {
       toast({ title: "Failed to add member", description: err.message, variant: "destructive" });
@@ -592,7 +620,7 @@ export default function MembersPage() {
           </p>
         </div>
         {user?.orgRole !== "MEMBER" && (
-          <Dialog open={open} onOpenChange={setOpen}>
+          <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setShowVoucherPrompt(false); }}>
             <DialogTrigger asChild>
               <Button data-testid="button-add-member">
                 <Plus className="w-4 h-4 mr-1.5" />
@@ -601,54 +629,96 @@ export default function MembersPage() {
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Add Team Member</DialogTitle>
-                <DialogDescription>Create a new member account with a spending budget. They'll receive an invite email to set their password.</DialogDescription>
+                <DialogTitle>{showVoucherPrompt ? "Member Created!" : "Add Team Member"}</DialogTitle>
+                <DialogDescription>
+                  {showVoucherPrompt
+                    ? "The member has been created in Voucher mode. Create a voucher code to give them access."
+                    : "Create a new member account with a spending budget. They'll receive an invite email to set their password."}
+                </DialogDescription>
               </DialogHeader>
-              <div className="space-y-4 pt-2">
-                {teams && teams.length > 1 && (
+              {showVoucherPrompt ? (
+                <div className="space-y-4 pt-2">
+                  <div className="p-4 rounded-lg bg-muted/50 text-sm">
+                    <div className="flex items-center gap-2 mb-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                      <span className="font-medium">Member added in Voucher mode</span>
+                    </div>
+                    <p className="text-muted-foreground text-xs">
+                      To give them AI access, create a voucher code on the Vouchers page and share it with them.
+                    </p>
+                  </div>
+                  <Button
+                    className="w-full"
+                    onClick={() => {
+                      setOpen(false);
+                      setShowVoucherPrompt(false);
+                      navigate("/dashboard/vouchers");
+                    }}
+                    data-testid="button-go-to-vouchers"
+                  >
+                    <Ticket className="w-4 h-4 mr-1.5" />
+                    Go to Vouchers
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="w-full"
+                    onClick={() => {
+                      setOpen(false);
+                      setShowVoucherPrompt(false);
+                      toast({ title: "Member added successfully" });
+                    }}
+                    data-testid="button-done-member"
+                  >
+                    Done
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4 pt-2">
+                  {teams && teams.length > 1 && (
+                    <div className="space-y-2">
+                      <Label>Team</Label>
+                      <Select value={selectedTeam || teams[0]?.id || ""} onValueChange={setSelectedTeam}>
+                        <SelectTrigger data-testid="select-member-team">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {teams.map(t => (
+                            <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                   <div className="space-y-2">
-                    <Label>Team</Label>
-                    <Select value={selectedTeam || teams[0]?.id || ""} onValueChange={setSelectedTeam}>
-                      <SelectTrigger data-testid="select-member-team">
+                    <Label>Email</Label>
+                    <Input type="email" placeholder="member@company.com" value={email} onChange={e => setEmail(e.target.value)} data-testid="input-member-email" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Name</Label>
+                    <Input placeholder="John Doe" value={name} onChange={e => setName(e.target.value)} data-testid="input-member-name" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Monthly Budget (cents)</Label>
+                    <Input type="number" value={budgetCents} onChange={e => setBudgetCents(e.target.value)} data-testid="input-member-budget" />
+                    <p className="text-xs text-muted-foreground">${(parseInt(budgetCents || "0") / 100).toFixed(2)} per month</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Access Mode</Label>
+                    <Select value={accessMode} onValueChange={setAccessMode}>
+                      <SelectTrigger data-testid="select-access-mode">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {teams.map(t => (
-                          <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                        ))}
+                        <SelectItem value="DIRECT">Teams</SelectItem>
+                        <SelectItem value="PROXY">Voucher</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                )}
-                <div className="space-y-2">
-                  <Label>Email</Label>
-                  <Input type="email" placeholder="member@company.com" value={email} onChange={e => setEmail(e.target.value)} data-testid="input-member-email" />
+                  <Button className="w-full" onClick={() => createMutation.mutate()} disabled={!email || createMutation.isPending} data-testid="button-submit-member">
+                    {createMutation.isPending ? "Adding..." : "Add Member"}
+                  </Button>
                 </div>
-                <div className="space-y-2">
-                  <Label>Name</Label>
-                  <Input placeholder="John Doe" value={name} onChange={e => setName(e.target.value)} data-testid="input-member-name" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Monthly Budget (cents)</Label>
-                  <Input type="number" value={budgetCents} onChange={e => setBudgetCents(e.target.value)} data-testid="input-member-budget" />
-                  <p className="text-xs text-muted-foreground">${(parseInt(budgetCents || "0") / 100).toFixed(2)} per month</p>
-                </div>
-                <div className="space-y-2">
-                  <Label>Access Mode</Label>
-                  <Select value={accessMode} onValueChange={setAccessMode}>
-                    <SelectTrigger data-testid="select-access-mode">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="DIRECT">Teams</SelectItem>
-                      <SelectItem value="PROXY">Voucher</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button className="w-full" onClick={() => createMutation.mutate()} disabled={!email || createMutation.isPending} data-testid="button-submit-member">
-                  {createMutation.isPending ? "Adding..." : "Add Member"}
-                </Button>
-              </div>
+              )}
             </DialogContent>
           </Dialog>
         )}
