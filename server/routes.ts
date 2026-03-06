@@ -559,11 +559,10 @@ export async function registerRoutes(
         accessMode: z.enum(["DIRECT", "PROXY"]).optional(),
         allowedModels: z.array(z.string()).nullable().optional(),
         allowedProviders: z.array(z.string()).nullable().optional(),
-        password: z.string().min(6).optional(),
       });
       const parsed = addMemberSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
-      const { email, name, teamId, budgetCents, accessMode, allowedModels, allowedProviders, password } = parsed.data;
+      const { email, name, teamId, budgetCents, accessMode, allowedModels, allowedProviders } = parsed.data;
 
       let targetTeamId = teamId;
       if (user.orgRole === "TEAM_ADMIN") {
@@ -587,7 +586,9 @@ export async function registerRoutes(
         return res.status(400).json({ message: memberCheck.message });
       }
 
-      const passwordHash = password ? await hashPassword(password) : await hashPassword("changeme123");
+      const crypto = await import("crypto");
+      const randomPassword = crypto.randomBytes(32).toString("hex");
+      const passwordHash = await hashPassword(randomPassword);
       const memberUser = await storage.createUser({
         email,
         name: name || email.split("@")[0],
@@ -625,12 +626,19 @@ export async function registerRoutes(
       });
 
       const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+      const rawToken = crypto.randomBytes(32).toString("hex");
+      const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      await storage.createPasswordResetToken({ userId: memberUser.id, tokenHash, expiresAt });
+
       const team = await storage.getTeam(targetTeamId);
+      const setupUrl = `${baseUrl}/reset-password?token=${rawToken}`;
       const inviteEmail = emailTemplates.memberInvite(
         name || email.split("@")[0],
         team?.name || "your team",
         user.name || user.email,
-        `${baseUrl}/dashboard`
+        setupUrl
       );
       sendEmail(email, inviteEmail.subject, inviteEmail.html);
 

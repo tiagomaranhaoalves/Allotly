@@ -511,7 +511,6 @@ export default function MembersPage() {
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
-  const [password, setPassword] = useState("");
   const [budgetCents, setBudgetCents] = useState("5000");
   const [accessMode, setAccessMode] = useState("DIRECT");
   const [selectedTeam, setSelectedTeam] = useState("");
@@ -527,7 +526,7 @@ export default function MembersPage() {
     mutationFn: async () => {
       const teamId = selectedTeam || teams?.[0]?.id;
       await apiRequest("POST", "/api/members", {
-        email, name, password, budgetCents: parseInt(budgetCents), accessMode, teamId,
+        email, name, budgetCents: parseInt(budgetCents), accessMode, teamId,
       });
     },
     onSuccess: () => {
@@ -536,7 +535,7 @@ export default function MembersPage() {
       setOpen(false);
       setEmail("");
       setName("");
-      setPassword("");
+      
     },
     onError: (err: any) => {
       toast({ title: "Failed to add member", description: err.message, variant: "destructive" });
@@ -582,7 +581,7 @@ export default function MembersPage() {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Add Team Member</DialogTitle>
-                <DialogDescription>Create a new member account with a spending budget.</DialogDescription>
+                <DialogDescription>Create a new member account with a spending budget. They'll receive an invite email to set their password.</DialogDescription>
               </DialogHeader>
               <div className="space-y-4 pt-2">
                 {teams && teams.length > 1 && (
@@ -607,10 +606,6 @@ export default function MembersPage() {
                 <div className="space-y-2">
                   <Label>Name</Label>
                   <Input placeholder="John Doe" value={name} onChange={e => setName(e.target.value)} data-testid="input-member-name" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Password</Label>
-                  <Input type="password" placeholder="Set initial password" value={password} onChange={e => setPassword(e.target.value)} data-testid="input-member-password" />
                 </div>
                 <div className="space-y-2">
                   <Label>Monthly Budget (cents)</Label>

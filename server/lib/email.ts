@@ -142,14 +142,15 @@ export const emailTemplates = {
     };
   },
 
-  memberInvite(memberName: string, teamName: string, inviterName: string, acceptUrl: string) {
+  memberInvite(memberName: string, teamName: string, inviterName: string, setupUrl: string) {
     return {
-      subject: `You've been added to ${teamName} on Allotly`,
-      html: layout("You've Been Added to a Team", [
+      subject: `You've been invited to ${teamName} on Allotly`,
+      html: layout("You've Been Invited to a Team", [
         p(`Hi ${memberName},`),
         p(`<strong>${inviterName}</strong> has added you to the <strong>${teamName}</strong> team on Allotly.`),
-        p("Your AI provider access has been configured. Log in to view your setup instructions and start using your allocated AI budget."),
-        btn("View Your Dashboard", acceptUrl),
+        p("To get started, set your password using the link below. This link expires in 7 days."),
+        btn("Set Your Password", setupUrl),
+        p("Once your password is set, you can sign in and start using your allocated AI budget."),
       ].join("")),
     };
   },
