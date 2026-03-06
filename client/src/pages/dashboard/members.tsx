@@ -25,7 +25,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Users, Plus, UserMinus, UserCheck, Key, CheckCircle2,
   Clock, AlertTriangle, Trash2, DollarSign, Pencil, Link2,
-  Copy, RotateCcw, Ban, BookOpen, Ticket,
+  Copy, RotateCcw, Ban, BookOpen, Ticket, ArrowLeftRight,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -191,6 +191,20 @@ function MemberCard({ member, providers, onRemove }: { member: any; providers: a
     },
   });
 
+  const accessModeMutation = useMutation({
+    mutationFn: async () => {
+      const newMode = member.accessMode === "DIRECT" ? "PROXY" : "DIRECT";
+      await apiRequest("PATCH", `/api/members/${member.id}/budget`, { accessMode: newMode });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/members"] });
+      toast({ title: `Switched to ${member.accessMode === "DIRECT" ? "Proxy" : "Direct"} mode` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to switch mode", description: err.message, variant: "destructive" });
+    },
+  });
+
   const provisionMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/members/${member.id}/provision`, {
@@ -351,6 +365,40 @@ function MemberCard({ member, providers, onRemove }: { member: any; providers: a
 
           <div className="flex items-center justify-between gap-2 pt-1 border-t">
             <div className="flex items-center gap-2">
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    disabled={accessModeMutation.isPending}
+                    data-testid={`button-switch-mode-${member.id}`}
+                  >
+                    <ArrowLeftRight className="w-3 h-3 mr-1" />
+                    Switch to {member.accessMode === "DIRECT" ? "Proxy" : "Direct"}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Switch Access Mode?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Switch <strong>{member.user?.name || member.user?.email}</strong> from{" "}
+                      <strong>{member.accessMode}</strong> to{" "}
+                      <strong>{member.accessMode === "DIRECT" ? "PROXY" : "DIRECT"}</strong> mode?
+                      {member.accessMode === "DIRECT"
+                        ? " In Proxy mode, requests route through Allotly for real-time budget enforcement."
+                        : " In Direct mode, the member uses scoped provider keys directly. You'll need to provision provider access separately."}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => accessModeMutation.mutate()} data-testid={`button-confirm-switch-mode-${member.id}`}>
+                      Switch Mode
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+
               <Dialog open={budgetOpen} onOpenChange={setBudgetOpen}>
                 <DialogTrigger asChild>
                   <Button size="sm" variant="outline" className="h-7 text-xs" data-testid={`button-edit-budget-${member.id}`}>

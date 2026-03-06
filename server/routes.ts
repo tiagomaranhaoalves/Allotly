@@ -708,6 +708,7 @@ export async function registerRoutes(
         monthlyBudgetCents: z.number().min(100).optional(),
         allowedModels: z.array(z.string()).nullable().optional(),
         allowedProviders: z.array(z.string()).nullable().optional(),
+        accessMode: z.enum(["DIRECT", "PROXY"]).optional(),
       });
       const parsed = schema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
