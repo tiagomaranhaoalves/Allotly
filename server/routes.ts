@@ -2248,7 +2248,7 @@ export async function registerRoutes(
         totalUsers: allUsers.length,
         totalVouchers,
         activeVouchers,
-        totalSpendCents,
+        totalSpend: totalSpendCents,
       });
     } catch (e: any) {
       console.error("Admin stats error:", e);
@@ -2262,7 +2262,7 @@ export async function registerRoutes(
       const orgsWithCounts = await Promise.all(
         allOrgs.map(async (org) => {
           const orgUsers = await storage.getUsersByOrg(org.id);
-          return { ...org, userCount: orgUsers.length };
+          return { ...org, memberCount: orgUsers.length };
         })
       );
       res.json(orgsWithCounts);
