@@ -124,7 +124,7 @@ export async function getTopSpenders(orgId: string, teamId?: string) {
       spendCents: m.currentPeriodSpendCents,
       budgetCents: m.monthlyBudgetCents,
       utilization: m.monthlyBudgetCents > 0 ? Math.round((m.currentPeriodSpendCents / m.monthlyBudgetCents) * 100) : 0,
-      accessMode: m.accessMode,
+      accessType: m.accessType,
       isVoucherUser: user.isVoucherUser,
     });
   }

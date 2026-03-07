@@ -209,7 +209,7 @@ function TopSpendersSection() {
                     <BudgetBar spent={row.spendCents} budget={row.budgetCents} showLabel={true} />
                   </td>
                   <td className="py-2.5 px-2 text-center hidden md:table-cell">
-                    <FeatureBadge type={row.accessMode === "PROXY" ? "VOUCHERS" : "TEAMS"} />
+                    <FeatureBadge type={row.accessType === "VOUCHER" ? "VOUCHERS" : "TEAMS"} />
                   </td>
                 </tr>
               ))}

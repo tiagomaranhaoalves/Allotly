@@ -1,7 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { ProviderBadge } from "@/components/brand/provider-badge";
-import { AutomationBadge } from "@/components/brand/automation-badge";
 import { EmptyState } from "@/components/brand/empty-state";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,7 +23,6 @@ interface ProviderConnection {
   id: string;
   provider: string;
   displayName: string;
-  automationLevel: string;
   status: string;
   lastValidatedAt: string | null;
   orgAllowedModels: string[] | null;
@@ -233,7 +231,6 @@ function ProviderCard({
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <ProviderBadge provider={p.provider} />
-          <AutomationBadge level={p.automationLevel} />
           {p.displayName && p.displayName !== p.provider && (
             <span className="text-sm text-muted-foreground">{p.displayName}</span>
           )}

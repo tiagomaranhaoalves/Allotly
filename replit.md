@@ -1,7 +1,7 @@
 # Allotly — The AI Spend Control Plane
 
 ## Overview
-Allotly is a SaaS platform designed to manage and distribute AI API access with robust budget controls. Its primary purpose is to empower organizations with granular control over their AI spending. The platform offers two core functionalities: Allotly Teams, which provides scoped AI Provider API keys with polling-based budget monitoring, and Allotly Vouchers, which enforces real-time, per-request budget limits through a thin proxy. Allotly aims to provide a comprehensive solution for managing AI resource consumption, optimizing costs, and ensuring compliance within various organizational structures.
+Allotly is a SaaS platform designed to manage and distribute AI API access with robust budget controls. v4 unified proxy architecture: both Teams and Vouchers route through the same thin proxy. Every user gets an `allotly_sk_` key. No provider Admin API provisioning, no usage polling. Teams = monthly resetting budgets; Vouchers = fixed budgets with expiry. Admin Control Center at `/admin` with its own login flow.
 
 ## User Preferences
 I prefer detailed explanations.
@@ -16,14 +16,15 @@ Allotly employs a modern web architecture. The frontend is built with React 18, 
 The backend is an Express.js application, utilizing express-session for session management and connect-pg-simple for PostgreSQL session storage. PostgreSQL serves as the primary database, managed through Drizzle ORM. Authentication is session-based with scrypt for password hashing. AI Provider API keys are secured using AES-256-GCM encryption. Stripe is integrated for payment processing via a custom `stripe-replit-sync` integration.
 
 Core features include:
-- **AI Provider Management**: Connections to various AI providers (OpenAI, Anthropic, Google) with different provisioning methods (full-auto, semi-auto, guided). Max 3 connections per plan.
-- **Team and Member Management**: Role-based access control (ROOT_ADMIN, TEAM_ADMIN, MEMBER) enforced across all API routes. Functionality for adding, suspending, reactivating, and deleting members and teams, including budget allocation and tracking.
-- **Voucher System**: Generation and management of voucher codes with customizable limits on redemptions, recipient budgets, proxy requests, and expiry. Supports different tiers (FREE, TEAM, BUNDLE) with varying capacities.
-- **Budget Control & Enforcement**: Polling-based usage monitoring with plan-based intervals. Automatic budget alerts at 80%, 90%, and 100% thresholds, leading to key revocation upon budget exhaustion. A 110% safety net budget is provisioned on OpenAI to ensure Allotly's system triggers before provider-side limits.
-- **Real-time Proxy**: A 12-step proxy lifecycle handling authentication, concurrency, rate limiting, request parsing, cost estimation, token clamping, budget reservation, forwarding to AI providers, response processing, and async logging. Includes request/response translation between different AI provider formats and SSE streaming passthrough.
-- **Background Jobs**: A scheduler manages tasks such as usage polling, budget resets, voucher and bundle expiry, and Redis-Postgres reconciliation for budget consistency.
-- **Audit Logging**: Comprehensive audit trail with filtering and export capabilities.
-- **Stripe Integration**: Handles subscription and one-time purchases for Team Plans and Voucher Bundles, including webhook processing for lifecycle events like subscription updates and deletions.
+- **AI Provider Management**: Connections to AI providers (OpenAI, Anthropic, Google). Max 3 connections per plan. No provider-side provisioning (v4).
+- **Team and Member Management**: Role-based access control (ROOT_ADMIN, TEAM_ADMIN, MEMBER). Teams have monthly resetting budgets. All members get `allotly_sk_` keys and use the proxy.
+- **Voucher System**: Voucher codes with fixed budgets and expiry. `accessType` enum: TEAM | VOUCHER.
+- **Budget Control & Enforcement**: Real-time budget enforcement via proxy. Automatic budget alerts at 80/90/100% thresholds.
+- **Real-time Proxy**: Unified proxy for all access types (TEAM + VOUCHER). Handles auth, concurrency, rate limiting, cost estimation, token clamping, budget reservation, forwarding, response processing, and async logging.
+- **Background Jobs**: Budget resets (TEAM only), voucher/bundle expiry, Redis-Postgres reconciliation. Usage polling stubbed (no-op in v4).
+- **Audit Logging**: Comprehensive audit trail with filtering and export.
+- **Stripe Integration**: Subscriptions and one-time purchases with webhook processing.
+- **Admin Control Center**: Master admin panel at `/admin` with login via ADMIN_EMAIL/ADMIN_PASSWORD env vars. Org CRUD, user management, stats dashboard.
 
 All money values are handled in integer cents to avoid floating-point inaccuracies.
 
@@ -42,6 +43,8 @@ All money values are handled in integer cents to avoid floating-point inaccuraci
 - `/login`, `/signup`, `/redeem` — Auth and redemption pages
 - `/forgot-password` — Forgot password page (email entry, sends reset link via email)
 - `/reset-password` — Reset password page (requires ?token= query param, sets new password)
+- `/admin/login` — Admin Control Center login
+- `/admin` — Admin Control Center (Overview, Organizations, Users tabs)
 - `/dashboard/*` — Protected dashboard routes (overview, providers, teams, members, vouchers, bundles, analytics, audit-log, settings, keys, usage)
 
 ## Milestone Status

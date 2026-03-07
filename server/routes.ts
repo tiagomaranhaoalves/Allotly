@@ -239,7 +239,6 @@ export async function registerRoutes(
       id: c.id,
       provider: c.provider,
       displayName: c.displayName,
-      automationLevel: c.automationLevel,
     }));
     res.json(safe);
   });
@@ -251,7 +250,6 @@ export async function registerRoutes(
       id: c.id,
       provider: c.provider,
       displayName: c.displayName,
-      automationLevel: c.automationLevel,
       status: c.status,
       lastValidatedAt: c.lastValidatedAt,
       orgAllowedModels: c.orgAllowedModels,
@@ -287,7 +285,6 @@ export async function registerRoutes(
         return res.status(400).json({ message: `Key validation failed: ${validation.error}` });
       }
 
-      const automationLevel = adapter.automationLevel;
       const { encrypted, iv, tag } = encryptProviderKey(apiKey);
 
       const connection = await storage.createProviderConnection({
@@ -297,7 +294,6 @@ export async function registerRoutes(
         adminApiKeyEncrypted: encrypted,
         adminApiKeyIv: iv,
         adminApiKeyTag: tag,
-        automationLevel: automationLevel as any,
         status: "ACTIVE",
         lastValidatedAt: new Date(),
       });
@@ -315,7 +311,6 @@ export async function registerRoutes(
         id: connection.id,
         provider: connection.provider,
         displayName: connection.displayName,
-        automationLevel: connection.automationLevel,
         status: connection.status,
       });
     } catch (e: any) {
@@ -382,7 +377,6 @@ export async function registerRoutes(
         id: updated!.id,
         provider: updated!.provider,
         displayName: updated!.displayName,
-        automationLevel: updated!.automationLevel,
         status: updated!.status,
         orgAllowedModels: updated!.orgAllowedModels,
         lastValidatedAt: updated!.lastValidatedAt,
@@ -556,13 +550,13 @@ export async function registerRoutes(
         name: z.string().optional(),
         teamId: z.string().optional(),
         budgetCents: z.number().int().min(100),
-        accessMode: z.enum(["DIRECT", "PROXY"]).optional(),
+        accessType: z.enum(["TEAM", "VOUCHER"]).optional(),
         allowedModels: z.array(z.string()).nullable().optional(),
         allowedProviders: z.array(z.string()).nullable().optional(),
       });
       const parsed = addMemberSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
-      const { email, name, teamId, budgetCents, accessMode, allowedModels, allowedProviders } = parsed.data;
+      const { email, name, teamId, budgetCents, accessType, allowedModels, allowedProviders } = parsed.data;
 
       let targetTeamId = teamId;
       if (user.orgRole === "TEAM_ADMIN") {
@@ -606,7 +600,7 @@ export async function registerRoutes(
       const membership = await storage.createMembership({
         teamId: targetTeamId,
         userId: memberUser.id,
-        accessMode: accessMode || "DIRECT",
+        accessType: accessType || "TEAM",
         monthlyBudgetCents: budgetCents,
         allowedModels: allowedModels || null,
         allowedProviders: allowedProviders || null,
@@ -622,7 +616,7 @@ export async function registerRoutes(
         action: "member.created",
         targetType: "team_membership",
         targetId: membership.id,
-        metadata: { email, accessMode: accessMode || "DIRECT" },
+        metadata: { email, accessType: accessType || "TEAM" },
       });
 
       const baseUrl = `${req.protocol}://${req.get('host')}`;
@@ -716,7 +710,7 @@ export async function registerRoutes(
         monthlyBudgetCents: z.number().int().min(100).optional(),
         allowedModels: z.array(z.string()).nullable().optional(),
         allowedProviders: z.array(z.string()).nullable().optional(),
-        accessMode: z.enum(["DIRECT", "PROXY"]).optional(),
+        accessType: z.enum(["TEAM", "VOUCHER"]).optional(),
       });
       const parsed = schema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
@@ -755,232 +749,6 @@ export async function registerRoutes(
       res.json({ message: "Member removed" });
     } catch (e: any) {
       console.error("Member remove error:", e);
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  app.get("/api/members/:id/provider-links", requireAuth, async (req, res) => {
-    const user = await storage.getUser(req.session.userId!);
-    if (!user) return res.status(401).json({ message: "Unauthorized" });
-
-    const membership = await storage.getMembership(req.params.id);
-    if (!membership) return res.status(404).json({ message: "Not found" });
-
-    const team = await storage.getTeam(membership.teamId);
-    if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
-    if (user.orgRole === "MEMBER" && membership.userId !== user.id) return res.status(403).json({ message: "Forbidden" });
-    if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
-
-    const links = await storage.getProviderMemberLinksByMembership(membership.id);
-    const providers = await storage.getProviderConnectionsByOrg(user.orgId);
-
-    const enrichedLinks = links.map(link => {
-      const conn = providers.find(p => p.id === link.providerConnectionId);
-      return {
-        ...link,
-        provider: conn?.provider,
-        providerDisplayName: conn?.displayName,
-        automationLevel: conn?.automationLevel,
-      };
-    });
-
-    res.json(enrichedLinks);
-  });
-
-  app.post("/api/members/:id/provision", requireAuth, async (req, res) => {
-    try {
-      const user = await storage.getUser(req.session.userId!);
-      if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
-
-      const membership = await storage.getMembership(req.params.id);
-      if (!membership) return res.status(404).json({ message: "Not found" });
-
-      const team = await storage.getTeam(membership.teamId);
-      if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
-      if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
-
-      const provisionSchema = z.object({
-        providerConnectionId: z.string().min(1, "providerConnectionId is required"),
-      });
-      const provisionParsed = provisionSchema.safeParse(req.body);
-      if (!provisionParsed.success) return res.status(400).json({ message: "Validation error", errors: provisionParsed.error.errors });
-      const { providerConnectionId } = provisionParsed.data;
-
-      const conn = await storage.getProviderConnection(providerConnectionId);
-      if (!conn || conn.orgId !== user.orgId) return res.status(404).json({ message: "Provider connection not found" });
-
-      const existing = await storage.getProviderMemberLinkByMembershipAndConnection(membership.id, conn.id);
-      if (existing) return res.status(400).json({ message: "Already provisioned for this provider" });
-
-      const memberUser = await storage.getUser(membership.userId);
-      const teamSlug = team.name.toLowerCase().replace(/[^a-z0-9]/g, "-").slice(0, 20);
-      const memberSlug = (memberUser?.name || memberUser?.email || "member").toLowerCase().replace(/[^a-z0-9]/g, "-").slice(0, 20);
-
-      const adminKey = decryptProviderKey(conn.adminApiKeyEncrypted, conn.adminApiKeyIv, conn.adminApiKeyTag);
-      const safetyNetBudgetCents = Math.round(membership.monthlyBudgetCents * 1.1);
-      let linkData: any = {
-        membershipId: membership.id,
-        providerConnectionId: conn.id,
-        providerBudgetCents: safetyNetBudgetCents,
-        setupStatus: "PENDING",
-        status: "ACTIVE",
-      };
-      let provisionedKey: string | null = null;
-
-      if (conn.provider === "OPENAI") {
-        linkData.setupStatus = "PROVISIONING";
-        try {
-          const projectRes = await fetch("https://api.openai.com/v1/organization/projects", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${adminKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ name: `allotly-${teamSlug}-${memberSlug}` }),
-          });
-          if (!projectRes.ok) {
-            const err = await projectRes.text();
-            linkData.setupStatus = "PENDING";
-            linkData.setupInstructions = `OpenAI project creation failed: ${err.slice(0, 500)}. Please create project manually and update.`;
-          } else {
-            const project = await projectRes.json();
-            linkData.providerProjectId = project.id;
-
-            const svcRes = await fetch(`https://api.openai.com/v1/organization/projects/${project.id}/service_accounts`, {
-              method: "POST",
-              headers: { Authorization: `Bearer ${adminKey}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ name: "allotly-managed" }),
-            });
-            if (!svcRes.ok) {
-              linkData.setupStatus = "PENDING";
-              linkData.setupInstructions = `Service account creation failed. Project created (${project.id}).`;
-            } else {
-              const svcAcct = await svcRes.json();
-              linkData.providerSvcAcctId = svcAcct.id;
-              linkData.providerApiKeyId = svcAcct.api_key?.id;
-              provisionedKey = svcAcct.api_key?.value || null;
-              linkData.setupStatus = "COMPLETE";
-              linkData.keyDeliveredAt = new Date();
-            }
-          }
-        } catch (e: any) {
-          linkData.setupStatus = "PENDING";
-          linkData.setupInstructions = `OpenAI provisioning error: ${e.message}`;
-        }
-      } else if (conn.provider === "ANTHROPIC") {
-        linkData.setupStatus = "PROVISIONING";
-        try {
-          const wsRes = await fetch("https://api.anthropic.com/v1/organizations/workspaces", {
-            method: "POST",
-            headers: {
-              "x-api-key": adminKey,
-              "anthropic-version": "2023-06-01",
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ name: `allotly-${teamSlug}-${memberSlug}` }),
-          });
-          if (!wsRes.ok) {
-            linkData.setupStatus = "AWAITING_MEMBER";
-            linkData.setupInstructions = `## Manual Anthropic Setup\n\n1. Go to [Anthropic Console](https://console.anthropic.com)\n2. Create a workspace named \`allotly-${teamSlug}-${memberSlug}\`\n3. Create an API key within that workspace\n4. Share the key securely with the team member\n5. Click "Mark as Complete" when done`;
-          } else {
-            const ws = await wsRes.json();
-            linkData.providerWorkspaceId = ws.id;
-            linkData.setupStatus = "AWAITING_MEMBER";
-            linkData.setupInstructions = `## Anthropic Workspace Created\n\nWorkspace **\`allotly-${teamSlug}-${memberSlug}\`** has been created (ID: ${ws.id}).\n\n### Next Steps\n1. Go to [Anthropic Console](https://console.anthropic.com)\n2. Navigate to the workspace \`allotly-${teamSlug}-${memberSlug}\`\n3. Create an API key within that workspace\n4. Share the key securely with the team member\n5. Click "Mark as Complete" when done`;
-          }
-        } catch (e: any) {
-          linkData.setupStatus = "AWAITING_MEMBER";
-          linkData.setupInstructions = `## Manual Anthropic Setup\n\nAutomatic workspace creation failed: ${e.message}\n\n1. Go to [Anthropic Console](https://console.anthropic.com)\n2. Create a workspace named \`allotly-${teamSlug}-${memberSlug}\`\n3. Create an API key within that workspace\n4. Share the key securely with the team member\n5. Click "Mark as Complete" when done`;
-        }
-      } else if (conn.provider === "GOOGLE") {
-        linkData.setupStatus = "AWAITING_MEMBER";
-        linkData.setupInstructions = `## Google AI Setup Guide\n\n1. Go to [Google AI Studio](https://aistudio.google.com)\n2. Create a new API key or use an existing one\n3. Optionally restrict the key to specific APIs (Generative Language API)\n4. Share the key securely with the team member\n5. Click "Mark as Complete" when done\n\n**Note:** Google does not support project-scoped keys via API, so this is a guided manual process.`;
-      }
-
-      const link = await storage.createProviderMemberLink(linkData);
-
-      await storage.createAuditLog({
-        orgId: user.orgId,
-        actorId: user.id,
-        action: "key.provisioned",
-        targetType: "provider_member_link",
-        targetId: link.id,
-        metadata: { provider: conn.provider, membershipId: membership.id, setupStatus: link.setupStatus },
-      });
-
-      res.json({ link, provisionedKey });
-    } catch (e: any) {
-      console.error("Provision error:", e);
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  app.post("/api/members/:id/mark-complete/:linkId", requireAuth, async (req, res) => {
-    const user = await storage.getUser(req.session.userId!);
-    if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
-
-    const link = await storage.getProviderMemberLink(req.params.linkId);
-    if (!link || link.membershipId !== req.params.id) return res.status(404).json({ message: "Not found" });
-
-    const membership = await storage.getMembership(link.membershipId);
-    if (!membership) return res.status(404).json({ message: "Not found" });
-
-    const team = await storage.getTeam(membership.teamId);
-    if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
-    if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
-
-    await storage.updateProviderMemberLink(link.id, { setupStatus: "COMPLETE" as any, keyDeliveredAt: new Date() });
-
-    await storage.createAuditLog({
-      orgId: user.orgId,
-      actorId: user.id,
-      action: "key.marked_complete",
-      targetType: "provider_member_link",
-      targetId: link.id,
-    });
-
-    res.json({ message: "Marked as complete" });
-  });
-
-  app.post("/api/members/:id/revoke-key/:linkId", requireAuth, regenerateKeyLimiter, async (req, res) => {
-    try {
-      const user = await storage.getUser(req.session.userId!);
-      if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
-
-      const link = await storage.getProviderMemberLink(req.params.linkId);
-      if (!link || link.membershipId !== req.params.id) return res.status(404).json({ message: "Not found" });
-
-      const membership = await storage.getMembership(link.membershipId);
-      if (!membership) return res.status(404).json({ message: "Not found" });
-
-      const team = await storage.getTeam(membership.teamId);
-      if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
-      if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
-
-      const conn = await storage.getProviderConnection(link.providerConnectionId);
-      if (conn && conn.provider === "OPENAI" && link.providerProjectId && link.providerSvcAcctId) {
-        try {
-          const adminKey = decryptProviderKey(conn.adminApiKeyEncrypted, conn.adminApiKeyIv, conn.adminApiKeyTag);
-          await fetch(`https://api.openai.com/v1/organization/projects/${link.providerProjectId}/service_accounts/${link.providerSvcAcctId}`, {
-            method: "DELETE",
-            headers: { Authorization: `Bearer ${adminKey}` },
-          });
-        } catch (e: any) {
-          console.error("OpenAI revocation error:", e);
-        }
-      }
-
-      await storage.updateProviderMemberLink(link.id, { status: "REVOKED" as any, setupStatus: "PENDING" as any });
-
-      await storage.createAuditLog({
-        orgId: user.orgId,
-        actorId: user.id,
-        action: "key.revoked",
-        targetType: "provider_member_link",
-        targetId: link.id,
-        metadata: { provider: conn?.provider },
-      });
-
-      res.json({ message: "Key revoked" });
-    } catch (e: any) {
-      console.error("Revoke error:", e);
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -1480,7 +1248,7 @@ export async function registerRoutes(
       const membership = await storage.createMembership({
         teamId: voucher.teamId,
         userId: voucherUser.id,
-        accessMode: "PROXY",
+        accessType: "VOUCHER",
         monthlyBudgetCents: voucher.budgetCents,
         allowedModels: voucher.allowedModels,
         allowedProviders: voucher.allowedProviders,
@@ -1855,7 +1623,7 @@ export async function registerRoutes(
         membership: membership || null,
         budgetCents: membership?.monthlyBudgetCents || 0,
         spendCents: membership?.currentPeriodSpendCents || 0,
-        accessMode: membership?.accessMode || "DIRECT",
+        accessType: membership?.accessType || "TEAM",
       });
     }
   });
@@ -1882,8 +1650,8 @@ export async function registerRoutes(
     if (!team) return res.json({ members: [], stats: {} });
 
     const members = await storage.getMemberDetailsForTeam(team.id);
-    const directMembers = members.filter((m: any) => m.accessMode === "DIRECT");
-    const proxyMembers = members.filter((m: any) => m.accessMode === "PROXY");
+    const teamMembers = members.filter((m: any) => m.accessType === "TEAM");
+    const voucherMembers = members.filter((m: any) => m.accessType === "VOUCHER");
     const stats = await storage.getTeamDashboardStats(team.id);
 
     const teamVouchers = await storage.getVouchersByTeam(team.id);
@@ -1901,8 +1669,8 @@ export async function registerRoutes(
       teamId: team.id,
       teamName: team.name,
       stats: { ...stats, bundleCapacityRemaining: bundleCapacity },
-      directMembers,
-      proxyMembers,
+      teamMembers,
+      voucherMembers,
     });
   });
 

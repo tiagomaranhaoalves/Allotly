@@ -212,7 +212,7 @@ function RootAdminOverview() {
                     <p className="text-[11px] text-muted-foreground mt-0.5">{formatTimeAgo(alert.triggeredAt)}</p>
                   </div>
                   <Badge variant="outline" className="text-[10px] shrink-0">
-                    {alert.accessMode === "PROXY" ? "Voucher" : "Direct"}
+                    {alert.accessType === "VOUCHER" ? "Voucher" : "Team"}
                   </Badge>
                 </div>
               ))}
@@ -624,7 +624,6 @@ function ProxyMemberOverview({ data }: { data: any }) {
 }
 
 function DirectMemberOverview({ data }: { data: any }) {
-  const providerLinks = data?.providerLinks || [];
   const usageSnapshots = data?.usageSnapshots || [];
 
   const chartData = usageSnapshots.slice(-30).map((s: any) => ({
@@ -632,18 +631,13 @@ function DirectMemberOverview({ data }: { data: any }) {
     cost: s.periodCostCents / 100,
   }));
 
-  const providerSpend: Record<string, number> = {};
-  for (const link of providerLinks) {
-    providerSpend[link.provider] = (providerSpend[link.provider] || 0);
-  }
-
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-bold tracking-tight" data-testid="text-member-dashboard-title">My Dashboard</h1>
         <div className="flex items-center gap-2 mt-1">
           <FeatureBadge type="TEAMS" />
-          <span className="text-sm text-muted-foreground">Direct provider access</span>
+          <span className="text-sm text-muted-foreground">Team access — monthly resetting budget</span>
         </div>
       </div>
 
@@ -672,18 +666,6 @@ function DirectMemberOverview({ data }: { data: any }) {
         </div>
       </Card>
 
-      {providerLinks.length > 0 && (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {providerLinks.map((link: any) => (
-            <SpendCard
-              key={link.id}
-              provider={link.provider}
-              amountCents={0}
-            />
-          ))}
-        </div>
-      )}
-
       <Card className="p-5" data-testid="card-usage-chart">
         <h2 className="text-base font-semibold mb-4">Usage Trend</h2>
         {chartData.length > 0 ? (
@@ -708,36 +690,14 @@ function DirectMemberOverview({ data }: { data: any }) {
         )}
       </Card>
 
-      <Card className="p-5" data-testid="card-provider-setup">
-        <h2 className="text-base font-semibold mb-4">Provider Setup</h2>
-        {providerLinks.length > 0 ? (
-          <div className="space-y-3">
-            {providerLinks.map((link: any) => (
-              <div key={link.id} className="flex items-center justify-between gap-3 p-3 rounded-lg bg-muted/50" data-testid={`provider-link-${link.id}`}>
-                <div className="flex items-center gap-2">
-                  <ProviderBadge provider={link.provider} />
-                  <span className="text-sm">{link.providerDisplayName}</span>
-                </div>
-                <Badge variant={link.setupStatus === "COMPLETE" ? "default" : "secondary"} className={
-                  link.setupStatus === "COMPLETE"
-                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
-                    : link.setupStatus === "FAILED"
-                    ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
-                    : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
-                }>
-                  {link.setupStatus === "COMPLETE" ? <CheckCircle className="w-3 h-3 mr-1" /> : <Clock className="w-3 h-3 mr-1" />}
-                  {link.setupStatus}
-                </Badge>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <EmptyState
-            icon={<Plug className="w-8 h-8 text-muted-foreground" />}
-            title="No providers set up"
-            description="Your team admin will provision provider access for you"
-          />
-        )}
+      <Card className="p-5" data-testid="card-api-info">
+        <h2 className="text-base font-semibold mb-4">API Access</h2>
+        <div className="p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground">
+          <p>All requests route through Allotly's proxy using your <code className="text-foreground">allotly_sk_</code> key. Your team admin manages provider connections and budget allocation.</p>
+          {data.keyPrefix && (
+            <p className="mt-2">Your key prefix: <code className="text-foreground font-medium">{data.keyPrefix}...</code></p>
+          )}
+        </div>
       </Card>
     </div>
   );
@@ -770,7 +730,7 @@ function MemberOverview() {
     );
   }
 
-  if (data.accessMode === "PROXY") {
+  if (data.accessType === "VOUCHER") {
     return <ProxyMemberOverview data={data} />;
   }
 

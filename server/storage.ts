@@ -5,11 +5,10 @@ import {
   type AuditLog, type InsertAuditLog, type ModelPricing,
   type VoucherBundle, type ProxyRequestLog, type UsageSnapshot,
   type AllotlyApiKey, type VoucherRedemption, type BudgetAlert,
-  type ProviderMemberLink, type InsertProviderMemberLink,
   organizations, users, teams, teamMemberships, providerConnections,
   vouchers, voucherRedemptions, voucherBundles, auditLogs, modelPricing,
   allotlyApiKeys, usageSnapshots, proxyRequestLogs, budgetAlerts,
-  providerMemberLinks, passwordResetTokens,
+  passwordResetTokens,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, asc, gte, lte, count } from "drizzle-orm";
@@ -61,14 +60,6 @@ export interface IStorage {
   getVoucherBundlesByOrg(orgId: string): Promise<VoucherBundle[]>;
   updateVoucherBundle(id: string, data: Partial<VoucherBundle>): Promise<VoucherBundle | undefined>;
 
-  createProviderMemberLink(link: InsertProviderMemberLink): Promise<ProviderMemberLink>;
-  getProviderMemberLink(id: string): Promise<ProviderMemberLink | undefined>;
-  getProviderMemberLinksByMembership(membershipId: string): Promise<ProviderMemberLink[]>;
-  getProviderMemberLinksByConnection(connectionId: string): Promise<ProviderMemberLink[]>;
-  getProviderMemberLinkByMembershipAndConnection(membershipId: string, connectionId: string): Promise<ProviderMemberLink | undefined>;
-  updateProviderMemberLink(id: string, data: Partial<ProviderMemberLink>): Promise<ProviderMemberLink | undefined>;
-  deleteProviderMemberLink(id: string): Promise<void>;
-
   getMemberCountByTeam(teamId: string): Promise<number>;
   getMemberCountByOrg(orgId: string): Promise<number>;
   deleteMembership(id: string): Promise<void>;
@@ -100,8 +91,7 @@ export interface IStorage {
   getBudgetAlert(membershipId: string, thresholdPercent: number): Promise<BudgetAlert | undefined>;
   deleteBudgetAlertsByMembership(membershipId: string): Promise<void>;
 
-  getActiveMembershipsByAccessMode(accessMode: string): Promise<TeamMembership[]>;
-  getActiveProviderMemberLinks(): Promise<ProviderMemberLink[]>;
+  getActiveMembershipsByAccessType(accessType: string): Promise<TeamMembership[]>;
 
   getDashboardStats(orgId: string): Promise<any>;
   getTeamDashboardStats(teamId: string): Promise<any>;
@@ -186,10 +176,6 @@ export class DrizzleStorage implements IStorage {
   }
 
   async deleteTeam(id: string): Promise<void> {
-    const memberships = await this.getMembershipsByTeam(id);
-    for (const m of memberships) {
-      await db.delete(providerMemberLinks).where(eq(providerMemberLinks.membershipId, m.id));
-    }
     await db.delete(teamMemberships).where(eq(teamMemberships.teamId, id));
     await db.delete(teams).where(eq(teams.id, id));
   }
@@ -307,40 +293,6 @@ export class DrizzleStorage implements IStorage {
     return result;
   }
 
-  async createProviderMemberLink(link: InsertProviderMemberLink): Promise<ProviderMemberLink> {
-    const [result] = await db.insert(providerMemberLinks).values(link).returning();
-    return result;
-  }
-
-  async getProviderMemberLink(id: string): Promise<ProviderMemberLink | undefined> {
-    const [result] = await db.select().from(providerMemberLinks).where(eq(providerMemberLinks.id, id));
-    return result;
-  }
-
-  async getProviderMemberLinksByMembership(membershipId: string): Promise<ProviderMemberLink[]> {
-    return db.select().from(providerMemberLinks).where(eq(providerMemberLinks.membershipId, membershipId));
-  }
-
-  async getProviderMemberLinksByConnection(connectionId: string): Promise<ProviderMemberLink[]> {
-    return db.select().from(providerMemberLinks).where(eq(providerMemberLinks.providerConnectionId, connectionId));
-  }
-
-  async getProviderMemberLinkByMembershipAndConnection(membershipId: string, connectionId: string): Promise<ProviderMemberLink | undefined> {
-    const [result] = await db.select().from(providerMemberLinks).where(
-      and(eq(providerMemberLinks.membershipId, membershipId), eq(providerMemberLinks.providerConnectionId, connectionId))
-    );
-    return result;
-  }
-
-  async updateProviderMemberLink(id: string, data: Partial<ProviderMemberLink>): Promise<ProviderMemberLink | undefined> {
-    const [result] = await db.update(providerMemberLinks).set({ ...data, updatedAt: new Date() }).where(eq(providerMemberLinks.id, id)).returning();
-    return result;
-  }
-
-  async deleteProviderMemberLink(id: string): Promise<void> {
-    await db.delete(providerMemberLinks).where(eq(providerMemberLinks.id, id));
-  }
-
   async getMemberCountByTeam(teamId: string): Promise<number> {
     const [result] = await db.select({ count: count() }).from(teamMemberships).where(eq(teamMemberships.teamId, teamId));
     return result?.count || 0;
@@ -356,7 +308,7 @@ export class DrizzleStorage implements IStorage {
   }
 
   async deleteMembership(id: string): Promise<void> {
-    await db.delete(providerMemberLinks).where(eq(providerMemberLinks.membershipId, id));
+    await db.delete(allotlyApiKeys).where(eq(allotlyApiKeys.membershipId, id));
     await db.delete(teamMemberships).where(eq(teamMemberships.id, id));
   }
 
@@ -457,14 +409,14 @@ export class DrizzleStorage implements IStorage {
 
   async getTeamDashboardStats(teamId: string): Promise<any> {
     const memberships = await this.getMembershipsByTeam(teamId);
-    const directMembers = memberships.filter(m => m.accessMode === "DIRECT");
-    const proxyMembers = memberships.filter(m => m.accessMode === "PROXY");
+    const teamMembers = memberships.filter(m => m.accessType === "TEAM");
+    const voucherMembers = memberships.filter(m => m.accessType === "VOUCHER");
     const totalSpendCents = memberships.reduce((sum, m) => sum + m.currentPeriodSpendCents, 0);
 
     return {
       totalSpendCents,
-      directMemberCount: directMembers.length,
-      proxyMemberCount: proxyMembers.length,
+      teamMemberCount: teamMembers.length,
+      voucherMemberCount: voucherMembers.length,
       totalMembers: memberships.length,
     };
   }
@@ -493,15 +445,9 @@ export class DrizzleStorage implements IStorage {
     await db.delete(budgetAlerts).where(eq(budgetAlerts.membershipId, membershipId));
   }
 
-  async getActiveMembershipsByAccessMode(accessMode: string): Promise<TeamMembership[]> {
+  async getActiveMembershipsByAccessType(accessType: string): Promise<TeamMembership[]> {
     return db.select().from(teamMemberships).where(
-      and(eq(teamMemberships.accessMode, accessMode as any), eq(teamMemberships.status, "ACTIVE"))
-    );
-  }
-
-  async getActiveProviderMemberLinks(): Promise<ProviderMemberLink[]> {
-    return db.select().from(providerMemberLinks).where(
-      and(eq(providerMemberLinks.status, "ACTIVE"), eq(providerMemberLinks.setupStatus, "COMPLETE"))
+      and(eq(teamMemberships.accessType, accessType as any), eq(teamMemberships.status, "ACTIVE"))
     );
   }
 
@@ -531,20 +477,6 @@ export class DrizzleStorage implements IStorage {
         for (const log of logs) {
           providerMap[log.provider] = (providerMap[log.provider] || 0) + Number(log.total);
         }
-
-        const links = await this.getProviderMemberLinksByMembership(m.id);
-        for (const link of links) {
-          const conn = await this.getProviderConnection(link.providerConnectionId);
-          if (conn) {
-            const snapshots = await db.select({
-              total: sql<number>`COALESCE(SUM(${usageSnapshots.periodCostCents}), 0)`,
-            }).from(usageSnapshots)
-              .where(eq(usageSnapshots.providerMemberLinkId, link.id));
-            if (snapshots[0]) {
-              providerMap[conn.provider] = (providerMap[conn.provider] || 0) + Number(snapshots[0].total);
-            }
-          }
-        }
       }
     }
     return Object.entries(providerMap).map(([provider, spendCents]) => ({ provider, spendCents }));
@@ -557,7 +489,6 @@ export class DrizzleStorage implements IStorage {
       const user = await this.getUser(m.userId);
       const keys = await db.select().from(allotlyApiKeys).where(eq(allotlyApiKeys.membershipId, m.id));
       const proxyLogCount = await db.select({ count: count() }).from(proxyRequestLogs).where(eq(proxyRequestLogs.membershipId, m.id));
-      const providerLinks = await this.getProviderMemberLinksByMembership(m.id);
 
       let voucherCode: string | null = null;
       if (m.voucherRedemptionId) {
@@ -573,12 +504,6 @@ export class DrizzleStorage implements IStorage {
         voucherCode,
         keyPrefix: keys.find(k => k.status === "ACTIVE")?.keyPrefix || null,
         proxyRequestCount: Number(proxyLogCount[0]?.count || 0),
-        providerLinks: providerLinks.map(l => ({
-          id: l.id,
-          provider: l.providerConnectionId,
-          setupStatus: l.setupStatus,
-          status: l.status,
-        })),
       });
     }
     return result;
@@ -605,7 +530,7 @@ export class DrizzleStorage implements IStorage {
             userName: user?.name || user?.email || "Unknown",
             userEmail: user?.email || "",
             teamName: team.name,
-            accessMode: m.accessMode,
+            accessType: m.accessType,
           });
         }
       }
@@ -622,8 +547,7 @@ export class DrizzleStorage implements IStorage {
     const keys = await this.getApiKeysByMembership(membership.id);
     const activeKey = keys.find(k => k.status === "ACTIVE");
     const proxyLogs = await this.getProxyRequestLogsByMembership(membership.id, 50);
-    const usageSnapshots = await this.getUsageSnapshotsByMembership(membership.id, 100);
-    const providerLinks = await this.getProviderMemberLinksByMembership(membership.id);
+    const snapshots = await this.getUsageSnapshotsByMembership(membership.id, 100);
     const models = await this.getModelPricing();
 
     let voucherInfo: any = null;
@@ -649,19 +573,9 @@ export class DrizzleStorage implements IStorage {
 
     const team = await this.getTeam(membership.teamId);
 
-    const providerLinksWithInfo = [];
-    for (const link of providerLinks) {
-      const conn = await this.getProviderConnection(link.providerConnectionId);
-      providerLinksWithInfo.push({
-        ...link,
-        provider: conn?.provider || "UNKNOWN",
-        providerDisplayName: conn?.displayName || conn?.provider || "Unknown",
-      });
-    }
-
     return {
       membership,
-      accessMode: membership.accessMode,
+      accessType: membership.accessType,
       budgetCents: membership.monthlyBudgetCents,
       spendCents: membership.currentPeriodSpendCents,
       periodStart: membership.periodStart,
@@ -670,10 +584,10 @@ export class DrizzleStorage implements IStorage {
       teamName: team?.name || "Unknown",
       keyPrefix: activeKey?.keyPrefix || null,
       proxyLogs,
-      usageSnapshots,
-      providerLinks: providerLinksWithInfo,
+      usageSnapshots: snapshots,
       availableModels,
       voucherInfo,
+      voucherExpiresAt: membership.voucherExpiresAt,
       proxyRequestCount: proxyLogs.length,
     };
   }

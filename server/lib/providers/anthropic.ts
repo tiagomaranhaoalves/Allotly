@@ -2,7 +2,6 @@ import type { ProviderAdapter, ValidationResult } from "./types";
 
 export const anthropicAdapter: ProviderAdapter = {
   provider: "ANTHROPIC",
-  automationLevel: "SEMI_AUTO",
 
   async validateAdminKey(apiKey: string): Promise<ValidationResult> {
     try {

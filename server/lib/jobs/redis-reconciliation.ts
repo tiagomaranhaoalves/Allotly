@@ -1,7 +1,4 @@
 import { storage } from "../../storage";
-import { db } from "../../db";
-import { teamMemberships } from "@shared/schema";
-import { eq } from "drizzle-orm";
 import { redisGet, redisSet, REDIS_KEYS } from "../redis";
 
 let running = false;
@@ -18,13 +15,20 @@ export async function runRedisReconciliation(): Promise<{ synced: number; restor
   let drifts = 0;
 
   try {
-    const activeMemberships = await storage.getActiveMembershipsByAccessMode("PROXY");
+    const teamMembers = await storage.getActiveMembershipsByAccessType("TEAM");
+    const voucherMembers = await storage.getActiveMembershipsByAccessType("VOUCHER");
+    const allActive = [...teamMembers, ...voucherMembers];
 
-    for (const membership of activeMemberships) {
+    for (const membership of allActive) {
       const budgetKey = REDIS_KEYS.budget(membership.id);
       const redisBudget = await redisGet(budgetKey);
 
-      const pgRemaining = membership.monthlyBudgetCents - membership.currentPeriodSpendCents;
+      let pgRemaining: number;
+      if (membership.accessType === "TEAM") {
+        pgRemaining = membership.monthlyBudgetCents - membership.currentPeriodSpendCents;
+      } else {
+        pgRemaining = membership.monthlyBudgetCents - membership.currentPeriodSpendCents;
+      }
 
       if (redisBudget === null) {
         await redisSet(budgetKey, String(pgRemaining));

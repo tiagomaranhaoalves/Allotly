@@ -2,7 +2,6 @@ import type { ProviderAdapter, ValidationResult } from "./types";
 
 export const googleAdapter: ProviderAdapter = {
   provider: "GOOGLE",
-  automationLevel: "GUIDED",
 
   async validateAdminKey(apiKey: string): Promise<ValidationResult> {
     try {

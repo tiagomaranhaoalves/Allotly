@@ -2,7 +2,6 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { BudgetBar } from "@/components/brand/budget-bar";
 import { FeatureBadge } from "@/components/brand/feature-badge";
-import { ProviderBadge } from "@/components/brand/provider-badge";
 import { EmptyState } from "@/components/brand/empty-state";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,8 +23,8 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
   Users, Plus, UserMinus, UserCheck, Key, CheckCircle2,
-  Clock, AlertTriangle, Trash2, DollarSign, Pencil, Link2,
-  Copy, RotateCcw, Ban, BookOpen, Ticket, ArrowLeftRight, ExternalLink,
+  Clock, AlertTriangle, Trash2, DollarSign, Pencil,
+  Copy, Ticket, ArrowLeftRight, ExternalLink,
 } from "lucide-react";
 import { useState } from "react";
 import { useLocation } from "wouter";
@@ -37,128 +36,6 @@ const STATUS_STYLES: Record<string, string> = {
   EXPIRED: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
 };
 
-const SETUP_STATUS_CONFIG: Record<string, { icon: any; color: string; label: string }> = {
-  PENDING: { icon: Clock, color: "text-muted-foreground", label: "Not started" },
-  PROVISIONING: { icon: RotateCcw, color: "text-blue-500", label: "Provisioning..." },
-  AWAITING_MEMBER: { icon: Clock, color: "text-amber-500", label: "Awaiting setup" },
-  COMPLETE: { icon: CheckCircle2, color: "text-emerald-500", label: "Active" },
-};
-
-function ProviderLinkRow({
-  link,
-  membershipId,
-}: {
-  link: any;
-  membershipId: string;
-}) {
-  const { toast } = useToast();
-  const [instructionsOpen, setInstructionsOpen] = useState(false);
-  const config = SETUP_STATUS_CONFIG[link.setupStatus] || SETUP_STATUS_CONFIG.PENDING;
-  const StatusIcon = config.icon;
-
-  const markCompleteMutation = useMutation({
-    mutationFn: async () => {
-      await apiRequest("POST", `/api/members/${membershipId}/mark-complete/${link.id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/members", membershipId, "provider-links"] });
-      toast({ title: "Marked as complete" });
-    },
-  });
-
-  const revokeMutation = useMutation({
-    mutationFn: async () => {
-      await apiRequest("POST", `/api/members/${membershipId}/revoke-key/${link.id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/members", membershipId, "provider-links"] });
-      toast({ title: "Key revoked" });
-    },
-  });
-
-  return (
-    <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-md bg-muted/50" data-testid={`provider-link-${link.id}`}>
-      <div className="flex items-center gap-3">
-        <ProviderBadge provider={link.provider || "UNKNOWN"} />
-        <div className="flex items-center gap-1.5">
-          <StatusIcon className={`w-3.5 h-3.5 ${config.color}`} />
-          <span className={`text-xs ${config.color}`}>{config.label}</span>
-        </div>
-      </div>
-      <div className="flex items-center gap-1.5">
-        {link.setupInstructions && (
-          <Dialog open={instructionsOpen} onOpenChange={setInstructionsOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" variant="ghost" className="h-7 px-2" data-testid={`button-instructions-${link.id}`}>
-                <BookOpen className="w-3.5 h-3.5" />
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-lg">
-              <DialogHeader>
-                <DialogTitle>Setup Instructions</DialogTitle>
-              </DialogHeader>
-              <div className="prose prose-sm dark:prose-invert max-h-80 overflow-y-auto whitespace-pre-wrap text-sm">
-                {link.setupInstructions}
-              </div>
-            </DialogContent>
-          </Dialog>
-        )}
-        {link.setupStatus === "AWAITING_MEMBER" && (
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 px-2 text-xs"
-            onClick={() => markCompleteMutation.mutate()}
-            disabled={markCompleteMutation.isPending}
-            data-testid={`button-mark-complete-${link.id}`}
-          >
-            <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
-            Mark Complete
-          </Button>
-        )}
-        {link.setupStatus === "COMPLETE" && link.status !== "REVOKED" && (
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 px-2 text-xs text-destructive hover:text-destructive"
-                disabled={revokeMutation.isPending}
-                data-testid={`button-revoke-${link.id}`}
-              >
-                <Ban className="w-3.5 h-3.5 mr-1" />
-                Revoke
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Revoke API Key?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This will permanently revoke the API key for this provider. The member will no longer be able to make API calls with this key. This action cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel data-testid="button-cancel-revoke-key">Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={() => revokeMutation.mutate()}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  data-testid="button-confirm-revoke-key"
-                >
-                  Revoke Key
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        )}
-        {link.status === "REVOKED" && (
-          <Badge variant="secondary" className="bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 text-[10px]">
-            Revoked
-          </Badge>
-        )}
-      </div>
-    </div>
-  );
-}
 
 function MemberCard({ member, providers, onRemove }: { member: any; providers: any[]; onRemove: (id: string) => void }) {
   const { toast } = useToast();
@@ -167,19 +44,6 @@ function MemberCard({ member, providers, onRemove }: { member: any; providers: a
   const [budgetOpen, setBudgetOpen] = useState(false);
   const [newBudget, setNewBudget] = useState(String(member.monthlyBudgetCents));
   const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
-  const [provisionOpen, setProvisionOpen] = useState(false);
-  const [selectedProvider, setSelectedProvider] = useState("");
-  const [provisionedKey, setProvisionedKey] = useState<string | null>(null);
-
-  const { data: links } = useQuery<any[]>({
-    queryKey: ["/api/members", member.id, "provider-links"],
-    queryFn: async () => {
-      const res = await fetch(`/api/members/${member.id}/provider-links`, { credentials: "include" });
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: expanded,
-  });
 
   const suspendMutation = useMutation({
     mutationFn: async () => {
@@ -214,46 +78,19 @@ function MemberCard({ member, providers, onRemove }: { member: any; providers: a
     },
   });
 
-  const accessModeMutation = useMutation({
+  const accessTypeMutation = useMutation({
     mutationFn: async () => {
-      const newMode = member.accessMode === "DIRECT" ? "PROXY" : "DIRECT";
-      await apiRequest("PATCH", `/api/members/${member.id}/budget`, { accessMode: newMode });
+      const newType = member.accessType === "TEAM" ? "VOUCHER" : "TEAM";
+      await apiRequest("PATCH", `/api/members/${member.id}/budget`, { accessType: newType });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/members"] });
-      toast({ title: `Switched to ${member.accessMode === "DIRECT" ? "Voucher" : "Teams"} mode` });
+      toast({ title: `Switched to ${member.accessType === "TEAM" ? "Voucher" : "Teams"} mode` });
     },
     onError: (err: any) => {
       toast({ title: "Failed to switch mode", description: err.message, variant: "destructive" });
     },
   });
-
-  const provisionMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/members/${member.id}/provision`, {
-        providerConnectionId: selectedProvider,
-      });
-      return res.json();
-    },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/members", member.id, "provider-links"] });
-      if (data.provisionedKey) {
-        setProvisionedKey(data.provisionedKey);
-      } else {
-        setProvisionOpen(false);
-        toast({ title: "Provider provisioned", description: "Check setup instructions for next steps." });
-      }
-    },
-    onError: (err: any) => {
-      toast({ title: "Provisioning failed", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const linkedProviderIds = links?.map((l: any) => l.providerConnectionId) || [];
-  const availableProviders = providers.filter(p => !linkedProviderIds.includes(p.id));
-
-  const completedCount = links?.filter((l: any) => l.setupStatus === "COMPLETE").length || 0;
-  const totalLinks = links?.length || 0;
 
   return (
     <Card className="overflow-hidden" data-testid={`member-card-${member.id}`}>
@@ -273,12 +110,7 @@ function MemberCard({ member, providers, onRemove }: { member: any; providers: a
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {expanded && totalLinks > 0 && (
-              <span className="text-xs text-muted-foreground">
-                {completedCount}/{totalLinks} providers
-              </span>
-            )}
-            <FeatureBadge type={member.accessMode === "DIRECT" ? "TEAMS" : "VOUCHERS"} />
+            <FeatureBadge type={member.accessType === "TEAM" ? "TEAMS" : "VOUCHERS"} />
             <Badge variant="secondary" className={`${STATUS_STYLES[member.status] || ""} no-default-hover-elevate no-default-active-elevate`}>
               {member.status}
             </Badge>
@@ -289,7 +121,7 @@ function MemberCard({ member, providers, onRemove }: { member: any; providers: a
 
       {expanded && (
         <div className="border-t px-4 py-3 space-y-3 bg-muted/20">
-          {member.accessMode === "PROXY" && (
+          {member.accessType === "VOUCHER" && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Voucher Access</h4>
@@ -310,100 +142,14 @@ function MemberCard({ member, providers, onRemove }: { member: any; providers: a
               </div>
             </div>
           )}
-          {member.accessMode === "DIRECT" && (
+          {member.accessType === "TEAM" && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Provider Access</h4>
-                {availableProviders.length > 0 && (
-                  <Dialog open={provisionOpen} onOpenChange={(o) => { setProvisionOpen(o); if (!o) { setProvisionedKey(null); setSelectedProvider(""); } }}>
-                    <DialogTrigger asChild>
-                      <Button size="sm" variant="outline" className="h-7 text-xs" data-testid={`button-provision-${member.id}`}>
-                        <Link2 className="w-3.5 h-3.5 mr-1" />
-                        Provision Provider
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Provision Provider Access</DialogTitle>
-                        <DialogDescription>
-                          Set up API key access for {member.user?.name || member.user?.email} on a provider.
-                        </DialogDescription>
-                      </DialogHeader>
-                      {provisionedKey ? (
-                        <div className="space-y-4 pt-2">
-                          <div className="p-4 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800">
-                            <div className="flex items-center gap-2 mb-2">
-                              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                              <span className="font-medium text-sm text-emerald-700 dark:text-emerald-300">Key Provisioned</span>
-                            </div>
-                            <div className="bg-background rounded-md p-3 font-mono text-xs break-all border" data-testid="provisioned-key-value">
-                              {provisionedKey}
-                            </div>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="mt-2 text-xs"
-                              onClick={() => {
-                                navigator.clipboard.writeText(provisionedKey);
-                                toast({ title: "Key copied to clipboard" });
-                              }}
-                              data-testid="button-copy-key"
-                            >
-                              <Copy className="w-3.5 h-3.5 mr-1" />
-                              Copy Key
-                            </Button>
-                            <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-1">
-                              <AlertTriangle className="w-3 h-3" />
-                              This key is shown only once. Save it securely now.
-                            </p>
-                          </div>
-                          <Button className="w-full" onClick={() => { setProvisionOpen(false); setProvisionedKey(null); }}>
-                            Done
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="space-y-4 pt-2">
-                          <div className="space-y-2">
-                            <Label>Provider</Label>
-                            <Select value={selectedProvider} onValueChange={setSelectedProvider}>
-                              <SelectTrigger data-testid="select-provider-provision">
-                                <SelectValue placeholder="Select a provider" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {availableProviders.map((p: any) => (
-                                  <SelectItem key={p.id} value={p.id}>
-                                    <span className="flex items-center gap-2">
-                                      <ProviderBadge provider={p.provider} />
-                                      {p.displayName && <span className="text-muted-foreground text-xs">({p.displayName})</span>}
-                                    </span>
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <Button
-                            className="w-full"
-                            onClick={() => provisionMutation.mutate()}
-                            disabled={!selectedProvider || provisionMutation.isPending}
-                            data-testid="button-submit-provision"
-                          >
-                            {provisionMutation.isPending ? "Provisioning..." : "Provision Access"}
-                          </Button>
-                        </div>
-                      )}
-                    </DialogContent>
-                  </Dialog>
-                )}
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Team Access</h4>
               </div>
-              {links && links.length > 0 ? (
-                <div className="space-y-1.5">
-                  {links.map((link: any) => (
-                    <ProviderLinkRow key={link.id} link={link} membershipId={member.id} />
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground py-2">No providers provisioned yet. Click "Provision Provider" to set up access.</p>
-              )}
+              <div className="p-3 rounded-lg bg-muted/50 text-xs text-muted-foreground">
+                <p>This member uses <strong className="text-foreground">Team mode</strong> with a monthly resetting budget. All requests route through Allotly's proxy using their <code>allotly_sk_</code> key.</p>
+              </div>
             </div>
           )}
 
@@ -415,29 +161,29 @@ function MemberCard({ member, providers, onRemove }: { member: any; providers: a
                     size="sm"
                     variant="outline"
                     className="h-7 text-xs"
-                    disabled={accessModeMutation.isPending}
+                    disabled={accessTypeMutation.isPending}
                     data-testid={`button-switch-mode-${member.id}`}
                   >
                     <ArrowLeftRight className="w-3 h-3 mr-1" />
-                    Switch to {member.accessMode === "DIRECT" ? "Voucher" : "Teams"}
+                    Switch to {member.accessType === "TEAM" ? "Voucher" : "Teams"}
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Switch Access Mode?</AlertDialogTitle>
+                    <AlertDialogTitle>Switch Access Type?</AlertDialogTitle>
                     <AlertDialogDescription>
                       Switch <strong>{member.user?.name || member.user?.email}</strong> from{" "}
-                      <strong>{member.accessMode === "DIRECT" ? "Teams" : "Voucher"}</strong> to{" "}
-                      <strong>{member.accessMode === "DIRECT" ? "Voucher" : "Teams"}</strong> mode?
-                      {member.accessMode === "DIRECT"
-                        ? " In Voucher mode, requests route through Allotly for real-time budget enforcement."
-                        : " In Teams mode, the member uses scoped provider keys directly. You'll need to provision provider access separately."}
+                      <strong>{member.accessType === "TEAM" ? "Teams" : "Voucher"}</strong> to{" "}
+                      <strong>{member.accessType === "TEAM" ? "Voucher" : "Teams"}</strong> mode?
+                      {member.accessType === "TEAM"
+                        ? " In Voucher mode, the member has a fixed budget with an expiry date."
+                        : " In Teams mode, the member has a monthly resetting budget."}
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => accessModeMutation.mutate()} data-testid={`button-confirm-switch-mode-${member.id}`}>
-                      Switch Mode
+                    <AlertDialogAction onClick={() => accessTypeMutation.mutate()} data-testid={`button-confirm-switch-mode-${member.id}`}>
+                      Switch Type
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
@@ -558,7 +304,7 @@ export default function MembersPage() {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [budgetCents, setBudgetCents] = useState("5000");
-  const [accessMode, setAccessMode] = useState("DIRECT");
+  const [accessType, setAccessType] = useState("TEAM");
   const [selectedTeam, setSelectedTeam] = useState("");
 
   const { data: teams } = useQuery<any[]>({ queryKey: ["/api/teams"] });
@@ -572,12 +318,12 @@ export default function MembersPage() {
     mutationFn: async () => {
       const teamId = selectedTeam || teams?.[0]?.id;
       await apiRequest("POST", "/api/members", {
-        email, name, budgetCents: parseInt(budgetCents), accessMode, teamId,
+        email, name, budgetCents: parseInt(budgetCents), accessType, teamId,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/members"] });
-      if (accessMode === "PROXY") {
+      if (accessType === "VOUCHER") {
         setShowVoucherPrompt(true);
       } else {
         toast({ title: "Member added successfully" });
@@ -604,8 +350,8 @@ export default function MembersPage() {
     },
   });
 
-  const directMembers = members?.filter(m => m.accessMode === "DIRECT") || [];
-  const proxyMembers = members?.filter(m => m.accessMode === "PROXY") || [];
+  const teamTypeMembers = members?.filter(m => m.accessType === "TEAM") || [];
+  const voucherTypeMembers = members?.filter(m => m.accessType === "VOUCHER") || [];
 
   return (
     <div className="space-y-6">
@@ -703,14 +449,14 @@ export default function MembersPage() {
                     <p className="text-xs text-muted-foreground">${(parseInt(budgetCents || "0") / 100).toFixed(2)} per month</p>
                   </div>
                   <div className="space-y-2">
-                    <Label>Access Mode</Label>
-                    <Select value={accessMode} onValueChange={setAccessMode}>
-                      <SelectTrigger data-testid="select-access-mode">
+                    <Label>Access Type</Label>
+                    <Select value={accessType} onValueChange={setAccessType}>
+                      <SelectTrigger data-testid="select-access-type">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="DIRECT">Teams</SelectItem>
-                        <SelectItem value="PROXY">Voucher</SelectItem>
+                        <SelectItem value="TEAM">Teams</SelectItem>
+                        <SelectItem value="VOUCHER">Voucher</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -733,26 +479,26 @@ export default function MembersPage() {
               <Users className="w-3.5 h-3.5 mr-1.5" />
               All ({members.length})
             </TabsTrigger>
-            <TabsTrigger value="direct" data-testid="tab-direct">
+            <TabsTrigger value="team" data-testid="tab-team">
               <Key className="w-3.5 h-3.5 mr-1.5" />
-              Teams Members ({directMembers.length})
+              Teams Members ({teamTypeMembers.length})
             </TabsTrigger>
-            <TabsTrigger value="proxy" data-testid="tab-proxy">
+            <TabsTrigger value="voucher" data-testid="tab-voucher">
               <Ticket className="w-3.5 h-3.5 mr-1.5" />
-              Voucher Recipients ({proxyMembers.length})
+              Voucher Recipients ({voucherTypeMembers.length})
             </TabsTrigger>
           </TabsList>
           <TabsContent value="all" className="space-y-3 mt-4">
             {members.map(m => <MemberCard key={m.id} member={m} providers={providers || []} onRemove={(id) => removeMutation.mutate(id)} />)}
           </TabsContent>
-          <TabsContent value="direct" className="space-y-3 mt-4">
-            {directMembers.length > 0 ? directMembers.map(m => <MemberCard key={m.id} member={m} providers={providers || []} onRemove={(id) => removeMutation.mutate(id)} />) : (
-              <EmptyState icon={<Users className="w-8 h-8 text-muted-foreground" />} title="No direct members" description="Add members with direct provider access" />
+          <TabsContent value="team" className="space-y-3 mt-4">
+            {teamTypeMembers.length > 0 ? teamTypeMembers.map(m => <MemberCard key={m.id} member={m} providers={providers || []} onRemove={(id) => removeMutation.mutate(id)} />) : (
+              <EmptyState icon={<Users className="w-8 h-8 text-muted-foreground" />} title="No team members" description="Add members with monthly resetting budgets" />
             )}
           </TabsContent>
-          <TabsContent value="proxy" className="space-y-3 mt-4">
-            {proxyMembers.length > 0 ? proxyMembers.map(m => <MemberCard key={m.id} member={m} providers={providers || []} onRemove={(id) => removeMutation.mutate(id)} />) : (
-              <EmptyState icon={<Users className="w-8 h-8 text-muted-foreground" />} title="No voucher recipients" description="Create vouchers to distribute proxy access" />
+          <TabsContent value="voucher" className="space-y-3 mt-4">
+            {voucherTypeMembers.length > 0 ? voucherTypeMembers.map(m => <MemberCard key={m.id} member={m} providers={providers || []} onRemove={(id) => removeMutation.mutate(id)} />) : (
+              <EmptyState icon={<Users className="w-8 h-8 text-muted-foreground" />} title="No voucher recipients" description="Create vouchers to distribute fixed-budget access" />
             )}
           </TabsContent>
         </Tabs>

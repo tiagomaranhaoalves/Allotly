@@ -1,0 +1,50 @@
+MILESTONE 1: Project Foundation, Database, and Authentication
+
+Referring to BOTH spec files, build the foundation.
+
+BUILD THESE:
+
+1. PROJECT SETUP
+   - Next.js 14 with App Router (NOT Pages Router)
+   - TypeScript in strict mode
+   - Tailwind CSS 3 with the exact custom color palette from v3 Section 2.2 in tailwind.config.ts
+   - Install shadcn/ui
+   - Import Inter and JetBrains Mono fonts from Google Fonts (v3 Section 2.3)
+   - Install all dependencies from v3 Section 3: Prisma, NextAuth v5, Stripe, Resend, Redis (ioredis), Recharts, Zod, qrcode, Lucide React, tiktoken
+   - Set up environment variables structure from v3 Section 16
+
+2. DATABASE — Apply v3 Section 6 schema WITH v4 Section 5 modifications:
+   - Copy v3 Prisma schema THEN apply these changes:
+     - REMOVE: ProviderMemberLink model entirely
+     - REMOVE: AccessMode, SetupStatus, LinkStatus, AutomationLevel, UsageSource enums
+     - REMOVE: automationLevel field from ProviderConnection
+     - REMOVE: providerMemberLinkId and source fields from UsageSnapshot
+     - ADD to TeamMembership: accessType (AccessType enum: TEAM | VOUCHER), allowedProviders (Json?), voucherExpiresAt (DateTime?)
+     - ADD AccessType enum with values TEAM and VOUCHER
+     - ADD to AllotlyApiKey: membershipId field (String, mapped to "membership_id")
+   - Run prisma generate + prisma db push
+   - Create /prisma/seed.ts with exact model pricing data from v3 Section 6 (14 models)
+   - Run the seed
+
+3. AUTHENTICATION
+   - NextAuth.js v5 with credentials provider (email + password with bcrypt hashing)
+   - Magic link provider (via Resend)
+   - Session must include: userId, email, orgId, orgRole, isVoucherUser
+   - Create /lib/auth.ts with the NextAuth config
+   - Create login page at /login and signup page at /signup
+
+4. ORG CREATION
+   - Signup flow creates: Organization (plan=FREE) + User (role=ROOT_ADMIN) + Team (name="Default", admin=Root Admin)
+   - Root Admin acts as sole Team Admin on Free plan
+   - After signup, redirect to /dashboard
+
+5. FILE STRUCTURE
+   - Set up route groups: /(public), /(auth), /(dashboard) as shown in v3 Section 21
+   - Create placeholder pages for all dashboard routes
+   - NOTE: Do NOT create routes for /api/members/[id]/provision, regenerate-key/[provider], revoke-key/[provider], mark-complete/[provider] — those are REMOVED in v4
+
+VERIFY BY:
+- Show me the running app with working signup → login → redirect to /dashboard
+- Show me Prisma Studio with all tables created (confirm ProviderMemberLink does NOT exist)
+- Confirm AccessType enum exists with TEAM and VOUCHER values
+- Confirm model pricing is seeded (14 models)

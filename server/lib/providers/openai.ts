@@ -2,7 +2,6 @@ import type { ProviderAdapter, ValidationResult } from "./types";
 
 export const openaiAdapter: ProviderAdapter = {
   provider: "OPENAI",
-  automationLevel: "FULL_AUTO",
 
   async validateAdminKey(apiKey: string): Promise<ValidationResult> {
     try {

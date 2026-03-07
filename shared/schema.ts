@@ -24,15 +24,11 @@ const bytea = customType<{ data: Buffer; driverData: Buffer }>({
 export const planEnum = pgEnum("plan", ["FREE", "TEAM", "ENTERPRISE"]);
 export const orgRoleEnum = pgEnum("org_role", ["ROOT_ADMIN", "TEAM_ADMIN", "MEMBER"]);
 export const userStatusEnum = pgEnum("user_status", ["ACTIVE", "SUSPENDED", "INVITED", "EXPIRED"]);
-export const accessModeEnum = pgEnum("access_mode", ["DIRECT", "PROXY"]);
+export const accessTypeEnum = pgEnum("access_type", ["TEAM", "VOUCHER"]);
 export const membershipStatusEnum = pgEnum("membership_status", ["ACTIVE", "SUSPENDED", "BUDGET_EXHAUSTED", "EXPIRED"]);
 export const providerEnum = pgEnum("provider", ["OPENAI", "ANTHROPIC", "GOOGLE"]);
-export const automationLevelEnum = pgEnum("automation_level", ["FULL_AUTO", "SEMI_AUTO", "GUIDED"]);
 export const providerStatusEnum = pgEnum("provider_status", ["ACTIVE", "INVALID", "DISCONNECTED"]);
-export const setupStatusEnum = pgEnum("setup_status", ["PENDING", "PROVISIONING", "AWAITING_MEMBER", "COMPLETE", "FAILED"]);
-export const linkStatusEnum = pgEnum("link_status", ["ACTIVE", "REVOKED", "EXPIRED"]);
 export const allotlyKeyStatusEnum = pgEnum("allotly_key_status", ["ACTIVE", "REVOKED", "EXPIRED"]);
-export const usageSourceEnum = pgEnum("usage_source", ["POLL", "PROXY"]);
 export const voucherStatusEnum = pgEnum("voucher_status", ["ACTIVE", "EXPIRED", "FULLY_REDEEMED", "REVOKED"]);
 export const bundleStatusEnum = pgEnum("bundle_status", ["ACTIVE", "EXHAUSTED", "EXPIRED"]);
 
@@ -45,8 +41,6 @@ export const organizations = pgTable("organizations", {
   maxTeamAdmins: integer("max_team_admins").default(0).notNull(),
   orgBudgetCeilingCents: integer("org_budget_ceiling_cents"),
   defaultMemberBudgetCents: integer("default_member_budget_cents"),
-  graceEndsAt: timestamp("grace_ends_at"),
-  lastPolledAt: timestamp("last_polled_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -83,7 +77,7 @@ export const teamMemberships = pgTable("team_memberships", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   teamId: varchar("team_id").notNull().references(() => teams.id),
   userId: varchar("user_id").notNull().unique().references(() => users.id),
-  accessMode: accessModeEnum("access_mode").notNull(),
+  accessType: accessTypeEnum("access_type").notNull(),
   monthlyBudgetCents: integer("monthly_budget_cents").notNull(),
   allowedModels: json("allowed_models"),
   allowedProviders: json("allowed_providers"),
@@ -92,6 +86,7 @@ export const teamMemberships = pgTable("team_memberships", {
   periodEnd: timestamp("period_end").notNull(),
   status: membershipStatusEnum("status").default("ACTIVE").notNull(),
   voucherRedemptionId: varchar("voucher_redemption_id"),
+  voucherExpiresAt: timestamp("voucher_expires_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [
@@ -106,7 +101,6 @@ export const providerConnections = pgTable("provider_connections", {
   adminApiKeyEncrypted: bytea("admin_api_key_encrypted").notNull(),
   adminApiKeyIv: bytea("admin_api_key_iv").notNull(),
   adminApiKeyTag: bytea("admin_api_key_tag").notNull(),
-  automationLevel: automationLevelEnum("automation_level").notNull(),
   status: providerStatusEnum("status").default("ACTIVE").notNull(),
   lastValidatedAt: timestamp("last_validated_at"),
   orgAllowedModels: json("org_allowed_models"),
@@ -114,26 +108,6 @@ export const providerConnections = pgTable("provider_connections", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [
   uniqueIndex("provider_connections_org_provider_idx").on(table.orgId, table.provider),
-]);
-
-export const providerMemberLinks = pgTable("provider_member_links", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  membershipId: varchar("membership_id").notNull().references(() => teamMemberships.id),
-  providerConnectionId: varchar("provider_connection_id").notNull().references(() => providerConnections.id),
-  providerProjectId: text("provider_project_id"),
-  providerWorkspaceId: text("provider_workspace_id"),
-  providerApiKeyId: text("provider_api_key_id"),
-  providerSvcAcctId: text("provider_svc_acct_id"),
-  providerBudgetCents: integer("provider_budget_cents"),
-  setupStatus: setupStatusEnum("setup_status").default("PENDING").notNull(),
-  setupInstructions: text("setup_instructions"),
-  keyDeliveredAt: timestamp("key_delivered_at"),
-  status: linkStatusEnum("status").default("ACTIVE").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, (table) => [
-  uniqueIndex("provider_member_links_unique_idx").on(table.membershipId, table.providerConnectionId),
-  index("provider_member_links_connection_idx").on(table.providerConnectionId),
 ]);
 
 export const allotlyApiKeys = pgTable("allotly_api_keys", {
@@ -152,7 +126,6 @@ export const allotlyApiKeys = pgTable("allotly_api_keys", {
 
 export const usageSnapshots = pgTable("usage_snapshots", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  providerMemberLinkId: varchar("provider_member_link_id"),
   membershipId: varchar("membership_id").notNull().references(() => teamMemberships.id),
   snapshotAt: timestamp("snapshot_at").notNull(),
   inputTokens: integer("input_tokens").default(0).notNull(),
@@ -160,11 +133,9 @@ export const usageSnapshots = pgTable("usage_snapshots", {
   totalCostCents: integer("total_cost_cents").default(0).notNull(),
   periodCostCents: integer("period_cost_cents").default(0).notNull(),
   model: text("model"),
-  source: usageSourceEnum("source").default("POLL").notNull(),
   rawData: json("raw_data"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
-  index("usage_snapshots_link_idx").on(table.providerMemberLinkId, table.snapshotAt),
   index("usage_snapshots_membership_idx").on(table.membershipId, table.snapshotAt),
 ]);
 
@@ -289,7 +260,6 @@ export const insertUserSchema = createInsertSchema(users).omit({ id: true, creat
 export const insertTeamSchema = createInsertSchema(teams).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertTeamMembershipSchema = createInsertSchema(teamMemberships).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertProviderConnectionSchema = createInsertSchema(providerConnections).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertProviderMemberLinkSchema = createInsertSchema(providerMemberLinks).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertVoucherSchema = createInsertSchema(vouchers).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({ id: true, createdAt: true });
 export const insertModelPricingSchema = createInsertSchema(modelPricing).omit({ id: true, updatedAt: true });
@@ -313,8 +283,6 @@ export type VoucherBundle = typeof voucherBundles.$inferSelect;
 export type ProxyRequestLog = typeof proxyRequestLogs.$inferSelect;
 export type UsageSnapshot = typeof usageSnapshots.$inferSelect;
 export type BudgetAlert = typeof budgetAlerts.$inferSelect;
-export type ProviderMemberLink = typeof providerMemberLinks.$inferSelect;
-export type InsertProviderMemberLink = z.infer<typeof insertProviderMemberLinkSchema>;
 export type AllotlyApiKey = typeof allotlyApiKeys.$inferSelect;
 export type VoucherRedemption = typeof voucherRedemptions.$inferSelect;
 

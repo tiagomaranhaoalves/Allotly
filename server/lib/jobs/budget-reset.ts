@@ -1,5 +1,8 @@
 import { storage } from "../../storage";
-import { decryptProviderKey } from "../encryption";
+import { db } from "../../db";
+import { allotlyApiKeys } from "@shared/schema";
+import { eq } from "drizzle-orm";
+import { redisSet, REDIS_KEYS } from "../redis";
 
 let isResetting = false;
 
@@ -14,116 +17,62 @@ export async function runBudgetReset(): Promise<{ membersReset: number; membersR
   const now = new Date();
 
   try {
-    const allOrgs = await storage.getAllOrganizations();
+    const teamMemberships = await storage.getActiveMembershipsByAccessType("TEAM");
 
-    for (const org of allOrgs) {
-      const orgTeams = await storage.getTeamsByOrg(org.id);
+    for (const membership of teamMemberships) {
+      try {
+        if (new Date(membership.periodEnd) > now) {
+          continue;
+        }
 
-      for (const team of orgTeams) {
-        const memberships = await storage.getMembershipsByTeam(team.id);
-        const directMembers = memberships.filter(m => m.accessMode === "DIRECT");
+        const newPeriodStart = new Date(membership.periodEnd);
+        const newPeriodEnd = new Date(newPeriodStart);
+        newPeriodEnd.setMonth(newPeriodEnd.getMonth() + 1);
 
-        for (const membership of directMembers) {
-          try {
-            if (new Date(membership.periodEnd) > now) {
-              continue;
+        const updateData: any = {
+          currentPeriodSpendCents: 0,
+          periodStart: newPeriodStart,
+          periodEnd: newPeriodEnd,
+        };
+
+        if (membership.status === "BUDGET_EXHAUSTED") {
+          updateData.status = "ACTIVE";
+          stats.membersReactivated++;
+
+          const keys = await storage.getApiKeysByMembership(membership.id);
+          for (const key of keys) {
+            if (key.status === "REVOKED") {
+              await db.update(allotlyApiKeys)
+                .set({ status: "ACTIVE", updatedAt: new Date() })
+                .where(eq(allotlyApiKeys.id, key.id));
             }
-
-            const newPeriodStart = new Date(membership.periodEnd);
-            const newPeriodEnd = new Date(newPeriodStart);
-            newPeriodEnd.setMonth(newPeriodEnd.getMonth() + 1);
-
-            const updateData: any = {
-              currentPeriodSpendCents: 0,
-              periodStart: newPeriodStart,
-              periodEnd: newPeriodEnd,
-            };
-
-            if (membership.status === "BUDGET_EXHAUSTED") {
-              updateData.status = "ACTIVE";
-              stats.membersReactivated++;
-
-              const links = await storage.getProviderMemberLinksByMembership(membership.id);
-              for (const link of links) {
-                if (link.status === "REVOKED") {
-                  const conn = await storage.getProviderConnection(link.providerConnectionId);
-                  if (!conn) continue;
-
-                  if (conn.provider === "OPENAI" && link.providerProjectId) {
-                    try {
-                      const adminKey = decryptProviderKey(conn.adminApiKeyEncrypted, conn.adminApiKeyIv, conn.adminApiKeyTag);
-                      const svcRes = await fetch(
-                        `https://api.openai.com/v1/organization/projects/${link.providerProjectId}/service_accounts`,
-                        {
-                          method: "POST",
-                          headers: { Authorization: `Bearer ${adminKey}`, "Content-Type": "application/json" },
-                          body: JSON.stringify({ name: "allotly-managed" }),
-                        }
-                      );
-                      if (svcRes.ok) {
-                        const svcAcct = await svcRes.json();
-                        await storage.updateProviderMemberLink(link.id, {
-                          status: "ACTIVE" as any,
-                          setupStatus: "COMPLETE" as any,
-                          providerSvcAcctId: svcAcct.id,
-                          providerApiKeyId: svcAcct.api_key?.id,
-                          keyDeliveredAt: new Date(),
-                        });
-                      } else {
-                        await storage.updateProviderMemberLink(link.id, {
-                          status: "ACTIVE" as any,
-                          setupStatus: "PENDING" as any,
-                          setupInstructions: "Budget reset: please re-provision OpenAI access.",
-                        });
-                      }
-                    } catch (e: any) {
-                      console.error(`[budget-reset] OpenAI re-provision error for link=${link.id}: ${e.message}`);
-                      await storage.updateProviderMemberLink(link.id, {
-                        status: "ACTIVE" as any,
-                        setupStatus: "PENDING" as any,
-                      });
-                    }
-                  } else {
-                    await storage.updateProviderMemberLink(link.id, {
-                      status: "ACTIVE" as any,
-                      setupStatus: "AWAITING_MEMBER" as any,
-                      setupInstructions: "Budget has been reset. Please re-provision your API key.",
-                    });
-                  }
-                }
-              }
-
-              await storage.createAuditLog({
-                orgId: org.id,
-                actorId: "system",
-                action: "budget.reset_reactivated",
-                targetType: "team_membership",
-                targetId: membership.id,
-                metadata: { previousStatus: "BUDGET_EXHAUSTED" },
-              });
-            }
-
-            await storage.deleteBudgetAlertsByMembership(membership.id);
-            await storage.updateMembership(membership.id, updateData);
-            stats.membersReset++;
-
-            await storage.createAuditLog({
-              orgId: org.id,
-              actorId: "system",
-              action: "budget.period_reset",
-              targetType: "team_membership",
-              targetId: membership.id,
-              metadata: {
-                previousSpend: membership.currentPeriodSpendCents,
-                newPeriodStart: newPeriodStart.toISOString(),
-                newPeriodEnd: newPeriodEnd.toISOString(),
-              },
-            });
-          } catch (e: any) {
-            stats.errors++;
-            console.error(`[budget-reset] Error resetting member=${membership.id}: ${e.message}`);
           }
         }
+
+        await redisSet(REDIS_KEYS.budget(membership.id), String(membership.monthlyBudgetCents));
+
+        await storage.deleteBudgetAlertsByMembership(membership.id);
+        await storage.updateMembership(membership.id, updateData);
+        stats.membersReset++;
+
+        const team = await storage.getTeam(membership.teamId);
+        if (team) {
+          await storage.createAuditLog({
+            orgId: team.orgId,
+            actorId: "system",
+            action: "budget.period_reset",
+            targetType: "team_membership",
+            targetId: membership.id,
+            metadata: {
+              previousSpend: membership.currentPeriodSpendCents,
+              newPeriodStart: newPeriodStart.toISOString(),
+              newPeriodEnd: newPeriodEnd.toISOString(),
+            },
+          });
+        }
+      } catch (e: any) {
+        stats.errors++;
+        console.error(`[budget-reset] Error resetting member=${membership.id}: ${e.message}`);
       }
     }
   } catch (e: any) {

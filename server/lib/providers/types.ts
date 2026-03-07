@@ -7,6 +7,8 @@ export interface ValidationResult {
 
 export interface ProviderAdapter {
   provider: "OPENAI" | "ANTHROPIC" | "GOOGLE";
-  automationLevel: "FULL_AUTO" | "SEMI_AUTO" | "GUIDED";
   validateAdminKey(apiKey: string): Promise<ValidationResult>;
+  translateRequest?(request: any): any;
+  translateResponse?(response: any): any;
+  extractUsage?(response: any): { inputTokens: number; outputTokens: number };
 }
