@@ -22,6 +22,8 @@ import PrivacyPage from "@/pages/privacy";
 import TermsPage from "@/pages/terms";
 import SecurityPage from "@/pages/security";
 import ComponentsShowcase from "@/pages/components-showcase";
+import AdminLoginPage from "@/pages/admin-login";
+import AdminPage from "@/pages/admin";
 import DashboardOverview from "@/pages/dashboard/overview";
 import ProvidersPage from "@/pages/dashboard/providers";
 import TeamsPage from "@/pages/dashboard/teams";
@@ -61,6 +63,8 @@ function Router() {
       <Route path="/terms" component={TermsPage} />
       <Route path="/security" component={SecurityPage} />
       <Route path="/components" component={ComponentsShowcase} />
+      <Route path="/admin/login" component={AdminLoginPage} />
+      <Route path="/admin" component={AdminPage} />
       <Route path="/dashboard">
         {() => <DashboardRoute component={DashboardOverview} />}
       </Route>

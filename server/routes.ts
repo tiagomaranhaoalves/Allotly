@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, requireAuth, requireRole } from "./auth";
+import { setupAuth, requireAuth, requireRole, requireAdmin } from "./auth";
 import { hashPassword, comparePasswords } from "./lib/password";
 import { signupSchema, loginSchema, voucherBundles } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
@@ -2179,6 +2179,173 @@ export async function registerRoutes(
     }
     const data = await getOptimizationRecommendations(user.orgId, teamId);
     res.json(data);
+  });
+
+  // ── Admin Control Center Routes ──
+
+  app.post("/api/admin/login", async (req, res) => {
+    try {
+      const schema = z.object({ email: z.string().email(), password: z.string().min(1) });
+      const { email, password } = schema.parse(req.body);
+
+      const adminEmail = process.env.ADMIN_EMAIL;
+      const adminPassword = process.env.ADMIN_PASSWORD;
+      if (!adminEmail || !adminPassword) {
+        return res.status(500).json({ message: "Admin credentials not configured" });
+      }
+
+      if (email !== adminEmail || password !== adminPassword) {
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+
+      req.session.isAdmin = true;
+      res.json({ message: "Admin login successful" });
+    } catch (e: any) {
+      if (e instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: e.errors });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/logout", requireAdmin, (req, res) => {
+    req.session.destroy((err) => {
+      if (err) return res.status(500).json({ message: "Logout failed" });
+      res.json({ message: "Logged out" });
+    });
+  });
+
+  app.get("/api/admin/session", requireAdmin, (_req, res) => {
+    res.json({ isAdmin: true });
+  });
+
+  app.get("/api/admin/stats", requireAdmin, async (_req, res) => {
+    try {
+      const allOrgs = await storage.getAllOrganizations();
+      const allUsers: any[] = [];
+      for (const org of allOrgs) {
+        const orgUsers = await storage.getUsersByOrg(org.id);
+        allUsers.push(...orgUsers);
+      }
+
+      let totalVouchers = 0;
+      let activeVouchers = 0;
+      let totalSpendCents = 0;
+      for (const org of allOrgs) {
+        const orgVouchers = await storage.getVouchersByOrg(org.id);
+        totalVouchers += orgVouchers.length;
+        activeVouchers += orgVouchers.filter(v => v.status === "ACTIVE").length;
+
+        const orgTeams = await storage.getTeamsByOrg(org.id);
+        for (const team of orgTeams) {
+          const memberships = await storage.getMembershipsByTeam(team.id);
+          totalSpendCents += memberships.reduce((sum, m) => sum + m.currentPeriodSpendCents, 0);
+        }
+      }
+
+      res.json({
+        totalOrgs: allOrgs.length,
+        totalUsers: allUsers.length,
+        totalVouchers,
+        activeVouchers,
+        totalSpendCents,
+      });
+    } catch (e: any) {
+      console.error("Admin stats error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/organizations", requireAdmin, async (_req, res) => {
+    try {
+      const allOrgs = await storage.getAllOrganizations();
+      const orgsWithCounts = await Promise.all(
+        allOrgs.map(async (org) => {
+          const orgUsers = await storage.getUsersByOrg(org.id);
+          return { ...org, userCount: orgUsers.length };
+        })
+      );
+      res.json(orgsWithCounts);
+    } catch (e: any) {
+      console.error("Admin orgs error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/organizations/:id", requireAdmin, async (req, res) => {
+    try {
+      const org = await storage.getOrganization(req.params.id);
+      if (!org) return res.status(404).json({ message: "Organization not found" });
+      const orgUsers = await storage.getUsersByOrg(org.id);
+      const safeUsers = orgUsers.map(u => ({
+        id: u.id, email: u.email, name: u.name, orgRole: u.orgRole,
+        status: u.status, isVoucherUser: u.isVoucherUser, createdAt: u.createdAt, lastLoginAt: u.lastLoginAt,
+      }));
+      res.json({ ...org, users: safeUsers });
+    } catch (e: any) {
+      console.error("Admin org detail error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/admin/organizations/:id", requireAdmin, async (req, res) => {
+    try {
+      const patchSchema = z.object({
+        name: z.string().min(1).optional(),
+        plan: z.enum(["FREE", "TEAM", "ENTERPRISE"]).optional(),
+        maxTeamAdmins: z.number().int().min(0).optional(),
+      });
+      const parsed = patchSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+
+      const org = await storage.getOrganization(req.params.id);
+      if (!org) return res.status(404).json({ message: "Organization not found" });
+
+      const updates: Record<string, any> = {};
+      if (parsed.data.name !== undefined) updates.name = parsed.data.name;
+      if (parsed.data.plan !== undefined) updates.plan = parsed.data.plan;
+      if (parsed.data.maxTeamAdmins !== undefined) updates.maxTeamAdmins = parsed.data.maxTeamAdmins;
+
+      const updated = await storage.updateOrganization(org.id, updates);
+      res.json(updated);
+    } catch (e: any) {
+      console.error("Admin org update error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/users", requireAdmin, async (_req, res) => {
+    try {
+      const allOrgs = await storage.getAllOrganizations();
+      const allUsers: any[] = [];
+      for (const org of allOrgs) {
+        const orgUsers = await storage.getUsersByOrg(org.id);
+        for (const u of orgUsers) {
+          allUsers.push({
+            id: u.id, email: u.email, name: u.name, orgRole: u.orgRole,
+            status: u.status, isVoucherUser: u.isVoucherUser, createdAt: u.createdAt, lastLoginAt: u.lastLoginAt,
+            orgId: u.orgId, orgName: org.name, orgPlan: org.plan,
+          });
+        }
+      }
+      res.json(allUsers);
+    } catch (e: any) {
+      console.error("Admin users error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/admin/users/:id", requireAdmin, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.params.id);
+      if (!user) return res.status(404).json({ message: "User not found" });
+
+      await storage.updateUser(user.id, { status: "SUSPENDED" } as any);
+      res.json({ message: "User deactivated" });
+    } catch (e: any) {
+      console.error("Admin user delete error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
   });
 
   app.post("/api/v1/chat/completions", handleChatCompletion);

@@ -49,10 +49,18 @@ export function requireRole(...roles: string[]) {
   };
 }
 
+export function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  if (!req.session?.isAdmin) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  next();
+}
+
 declare module "express-session" {
   interface SessionData {
     userId: string;
     orgId: string;
     orgRole: string;
+    isAdmin: boolean;
   }
 }
