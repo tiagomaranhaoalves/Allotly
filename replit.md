@@ -69,6 +69,15 @@ All money values are handled in integer cents to avoid floating-point inaccuraci
   - Optimization Recommendations: Model downgrade suggestions based on modelPricing differentials, budget reallocation tips
   - RBAC: Team Admin scoped to their team only (via teams.adminId); Root Admin sees all org data
   - Files: server/lib/analytics.ts (5 analytics functions), server/routes.ts (5 GET endpoints), client/src/pages/dashboard/analytics.tsx (Recharts + data tables)
+- Milestone 5 (Proxy v4 Refinements): COMPLETE — Tier-based rate limits (Free=20rpm/2conc, Team-TEAM=60rpm/5conc, Team-VOUCHER=30rpm/2conc, Enterprise=120rpm/10conc), configurable concurrency in checkConcurrency, 503 provider_unavailable for disconnected providers, 9 test files (162 tests)
+- Milestone 6 (Voucher CRUD, Redemption, Bundle Purchase): COMPLETE
+  - All voucher CRUD, redemption, bundle purchase were pre-built
+  - Added: Member count enforcement during redemption (checkPlanLimit counts TEAM+VOUCHER together, returns "This team has reached its member limit")
+  - Added: POST /api/vouchers/send-email route (admin-only, validates voucher ACTIVE+not expired, uses sendEmail with correct positional args, audit logs)
+  - Voucher code format: ALLOT-XXXX-XXXX-XXXX
+  - Dual redemption: "Get Key Instantly" (anonymous) vs "Create Account"
+  - Bundle: $10 via Stripe, webhook creates VoucherBundle + Redis counters
+  - Plan limits: FREE (1 code, 25 redemptions, $5 budget, 1-day), TEAM (5 codes/admin, 50 redemptions, $20 budget, 30-day)
 - Milestone 12 (Security, Dark Mode, Polish, Testing): COMPLETE
   - Security: Helmet middleware (CSP disabled for Vite compat), rate limiters (login 10/hr, redeem 5/hr, key revoke 3/hr), Zod validation on all mutable routes (providers, teams, members, vouchers, settings, redeem)
   - ErrorBoundary: React class component wrapping all dashboard routes in App.tsx, catches render errors with retry button

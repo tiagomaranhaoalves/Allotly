@@ -1426,6 +1426,72 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/vouchers/send-email", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || !user.orgId) return res.status(403).json({ message: "Not authorized" });
+
+      if (user.orgRole !== "ROOT_ADMIN" && user.orgRole !== "TEAM_ADMIN") {
+        return res.status(403).json({ message: "Only admins can send voucher emails" });
+      }
+
+      const sendSchema = z.object({
+        email: z.string().email(),
+        code: z.string().min(1),
+      });
+      const parsed = sendSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+
+      const { email: recipientEmail, code } = parsed.data;
+
+      const voucher = await storage.getVoucherByCode(code.toUpperCase());
+      if (!voucher || voucher.orgId !== user.orgId) {
+        return res.status(404).json({ message: "Voucher not found" });
+      }
+
+      if (voucher.status !== "ACTIVE") {
+        return res.status(400).json({ message: "Voucher is not active" });
+      }
+
+      if (new Date(voucher.expiresAt) < new Date()) {
+        return res.status(400).json({ message: "Voucher has expired" });
+      }
+
+      const org = await storage.getOrganization(user.orgId);
+      const redeemUrl = `${req.protocol}://${req.get("host")}/redeem?code=${encodeURIComponent(code)}`;
+
+      const emailSubject = `You've received an AI API voucher from ${org?.name || "Allotly"}`;
+      const emailHtml = `
+        <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto;">
+          <h2>You've received an AI API voucher!</h2>
+          <p>${user.name || "An admin"} from <strong>${org?.name || "an organization"}</strong> has sent you a voucher for AI API access.</p>
+          <div style="background: #f3f4f6; border-radius: 8px; padding: 16px; text-align: center; margin: 16px 0;">
+            <p style="font-family: monospace; font-size: 20px; letter-spacing: 2px; margin: 0;">${code}</p>
+          </div>
+          <p>Budget: <strong>$${(voucher.budgetCents / 100).toFixed(2)}</strong></p>
+          <p>Expires: <strong>${new Date(voucher.expiresAt).toLocaleDateString()}</strong></p>
+          <a href="${redeemUrl}" style="display: inline-block; background: #6366f1; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; margin-top: 8px;">Redeem Voucher</a>
+        </div>
+      `;
+
+      await sendEmail(recipientEmail, emailSubject, emailHtml);
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "voucher.emailed",
+        targetType: "voucher",
+        targetId: voucher.id,
+        metadata: { code, recipientEmail },
+      });
+
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("Voucher send email error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get("/api/vouchers/validate/:code", async (req, res) => {
     const voucher = await storage.getVoucherByCode(req.params.code.toUpperCase());
     if (!voucher) {
@@ -1501,6 +1567,11 @@ export async function registerRoutes(
 
       const team = await storage.getTeam(voucher.teamId);
       if (!team) return res.status(500).json({ message: "Team not found" });
+
+      const memberCheck = await checkPlanLimit(voucher.orgId, "member", voucher.teamId);
+      if (!memberCheck.allowed) {
+        return res.status(400).json({ message: "This team has reached its member limit" });
+      }
 
       let userEmail = email;
       let userPassword = password;
