@@ -1351,8 +1351,8 @@ export async function registerRoutes(
 
   app.patch("/api/vouchers/:id/revoke", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (!user.orgId) return res.status(403).json({ message: "Not authorized" });
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || !user.orgId) return res.status(403).json({ message: "Not authorized" });
 
       const voucher = await storage.getVoucherById(req.params.id);
       if (!voucher || voucher.orgId !== user.orgId) {

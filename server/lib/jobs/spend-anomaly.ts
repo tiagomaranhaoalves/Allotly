@@ -24,9 +24,9 @@ export async function runSpendAnomalyCheck(): Promise<void> {
           }).from(proxyRequestLogs)
             .where(and(
               eq(proxyRequestLogs.membershipId, membership.id),
-              gte(proxyRequestLogs.requestedAt, sevenDaysAgo)
+              gte(proxyRequestLogs.createdAt, sevenDaysAgo)
             ))
-            .groupBy(sql`DATE(${proxyRequestLogs.requestedAt})`);
+            .groupBy(sql`DATE(${proxyRequestLogs.createdAt})`);
 
           const avgDaily = dailyCosts.length > 0
             ? dailyCosts.reduce((sum, d) => sum + Number(d.dayCost || 0), 0) / dailyCosts.length
@@ -41,7 +41,7 @@ export async function runSpendAnomalyCheck(): Promise<void> {
           }).from(proxyRequestLogs)
             .where(and(
               eq(proxyRequestLogs.membershipId, membership.id),
-              gte(proxyRequestLogs.requestedAt, today)
+              gte(proxyRequestLogs.createdAt, today)
             ));
 
           const todaySpend = Number(todayResult?.totalCost || 0);

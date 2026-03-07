@@ -9,6 +9,7 @@ import { WebhookHandlers } from './webhookHandlers';
 import { startJobScheduler } from './lib/jobs/scheduler';
 
 const app = express();
+app.set("trust proxy", 1);
 
 app.use(helmet({
   contentSecurityPolicy: false,
