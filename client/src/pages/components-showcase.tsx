@@ -5,7 +5,7 @@ import { AdminRoleBadge } from "@/components/brand/role-badge";
 import { SpendCard } from "@/components/brand/spend-card";
 import { KeyRevealCard } from "@/components/brand/key-reveal-card";
 import { VoucherCard } from "@/components/brand/voucher-card";
-import { AutomationBadge } from "@/components/brand/automation-badge";
+
 import { FeatureBadge } from "@/components/brand/feature-badge";
 import { BundleCard } from "@/components/brand/bundle-card";
 import { QRCode } from "@/components/brand/qr-code";
@@ -116,15 +116,6 @@ export default function ComponentsShowcase() {
             <AdminRoleBadge role="ROOT_ADMIN" />
             <AdminRoleBadge role="TEAM_ADMIN" />
             <AdminRoleBadge role="MEMBER" />
-          </div>
-        </section>
-
-        <section data-testid="section-automation-badges">
-          <h2 className="text-xl font-bold mb-4 pb-2 border-b">AutomationBadge</h2>
-          <div className="flex flex-wrap items-center gap-4">
-            <AutomationBadge level="FULL_AUTO" />
-            <AutomationBadge level="SEMI_AUTO" />
-            <AutomationBadge level="GUIDED" />
           </div>
         </section>
 

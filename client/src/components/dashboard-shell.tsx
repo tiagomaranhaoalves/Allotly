@@ -3,6 +3,7 @@ import {
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger,
   SidebarHeader, SidebarFooter,
 } from "@/components/ui/sidebar";
+import { useEffect } from "react";
 import { LogoFull, LogoIcon } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
@@ -11,7 +12,7 @@ import { Link, useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   LayoutDashboard, Plug, Users, Ticket, Package, BarChart3, FileText,
-  Settings, Key, Activity, Sun, Moon, LogOut, ChevronDown,
+  Settings, Sun, Moon, LogOut, ChevronDown,
 } from "lucide-react";
 import { AdminRoleBadge } from "./brand/role-badge";
 import { Skeleton } from "./ui/skeleton";
@@ -41,8 +42,6 @@ const TEAM_ADMIN_NAV = [
 
 const MEMBER_NAV = [
   { title: "Overview", href: "/dashboard", icon: LayoutDashboard },
-  { title: "API Keys", href: "/dashboard/keys", icon: Key },
-  { title: "Usage", href: "/dashboard/usage", icon: Activity },
 ];
 
 function getNavItems(role: string) {
@@ -156,6 +155,12 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const { isLoading, isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
 
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      setLocation("/login");
+    }
+  }, [isLoading, isAuthenticated, setLocation]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -168,7 +173,6 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   }
 
   if (!isAuthenticated) {
-    setLocation("/login");
     return null;
   }
 
