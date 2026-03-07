@@ -69,6 +69,12 @@ All money values are handled in integer cents to avoid floating-point inaccuraci
   - Optimization Recommendations: Model downgrade suggestions based on modelPricing differentials, budget reallocation tips
   - RBAC: Team Admin scoped to their team only (via teams.adminId); Root Admin sees all org data
   - Files: server/lib/analytics.ts (5 analytics functions), server/routes.ts (5 GET endpoints), client/src/pages/dashboard/analytics.tsx (Recharts + data tables)
+- Milestone 7 (Background Jobs, Budget Alerts, Reconciliation): COMPLETE
+  - Budget alerts: proxy post-processing sends emails at 80/90/100% via emailTemplates + revokes ALL active API keys at 100% + clears Redis cache for each revoked key
+  - Budget reset job: sends budgetReset email after reactivation, clears Redis cache for reactivated keys
+  - All other jobs pre-built: voucher-expiry (hourly), bundle-expiry (hourly), provider-validation (daily), redis-reconciliation (60s), snapshot-cleanup (weekly), spend-anomaly (hourly)
+  - Usage poll: no-op in v4 (all metering by proxy)
+  - Concurrency self-heal: every 30s, resets zombie concurrent counters
 - Milestone 5 (Proxy v4 Refinements): COMPLETE — Tier-based rate limits (Free=20rpm/2conc, Team-TEAM=60rpm/5conc, Team-VOUCHER=30rpm/2conc, Enterprise=120rpm/10conc), configurable concurrency in checkConcurrency, 503 provider_unavailable for disconnected providers, 9 test files (162 tests)
 - Milestone 6 (Voucher CRUD, Redemption, Bundle Purchase): COMPLETE
   - All voucher CRUD, redemption, bundle purchase were pre-built

@@ -2,7 +2,8 @@ import { storage } from "../../storage";
 import { db } from "../../db";
 import { allotlyApiKeys } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { redisSet, REDIS_KEYS } from "../redis";
+import { redisSet, redisDel, REDIS_KEYS } from "../redis";
+import { sendEmail, emailTemplates } from "../email";
 
 let isResetting = false;
 
@@ -46,6 +47,7 @@ export async function runBudgetReset(): Promise<{ membersReset: number; membersR
                 .set({ status: "ACTIVE", updatedAt: new Date() })
                 .where(eq(allotlyApiKeys.id, key.id));
             }
+            await redisDel(REDIS_KEYS.apiKeyCache(key.keyHash));
           }
         }
 
@@ -69,6 +71,13 @@ export async function runBudgetReset(): Promise<{ membersReset: number; membersR
               newPeriodEnd: newPeriodEnd.toISOString(),
             },
           });
+        }
+
+        const memberUser = await storage.getUser(membership.userId);
+        if (memberUser?.email) {
+          const budgetDollars = (membership.monthlyBudgetCents / 100).toFixed(2);
+          const tmpl = emailTemplates.budgetReset(memberUser.name || "User", budgetDollars, "/dashboard");
+          try { await sendEmail(memberUser.email, tmpl.subject, tmpl.html); } catch {}
         }
       } catch (e: any) {
         stats.errors++;

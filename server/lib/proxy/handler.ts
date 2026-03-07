@@ -2,7 +2,11 @@ import type { Request, Response } from "express";
 import crypto from "crypto";
 import { storage } from "../../storage";
 import { decryptProviderKey } from "../encryption";
-import { redisGet, redisSet, REDIS_KEYS } from "../redis";
+import { redisGet, redisSet, redisDel, REDIS_KEYS } from "../redis";
+import { sendEmail, emailTemplates } from "../email";
+import { db } from "../../db";
+import { allotlyApiKeys } from "@shared/schema";
+import { eq, and as drizzleAnd } from "drizzle-orm";
 import {
   authenticateKey,
   checkConcurrency,
@@ -314,6 +318,10 @@ export async function handleChatCompletion(req: Request, res: Response) {
           });
 
           const spendPercent = (newSpend / freshMembership.monthlyBudgetCents) * 100;
+          const budgetDollars = (freshMembership.monthlyBudgetCents / 100).toFixed(2);
+          const memberUser = await storage.getUser(userId);
+          const memberName = memberUser?.name || "User";
+          const memberEmail = memberUser?.email;
 
           if (spendPercent >= 100) {
             const existing = await storage.getBudgetAlert(membershipId!, 100);
@@ -325,6 +333,25 @@ export async function handleChatCompletion(req: Request, res: Response) {
                 actionTaken: "BUDGET_EXHAUSTED",
               });
               await storage.updateMembership(membershipId!, { status: "BUDGET_EXHAUSTED" });
+
+              const keys = await storage.getApiKeysByMembership(membershipId!);
+              for (const k of keys) {
+                if (k.status === "ACTIVE") {
+                  await db.update(allotlyApiKeys)
+                    .set({ status: "REVOKED", updatedAt: new Date() })
+                    .where(eq(allotlyApiKeys.id, k.id));
+                  await redisDel(REDIS_KEYS.apiKeyCache(k.keyHash));
+                }
+              }
+
+              if (memberEmail) {
+                const mTeam = await storage.getTeam(freshMembership.teamId);
+                const mOrg = mTeam ? await storage.getOrganization(mTeam.orgId) : null;
+                const adminUsers = mOrg ? await storage.getUsersByOrg(mOrg.id) : [];
+                const adminUser = adminUsers.find(u => u.orgRole === "ROOT_ADMIN");
+                const tmpl = emailTemplates.budgetExhausted(memberName, budgetDollars, adminUser?.email || "your admin");
+                try { await sendEmail(memberEmail, tmpl.subject, tmpl.html); } catch {}
+              }
             }
           } else if (spendPercent >= 90) {
             const existing = await storage.getBudgetAlert(membershipId!, 90);
@@ -334,6 +361,10 @@ export async function handleChatCompletion(req: Request, res: Response) {
                 thresholdPercent: 90,
                 triggeredAt: new Date(),
               });
+              if (memberEmail) {
+                const tmpl = emailTemplates.budgetWarning90(memberName, Math.round(spendPercent), budgetDollars, "/dashboard");
+                try { await sendEmail(memberEmail, tmpl.subject, tmpl.html); } catch {}
+              }
             }
           } else if (spendPercent >= 80) {
             const existing = await storage.getBudgetAlert(membershipId!, 80);
@@ -343,6 +374,10 @@ export async function handleChatCompletion(req: Request, res: Response) {
                 thresholdPercent: 80,
                 triggeredAt: new Date(),
               });
+              if (memberEmail) {
+                const tmpl = emailTemplates.budgetWarning80(memberName, Math.round(spendPercent), budgetDollars, "/dashboard");
+                try { await sendEmail(memberEmail, tmpl.subject, tmpl.html); } catch {}
+              }
             }
           }
         }

@@ -1,0 +1,62 @@
+MILESTONE 7: Background Jobs, Budget Alerts, Budget Reset, Expiry, and Reconciliation
+
+Referring to v3 Section 12 for job structure, with v4 modifications.
+
+BUILD THESE:
+
+1. BUDGET ALERTS — Inline from Proxy (NOT from polling)
+   Budget alerts are triggered inside the proxy response handler (Step 11 of lifecycle).
+   After each proxy request deducts cost:
+   - Calculate remainingPercent = (remaining / total) * 100
+   - IF remainingPercent <= 20 AND no 80% alert: queue budget-warning-80 email
+   - IF remainingPercent <= 10 AND no 90% alert: queue budget-warning-90 email
+   - IF remaining <= 0: set AllotlyApiKey.status = REVOKED, queue budget-exhausted email
+   This applies to BOTH Team and Voucher members.
+   DO NOT build a usage-poll job — it does not exist in v4.
+
+2. BUDGET RESET JOB — Simplified (v4 Section 4)
+   - Create /api/cron/budget-reset/route.ts
+   - Runs daily at 00:05 UTC
+   - ONLY for TeamMembership WHERE accessType = TEAM AND periodEnd <= now():
+     a. Reset currentPeriodSpendCents = 0
+     b. Update periodStart, periodEnd (next month)
+     c. Clear BudgetAlerts for this membership
+     d. IF status == BUDGET_EXHAUSTED: set ACTIVE, set AllotlyApiKey.status = ACTIVE
+     e. SET allotly:budget:{membershipId} {monthlyBudgetCents} (reset Redis)
+     f. Send budget-reset email
+   - Does NOT re-provision any provider keys (there are none)
+   - Does NOT affect VOUCHER members (their budgets never reset)
+
+3. VOUCHER EXPIRY JOB — unchanged from v3
+   - /api/cron/voucher-expiry — hourly
+   - Find expired vouchers, set EXPIRED, revoke allotly_sk_ keys, update membership status
+
+4. BUNDLE EXPIRY JOB — unchanged from v3
+   - /api/cron/bundle-expiry — hourly
+
+5. PROVIDER VALIDATION JOB — unchanged from v3
+   - /api/cron/provider-validation — daily 06:00 UTC
+   - Re-validate admin keys, email Root Admin on failure
+
+6. REDIS RECONCILIATION — EXPANDED (v4 Section 4)
+   - /api/cron/redis-reconciliation — every 60 seconds
+   - Now covers ALL active TeamMemberships (not just PROXY):
+     FOR each active TeamMembership:
+       IF accessType = TEAM:
+         pgRemaining = monthlyBudgetCents - currentPeriodSpendCents
+       ELSE (VOUCHER):
+         pgRemaining = voucher.budgetCents - currentPeriodSpendCents
+       Sync Redis if NULL or >$1 drift
+
+7. SNAPSHOT CLEANUP — unchanged from v3
+   - Weekly, per retention policy
+
+8. SPEND ANOMALY — unchanged from v3
+   - Hourly, flag >3x rolling average
+
+VERIFY BY:
+- Create a Team member, make proxy requests, see budget alerts fire at 80/90/100%
+- Exhaust a Team member's budget → key revoked → trigger budget-reset job → key re-enabled, budget reset
+- Voucher expiry: create short-lived voucher → wait/fast-forward → job expires it → key revoked
+- Redis reconciliation: manually corrupt a Redis value → job restores from Postgres
+- Confirm NO usage-poll cron route exists
