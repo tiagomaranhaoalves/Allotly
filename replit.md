@@ -20,7 +20,7 @@ Core features include:
 - **Team and Member Management**: Role-based access control (ROOT_ADMIN, TEAM_ADMIN, MEMBER). Teams have monthly resetting budgets. All members get `allotly_sk_` keys and use the proxy.
 - **Voucher System**: Voucher codes with fixed budgets and expiry. `accessType` enum: TEAM | VOUCHER.
 - **Budget Control & Enforcement**: Real-time budget enforcement via proxy. Automatic budget alerts at 80/90/100% thresholds.
-- **Real-time Proxy**: Unified proxy for all access types (TEAM + VOUCHER). Handles auth, concurrency, rate limiting, cost estimation, token clamping, budget reservation, forwarding, response processing, and async logging.
+- **Real-time Proxy**: Unified proxy for all access types (TEAM + VOUCHER). Handles auth, tier-based concurrency/rate limiting (Free=20rpm/2conc, Team-TEAM=60rpm/5conc, Team-VOUCHER=30rpm/2conc, Enterprise=120rpm/10conc), cost estimation, token clamping, budget reservation, forwarding, response processing, 503 provider_unavailable for disconnected providers, and async logging.
 - **Background Jobs**: Budget resets (TEAM only), voucher/bundle expiry, Redis-Postgres reconciliation. Usage polling stubbed (no-op in v4).
 - **Audit Logging**: Comprehensive audit trail with filtering and export.
 - **Stripe Integration**: Subscriptions and one-time purchases with webhook processing.

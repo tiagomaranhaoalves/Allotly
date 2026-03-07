@@ -54,12 +54,24 @@ function sendProxyError(res: Response, error: ProxyError) {
   });
 }
 
-function getRateLimit(plan: string): number {
+export interface RateLimitTier {
+  rpm: number;
+  maxConcurrent: number;
+}
+
+export function getRateLimitTier(plan: string, accessType: string): RateLimitTier {
   switch (plan) {
-    case "FREE": return 10;
-    case "TEAM": return 30;
-    case "ENTERPRISE": return 30;
-    default: return 10;
+    case "FREE":
+      return { rpm: 20, maxConcurrent: 2 };
+    case "TEAM":
+      if (accessType === "VOUCHER") {
+        return { rpm: 30, maxConcurrent: 2 };
+      }
+      return { rpm: 60, maxConcurrent: 5 };
+    case "ENTERPRISE":
+      return { rpm: 120, maxConcurrent: 10 };
+    default:
+      return { rpm: 20, maxConcurrent: 2 };
   }
 }
 
@@ -92,24 +104,23 @@ export async function handleChatCompletion(req: Request, res: Response) {
     const { membership, userId } = authResult;
     membershipId = membership.id;
 
-    const concError = await checkConcurrency(membershipId, requestId);
-    if (concError) return sendProxyError(res, concError);
-    concurrencyAcquired = true;
-
     const team = await storage.getTeam(membership.teamId);
     if (!team) {
-      await releaseConcurrency(membershipId, requestId);
       return sendProxyError(res, createProxyError(500, "internal_error", "Team not found"));
     }
 
     const org = await storage.getOrganization(team.orgId);
     if (!org) {
-      await releaseConcurrency(membershipId, requestId);
       return sendProxyError(res, createProxyError(500, "internal_error", "Organization not found"));
     }
 
-    const rateLimit = getRateLimit(org.plan);
-    const rlError = await checkRateLimit(membershipId, rateLimit);
+    const tier = getRateLimitTier(org.plan, membership.accessType);
+
+    const concError = await checkConcurrency(membershipId, requestId, tier.maxConcurrent);
+    if (concError) return sendProxyError(res, concError);
+    concurrencyAcquired = true;
+
+    const rlError = await checkRateLimit(membershipId, tier.rpm);
     if (rlError) {
       await releaseConcurrency(membershipId, requestId);
       return sendProxyError(res, rlError);
@@ -159,6 +170,12 @@ export async function handleChatCompletion(req: Request, res: Response) {
     const connection = connections.find(c => c.provider === provider && c.status === "ACTIVE");
     if (!connection) {
       await releaseConcurrency(membershipId, requestId);
+      const existsButInactive = connections.some(c => c.provider === provider);
+      if (existsButInactive) {
+        return sendProxyError(res, createProxyError(503, "provider_unavailable",
+          "The provider for this model is not currently available. Contact your admin."
+        ));
+      }
       return sendProxyError(res, createProxyError(502, "provider_not_configured",
         `Provider ${provider} is not configured for this organization`,
         "Contact your admin to add this provider."
@@ -208,7 +225,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
     res.setHeader("X-Allotly-Budget-Total", String(membership.monthlyBudgetCents));
     const rlKey = REDIS_KEYS.ratelimit(membershipId);
     const currentRequests = await redisGet(rlKey);
-    const requestsRemaining = Math.max(0, rateLimit - (parseInt(currentRequests || "0")));
+    const requestsRemaining = Math.max(0, tier.rpm - (parseInt(currentRequests || "0")));
     res.setHeader("X-Allotly-Requests-Remaining", String(requestsRemaining));
     const periodEnd = new Date(membership.periodEnd);
     res.setHeader("X-Allotly-Expires", periodEnd.toISOString());

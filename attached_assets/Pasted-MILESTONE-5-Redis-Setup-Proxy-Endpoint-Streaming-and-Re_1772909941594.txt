@@ -1,0 +1,63 @@
+MILESTONE 5: Redis Setup, Proxy Endpoint, Streaming, and Request Translation
+
+Referring to v3 Sections 9.1–9.6 (proxy implementation) — these are UNCHANGED in v4 except the proxy now serves ALL users, not just voucher recipients.
+
+BUILD THESE:
+
+1. REDIS CLIENT (v3 Section 9.5)
+   - Create /lib/redis.ts with ioredis client
+   - Key schema (unchanged from v3):
+     allotly:budget:{membershipId}, allotly:concurrent:{membershipId},
+     allotly:req:{requestId}, allotly:ratelimit:{membershipId},
+     allotly:bundle:{bundleId}:redemptions, allotly:bundle:{bundleId}:requests,
+     allotly:apikey:{keyHash}, allotly:modelprice:{provider}:{model}
+
+2. PROXY ENDPOINT — Full 12-Step Lifecycle (v3 Section 9.3)
+   - Create POST /api/v1/chat/completions/route.ts
+   - Create GET /api/v1/models/route.ts
+   - Create /lib/proxy/handler.ts, safeguards.ts, translate.ts, streaming.ts
+
+   Implement EVERY step from v3 Section 9.3:
+   Steps 1-12 exactly as specified.
+
+   ADDITIONAL v4 REFINEMENTS:
+   - Step 1 AUTH: Cache rate limit tier alongside key data. Derive from org plan + accessType:
+     Free plan = 20 req/min, 2 concurrent
+     Team plan TEAM members = 60 req/min, 5 concurrent
+     Team plan VOUCHER members = 30 req/min, 2 concurrent (from voucher source limits)
+     Enterprise = custom (default 120 req/min, 10 concurrent)
+   - Step 3 RATE LIMIT: Use the tier-based limits above instead of a single 10/30 split
+   - Step 5 PARSE: Also verify the provider for the requested model has an ACTIVE ProviderConnection. If provider is DISCONNECTED or INVALID, return 503: { "error": { "type": "provider_unavailable", "message": "The provider for this model is not currently available. Contact your admin." }}
+   - Step 9 FORWARD: Decrypt admin key from the ProviderConnection for the matched provider (not from a member-specific link — there are no member provider links in v4)
+
+3. THREE PROXY SAFEGUARDS (v3 Section 9.4) — ALL MANDATORY
+   - Safeguard 1: Atomic Redis budget (DECRBY/INCRBY)
+   - Safeguard 2: Concurrency limits (with tier-based max from above)
+   - Safeguard 3: Max token clamping (min floor 50, suggest cheaper model)
+
+4. REQUEST TRANSLATION (v3 Section 9.2)
+   - gpt-*, o3*, o4* → OpenAI (forward as-is)
+   - claude-* → Anthropic (translate to /v1/messages format)
+   - gemini-* → Google (translate to generateContent format)
+   - Translate responses back to OpenAI format
+
+5. STREAMING
+   - Web Streams API (ReadableStream, TransformStream)
+   - SSE passthrough for all providers
+   - Buffer final chunk for usage extraction
+
+6. PROXY ERROR RESPONSES (v3 Section 9.6) — all error types
+   ADD new error for v4:
+   - 503 provider_unavailable: "The provider for this model is not currently available."
+
+7. CONCURRENCY SELF-HEALING
+   - Every 30s: if concurrent > 0 but no active request keys, reset to 0
+
+VERIFY BY:
+- curl request through proxy with valid allotly_sk_ key → streamed response
+- Redis keys set and decremented during request
+- Token clamping: low budget → max_tokens reduced
+- Concurrency limit: fire requests over limit → 429
+- Budget exhaustion: drain budget → 402
+- Request translation: claude-* model → hits Anthropic correctly
+- Rate limit: exceed tier limit → 429 with Retry-After

@@ -14,11 +14,13 @@ export function createProxyError(status: number, code: string, message: string, 
   return { status, code, message, suggestion };
 }
 
-export async function authenticateKey(authHeader: string | undefined): Promise<{
+export interface AuthResult {
   membership: TeamMembership;
   userId: string;
   keyHash: string;
-} | ProxyError> {
+}
+
+export async function authenticateKey(authHeader: string | undefined): Promise<AuthResult | ProxyError> {
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return createProxyError(401, "invalid_auth", "Missing or invalid Authorization header", "Use: Authorization: Bearer allotly_sk_...");
   }
@@ -74,14 +76,14 @@ export async function authenticateKey(authHeader: string | undefined): Promise<{
   return { membership, userId: apiKey.userId, keyHash };
 }
 
-export async function checkConcurrency(membershipId: string, requestId: string): Promise<ProxyError | null> {
+export async function checkConcurrency(membershipId: string, requestId: string, maxConcurrent: number = 2): Promise<ProxyError | null> {
   const count = await redisIncr(REDIS_KEYS.concurrent(membershipId));
   await redisSet(REDIS_KEYS.request(membershipId, requestId), "1", 120);
 
-  if (count > 2) {
+  if (count > maxConcurrent) {
     await redisDecr(REDIS_KEYS.concurrent(membershipId));
     await redisDel(REDIS_KEYS.request(membershipId, requestId));
-    return createProxyError(429, "concurrency_limit", "Too many concurrent requests (max 2)", "Wait for your current requests to complete before sending new ones.");
+    return createProxyError(429, "concurrency_limit", `Too many concurrent requests (max ${maxConcurrent})`, "Wait for your current requests to complete before sending new ones.");
   }
 
   return null;
