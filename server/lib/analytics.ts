@@ -1,7 +1,7 @@
 import { db } from "../db";
 import { storage } from "../storage";
 import {
-  teams, teamMemberships, usageSnapshots, proxyRequestLogs,
+  teams, teamMemberships, proxyRequestLogs,
   modelPricing, users, auditLogs,
 } from "@shared/schema";
 import { eq, and, gte, sql, desc, inArray } from "drizzle-orm";
@@ -51,52 +51,14 @@ export async function getCostPerModel(orgId: string, teamId?: string, days = 30)
     ))
     .groupBy(proxyRequestLogs.model, proxyRequestLogs.provider);
 
-  const snapshotData = await db.select({
-    model: usageSnapshots.model,
-    costCents: sql<number>`COALESCE(SUM(${usageSnapshots.periodCostCents}), 0)`,
-    inputTokens: sql<number>`COALESCE(SUM(${usageSnapshots.inputTokens}), 0)`,
-    outputTokens: sql<number>`COALESCE(SUM(${usageSnapshots.outputTokens}), 0)`,
-  }).from(usageSnapshots)
-    .where(and(
-      inArray(usageSnapshots.membershipId, membershipIds),
-      gte(usageSnapshots.snapshotAt, since),
-      eq(usageSnapshots.source, "POLL")
-    ))
-    .groupBy(usageSnapshots.model);
-
-  const modelMap: Record<string, { model: string; provider: string; costCents: number; requests: number; inputTokens: number; outputTokens: number; source: string }> = {};
-
-  for (const row of proxyData) {
-    const key = `${row.provider}:${row.model}`;
-    modelMap[key] = {
-      model: row.model,
-      provider: row.provider,
-      costCents: Number(row.costCents),
-      requests: Number(row.requests),
-      inputTokens: Number(row.inputTokens),
-      outputTokens: Number(row.outputTokens),
-      source: "PROXY",
-    };
-  }
-
-  const pricing = await storage.getModelPricing();
-  for (const row of snapshotData) {
-    if (!row.model) continue;
-    const mp = pricing.find(p => p.modelId === row.model || p.displayName === row.model);
-    const provider = mp?.provider || "OPENAI";
-    const key = `POLL:${provider}:${row.model}`;
-    modelMap[key] = {
-      model: row.model,
-      provider,
-      costCents: Number(row.costCents),
-      requests: 0,
-      inputTokens: Number(row.inputTokens),
-      outputTokens: Number(row.outputTokens),
-      source: "POLL",
-    };
-  }
-
-  return Object.values(modelMap).sort((a, b) => b.costCents - a.costCents);
+  return proxyData.map(row => ({
+    model: row.model,
+    provider: row.provider,
+    costCents: Number(row.costCents),
+    requests: Number(row.requests),
+    inputTokens: Number(row.inputTokens),
+    outputTokens: Number(row.outputTokens),
+  })).sort((a, b) => b.costCents - a.costCents);
 }
 
 export async function getTopSpenders(orgId: string, teamId?: string) {
@@ -152,24 +114,8 @@ export async function getSpendForecast(orgId: string, teamId?: string) {
     .groupBy(sql`DATE(${proxyRequestLogs.createdAt})`)
     .orderBy(sql`DATE(${proxyRequestLogs.createdAt})`);
 
-  const snapshotDaily = await db.select({
-    day: sql<string>`DATE(${usageSnapshots.snapshotAt})`,
-    costCents: sql<number>`COALESCE(SUM(${usageSnapshots.periodCostCents}), 0)`,
-  }).from(usageSnapshots)
-    .where(and(
-      inArray(usageSnapshots.membershipId, membershipIds),
-      gte(usageSnapshots.snapshotAt, thirtyDaysAgo),
-      eq(usageSnapshots.source, "POLL")
-    ))
-    .groupBy(sql`DATE(${usageSnapshots.snapshotAt})`)
-    .orderBy(sql`DATE(${usageSnapshots.snapshotAt})`);
-
   const dayMap: Record<string, number> = {};
   for (const r of proxyDaily) {
-    const d = String(r.day).split("T")[0];
-    dayMap[d] = (dayMap[d] || 0) + Number(r.costCents);
-  }
-  for (const r of snapshotDaily) {
     const d = String(r.day).split("T")[0];
     dayMap[d] = (dayMap[d] || 0) + Number(r.costCents);
   }
