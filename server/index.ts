@@ -11,11 +11,22 @@ import { startJobScheduler } from './lib/jobs/scheduler';
 const app = express();
 app.set("trust proxy", 1);
 
+let appReady = false;
+app.get("/", (req, res, next) => {
+  if (appReady) return next();
+  res.status(200).send("Starting...");
+});
+
 app.use(helmet({
   contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false,
 }));
 const httpServer = createServer(app);
+
+const port = parseInt(process.env.PORT || "5000", 10);
+httpServer.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
+  console.log(`Server listening on port ${port}`);
+});
 
 declare module "http" {
   interface IncomingMessage {
@@ -149,16 +160,7 @@ app.use((req, res, next) => {
     await setupVite(httpServer, app);
   }
 
-  const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    },
-    () => {
-      log(`serving on port ${port}`);
-      startJobScheduler();
-    },
-  );
+  appReady = true;
+  log(`serving on port ${port}`);
+  startJobScheduler();
 })();
