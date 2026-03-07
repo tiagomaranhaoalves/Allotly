@@ -3,11 +3,13 @@ import { useAuth } from "@/lib/auth";
 import { BudgetBar } from "@/components/brand/budget-bar";
 import { FeatureBadge } from "@/components/brand/feature-badge";
 import { EmptyState } from "@/components/brand/empty-state";
+import { KeyRevealCard } from "@/components/brand/key-reveal-card";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
   DialogDescription,
@@ -16,18 +18,16 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Users, Plus, UserMinus, UserCheck, Key, CheckCircle2,
-  Clock, AlertTriangle, Trash2, DollarSign, Pencil,
-  Copy, Ticket, ArrowLeftRight, ExternalLink,
+  Users, Plus, UserMinus, UserCheck,
+  AlertTriangle, Trash2, Pencil,
+  RefreshCw, ShieldOff,
 } from "lucide-react";
 import { useState } from "react";
-import { useLocation } from "wouter";
 
 const STATUS_STYLES: Record<string, string> = {
   ACTIVE: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
@@ -36,14 +36,13 @@ const STATUS_STYLES: Record<string, string> = {
   EXPIRED: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
 };
 
-
-function MemberCard({ member, providers, onRemove }: { member: any; providers: any[]; onRemove: (id: string) => void }) {
+function MemberCard({ member, onRemove }: { member: any; onRemove: (id: string) => void }) {
   const { toast } = useToast();
-  const [, navigate] = useLocation();
   const [expanded, setExpanded] = useState(false);
   const [budgetOpen, setBudgetOpen] = useState(false);
   const [newBudget, setNewBudget] = useState(String(member.monthlyBudgetCents));
   const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
+  const [regenKeyValue, setRegenKeyValue] = useState<string | null>(null);
 
   const suspendMutation = useMutation({
     mutationFn: async () => {
@@ -78,19 +77,37 @@ function MemberCard({ member, providers, onRemove }: { member: any; providers: a
     },
   });
 
-  const accessTypeMutation = useMutation({
+  const regenerateKeyMutation = useMutation({
     mutationFn: async () => {
-      const newType = member.accessType === "TEAM" ? "VOUCHER" : "TEAM";
-      await apiRequest("PATCH", `/api/members/${member.id}/budget`, { accessType: newType });
+      const res = await apiRequest("POST", `/api/members/${member.id}/regenerate-key`);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/members"] });
+      setRegenKeyValue(data.apiKey);
+      toast({ title: "New key generated" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to regenerate key", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const revokeKeyMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", `/api/members/${member.id}/revoke-key`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/members"] });
-      toast({ title: `Switched to ${member.accessType === "TEAM" ? "Voucher" : "Teams"} mode` });
+      toast({ title: "Key revoked" });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to switch mode", description: err.message, variant: "destructive" });
+      toast({ title: "Failed to revoke key", description: err.message, variant: "destructive" });
     },
   });
+
+  const budgetDisplay = member.accessType === "TEAM"
+    ? `$${(member.monthlyBudgetCents / 100).toFixed(2)}/mo`
+    : `$${(member.monthlyBudgetCents / 100).toFixed(2)} (fixed)`;
 
   return (
     <Card className="overflow-hidden" data-testid={`member-card-${member.id}`}>
@@ -105,114 +122,133 @@ function MemberCard({ member, providers, onRemove }: { member: any; providers: a
               {member.user?.name?.[0] || member.user?.email?.[0] || "?"}
             </div>
             <div>
-              <p className="font-medium text-sm">{member.user?.name || "Unknown"}</p>
-              <p className="text-xs text-muted-foreground">{member.user?.email}</p>
+              <p className="font-medium text-sm" data-testid={`text-member-name-${member.id}`}>{member.user?.name || "Unknown"}</p>
+              <p className="text-xs text-muted-foreground" data-testid={`text-member-email-${member.id}`}>{member.user?.email}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <FeatureBadge type={member.accessType === "TEAM" ? "TEAMS" : "VOUCHERS"} />
-            <Badge variant="secondary" className={`${STATUS_STYLES[member.status] || ""} no-default-hover-elevate no-default-active-elevate`}>
+            <Badge variant="secondary" className={`${STATUS_STYLES[member.status] || ""} no-default-hover-elevate no-default-active-elevate`} data-testid={`badge-status-${member.id}`}>
               {member.status}
             </Badge>
           </div>
+        </div>
+        <div className="flex items-center gap-3 mb-1">
+          <span className="text-xs font-medium text-muted-foreground" data-testid={`text-budget-display-${member.id}`}>
+            {budgetDisplay}
+            {member.accessType === "TEAM" && member.periodEnd && (
+              <span className="ml-1">· resets {new Date(member.periodEnd).toLocaleDateString()}</span>
+            )}
+            {member.accessType === "VOUCHER" && member.voucherExpiresAt && (
+              <span className="ml-1">· expires {new Date(member.voucherExpiresAt).toLocaleDateString()}</span>
+            )}
+          </span>
         </div>
         <BudgetBar spent={member.currentPeriodSpendCents} budget={member.monthlyBudgetCents} />
       </div>
 
       {expanded && (
         <div className="border-t px-4 py-3 space-y-3 bg-muted/20">
-          {member.accessType === "VOUCHER" && (
+          {regenKeyValue && (
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Voucher Access</h4>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs"
-                  onClick={() => navigate("/dashboard/vouchers")}
-                  data-testid={`button-go-vouchers-${member.id}`}
-                >
-                  <Ticket className="w-3.5 h-3.5 mr-1" />
-                  Manage Vouchers
-                </Button>
-              </div>
-              <div className="p-3 rounded-lg bg-muted/50 text-xs text-muted-foreground">
-                <p>This member uses <strong className="text-foreground">Voucher mode</strong> — requests route through Allotly's proxy for real-time budget enforcement.</p>
-                <p className="mt-1.5">Create a voucher code and share it with the member so they can access AI providers.</p>
-              </div>
-            </div>
-          )}
-          {member.accessType === "TEAM" && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Team Access</h4>
-              </div>
-              <div className="p-3 rounded-lg bg-muted/50 text-xs text-muted-foreground">
-                <p>This member uses <strong className="text-foreground">Team mode</strong> with a monthly resetting budget. All requests route through Allotly's proxy using their <code>allotly_sk_</code> key.</p>
-              </div>
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">New API Key</h4>
+              <KeyRevealCard keyValue={regenKeyValue} masked={false} />
+              <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                Copy this key now. It will not be shown again.
+              </p>
             </div>
           )}
 
           <div className="flex items-center justify-between gap-2 pt-1 border-t">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {member.accessType === "TEAM" && (
+                <>
+                  <Dialog open={budgetOpen} onOpenChange={setBudgetOpen}>
+                    <DialogTrigger asChild>
+                      <Button size="sm" variant="outline" className="h-7 text-xs" data-testid={`button-edit-budget-${member.id}`}>
+                        <Pencil className="w-3 h-3 mr-1" />
+                        Edit Budget
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Edit Monthly Budget</DialogTitle>
+                        <DialogDescription>Update the monthly spending limit for {member.user?.name || member.user?.email}.</DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4 pt-2">
+                        <div className="space-y-2">
+                          <Label>Monthly Budget (cents)</Label>
+                          <Input type="number" value={newBudget} onChange={e => setNewBudget(e.target.value)} data-testid="input-edit-budget" />
+                          <p className="text-xs text-muted-foreground">${(parseInt(newBudget || "0") / 100).toFixed(2)} per month</p>
+                        </div>
+                        <Button className="w-full" onClick={() => budgetMutation.mutate()} disabled={budgetMutation.isPending} data-testid="button-save-budget">
+                          {budgetMutation.isPending ? "Saving..." : "Save Budget"}
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs"
+                        disabled={regenerateKeyMutation.isPending}
+                        data-testid={`button-regenerate-key-${member.id}`}
+                      >
+                        <RefreshCw className="w-3 h-3 mr-1" />
+                        Regenerate Key
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Regenerate API Key?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will revoke the current key and generate a new one for <strong>{member.user?.name || member.user?.email}</strong>.
+                          The old key will immediately stop working.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => regenerateKeyMutation.mutate()} data-testid="button-confirm-regenerate">
+                          Regenerate Key
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </>
+              )}
+
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-7 text-xs"
-                    disabled={accessTypeMutation.isPending}
-                    data-testid={`button-switch-mode-${member.id}`}
+                    className="h-7 text-xs text-amber-600 hover:text-amber-700"
+                    disabled={revokeKeyMutation.isPending}
+                    data-testid={`button-revoke-key-${member.id}`}
                   >
-                    <ArrowLeftRight className="w-3 h-3 mr-1" />
-                    Switch to {member.accessType === "TEAM" ? "Voucher" : "Teams"}
+                    <ShieldOff className="w-3 h-3 mr-1" />
+                    Revoke Key
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Switch Access Type?</AlertDialogTitle>
+                    <AlertDialogTitle>Revoke API Key?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      Switch <strong>{member.user?.name || member.user?.email}</strong> from{" "}
-                      <strong>{member.accessType === "TEAM" ? "Teams" : "Voucher"}</strong> to{" "}
-                      <strong>{member.accessType === "TEAM" ? "Voucher" : "Teams"}</strong> mode?
-                      {member.accessType === "TEAM"
-                        ? " In Voucher mode, the member has a fixed budget with an expiry date."
-                        : " In Teams mode, the member has a monthly resetting budget."}
+                      This will revoke all active API keys for <strong>{member.user?.name || member.user?.email}</strong>.
+                      They will not be able to make any API requests until a new key is generated.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => accessTypeMutation.mutate()} data-testid={`button-confirm-switch-mode-${member.id}`}>
-                      Switch Type
+                    <AlertDialogAction onClick={() => revokeKeyMutation.mutate()} className="bg-destructive text-destructive-foreground" data-testid="button-confirm-revoke">
+                      Revoke Key
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
-
-              <Dialog open={budgetOpen} onOpenChange={setBudgetOpen}>
-                <DialogTrigger asChild>
-                  <Button size="sm" variant="outline" className="h-7 text-xs" data-testid={`button-edit-budget-${member.id}`}>
-                    <Pencil className="w-3 h-3 mr-1" />
-                    Edit Budget
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Edit Monthly Budget</DialogTitle>
-                    <DialogDescription>Update the monthly spending limit for {member.user?.name || member.user?.email}.</DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4 pt-2">
-                    <div className="space-y-2">
-                      <Label>Monthly Budget (cents)</Label>
-                      <Input type="number" value={newBudget} onChange={e => setNewBudget(e.target.value)} data-testid="input-edit-budget" />
-                      <p className="text-xs text-muted-foreground">${(parseInt(newBudget || "0") / 100).toFixed(2)} per month</p>
-                    </div>
-                    <Button className="w-full" onClick={() => budgetMutation.mutate()} disabled={budgetMutation.isPending} data-testid="button-save-budget">
-                      {budgetMutation.isPending ? "Saving..." : "Save Budget"}
-                    </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
 
               {member.status === "ACTIVE" ? (
                 <AlertDialog>
@@ -273,7 +309,7 @@ function MemberCard({ member, providers, onRemove }: { member: any; providers: a
                 <AlertDialogHeader>
                   <AlertDialogTitle>Remove Member</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Are you sure you want to remove <strong>{member.user?.name || member.user?.email}</strong>? Their account and all provider links will be deleted permanently.
+                    Are you sure you want to remove <strong>{member.user?.name || member.user?.email}</strong>? Their account and API keys will be deleted permanently.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -298,14 +334,15 @@ function MemberCard({ member, providers, onRemove }: { member: any; providers: a
 export default function MembersPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [, navigate] = useLocation();
   const [open, setOpen] = useState(false);
-  const [showVoucherPrompt, setShowVoucherPrompt] = useState(false);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [budgetCents, setBudgetCents] = useState("5000");
   const [accessType, setAccessType] = useState("TEAM");
   const [selectedTeam, setSelectedTeam] = useState("");
+  const [selectedProviders, setSelectedProviders] = useState<string[]>([]);
+  const [selectedModels, setSelectedModels] = useState<string[]>([]);
+  const [newMemberKey, setNewMemberKey] = useState<string | null>(null);
 
   const { data: teams } = useQuery<any[]>({ queryKey: ["/api/teams"] });
   const { data: members, isLoading } = useQuery<any[]>({ queryKey: ["/api/members"] });
@@ -313,24 +350,56 @@ export default function MembersPage() {
     queryKey: ["/api/providers/available"],
     enabled: user?.orgRole !== "MEMBER",
   });
+  const { data: providerConnections } = useQuery<any[]>({
+    queryKey: ["/api/providers"],
+    enabled: user?.orgRole === "ROOT_ADMIN",
+  });
+
+  const connectedProviders = providers || [];
+  const hasProviders = connectedProviders.length > 0;
+
+  const orgAllowedModels: { modelId: string; provider: string }[] = [];
+  if (providerConnections) {
+    for (const conn of providerConnections) {
+      const models = (conn.orgAllowedModels as any[]) || [];
+      for (const m of models) {
+        if (m.enabled !== false) {
+          orgAllowedModels.push({ modelId: m.modelId || m.id, provider: conn.provider });
+        }
+      }
+    }
+  }
+
+  const filteredModels = orgAllowedModels.filter(
+    m => selectedProviders.length === 0 || selectedProviders.includes(m.provider)
+  );
 
   const createMutation = useMutation({
     mutationFn: async () => {
       const teamId = selectedTeam || teams?.[0]?.id;
-      await apiRequest("POST", "/api/members", {
-        email, name, budgetCents: parseInt(budgetCents), accessType, teamId,
+      const res = await apiRequest("POST", "/api/members", {
+        email,
+        name,
+        budgetCents: parseInt(budgetCents),
+        accessType,
+        teamId,
+        allowedProviders: selectedProviders.length > 0 ? selectedProviders : null,
+        allowedModels: selectedModels.length > 0 ? selectedModels : null,
       });
+      return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/members"] });
-      if (accessType === "VOUCHER") {
-        setShowVoucherPrompt(true);
+      if (data.apiKey) {
+        setNewMemberKey(data.apiKey);
       } else {
         toast({ title: "Member added successfully" });
         setOpen(false);
       }
       setEmail("");
       setName("");
+      setSelectedProviders([]);
+      setSelectedModels([]);
     },
     onError: (err: any) => {
       toast({ title: "Failed to add member", description: err.message, variant: "destructive" });
@@ -350,14 +419,24 @@ export default function MembersPage() {
     },
   });
 
-  const teamTypeMembers = members?.filter(m => m.accessType === "TEAM") || [];
-  const voucherTypeMembers = members?.filter(m => m.accessType === "VOUCHER") || [];
+  const toggleProvider = (provider: string) => {
+    setSelectedProviders(prev =>
+      prev.includes(provider) ? prev.filter(p => p !== provider) : [...prev, provider]
+    );
+    setSelectedModels([]);
+  };
+
+  const toggleModel = (modelId: string) => {
+    setSelectedModels(prev =>
+      prev.includes(modelId) ? prev.filter(m => m !== modelId) : [...prev, modelId]
+    );
+  };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Members</h1>
+          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-members-heading">Members</h1>
           <p className="text-muted-foreground mt-1">
             Manage team members and their budgets
             {members && members.length > 0 && (
@@ -366,60 +445,38 @@ export default function MembersPage() {
           </p>
         </div>
         {user?.orgRole !== "MEMBER" && (
-          <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setShowVoucherPrompt(false); }}>
+          <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setNewMemberKey(null); } }}>
             <DialogTrigger asChild>
-              <Button data-testid="button-add-member">
+              <Button data-testid="button-add-member" disabled={!hasProviders}>
                 <Plus className="w-4 h-4 mr-1.5" />
                 Add Member
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-w-lg">
               <DialogHeader>
-                <DialogTitle>{showVoucherPrompt ? "Member Created!" : "Add Team Member"}</DialogTitle>
+                <DialogTitle>{newMemberKey ? "Member Created — API Key" : "Add Team Member"}</DialogTitle>
                 <DialogDescription>
-                  {showVoucherPrompt
-                    ? "The member has been created in Voucher mode. Create a voucher code to give them access."
-                    : "Create a new member account with a spending budget. They'll receive an invite email to set their password."}
+                  {newMemberKey
+                    ? "The member's API key is shown below. This is the only time it will be displayed."
+                    : "Create a new member account with a spending budget. They'll receive an invite email."}
                 </DialogDescription>
               </DialogHeader>
-              {showVoucherPrompt ? (
+              {newMemberKey ? (
                 <div className="space-y-4 pt-2">
-                  <div className="p-4 rounded-lg bg-muted/50 text-sm">
-                    <div className="flex items-center gap-2 mb-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                      <span className="font-medium">Member added in Voucher mode</span>
-                    </div>
-                    <p className="text-muted-foreground text-xs">
-                      To give them AI access, create a voucher code on the Vouchers page and share it with them.
-                    </p>
-                  </div>
+                  <KeyRevealCard keyValue={newMemberKey} masked={false} />
+                  <p className="text-xs text-amber-600 dark:text-amber-400 font-medium" data-testid="text-new-key-warning">
+                    Copy this key and share it securely with the member. It will NOT be shown again.
+                  </p>
                   <Button
                     className="w-full"
-                    onClick={() => {
-                      setOpen(false);
-                      setShowVoucherPrompt(false);
-                      navigate("/dashboard/vouchers");
-                    }}
-                    data-testid="button-go-to-vouchers"
-                  >
-                    <Ticket className="w-4 h-4 mr-1.5" />
-                    Go to Vouchers
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    className="w-full"
-                    onClick={() => {
-                      setOpen(false);
-                      setShowVoucherPrompt(false);
-                      toast({ title: "Member added successfully" });
-                    }}
+                    onClick={() => { setOpen(false); setNewMemberKey(null); }}
                     data-testid="button-done-member"
                   >
                     Done
                   </Button>
                 </div>
               ) : (
-                <div className="space-y-4 pt-2">
+                <div className="space-y-4 pt-2 max-h-[60vh] overflow-y-auto">
                   {teams && teams.length > 1 && (
                     <div className="space-y-2">
                       <Label>Team</Label>
@@ -455,11 +512,51 @@ export default function MembersPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="TEAM">Teams</SelectItem>
-                        <SelectItem value="VOUCHER">Voucher</SelectItem>
+                        <SelectItem value="TEAM">Team (monthly reset)</SelectItem>
+                        <SelectItem value="VOUCHER">Voucher (fixed budget)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
+
+                  {connectedProviders.length > 0 && (
+                    <div className="space-y-2">
+                      <Label>Allowed Providers</Label>
+                      <div className="space-y-1.5">
+                        {connectedProviders.map(p => (
+                          <label key={p.provider} className="flex items-center gap-2 text-sm cursor-pointer">
+                            <Checkbox
+                              checked={selectedProviders.includes(p.provider)}
+                              onCheckedChange={() => toggleProvider(p.provider)}
+                              data-testid={`checkbox-provider-${p.provider.toLowerCase()}`}
+                            />
+                            {p.displayName || p.provider}
+                          </label>
+                        ))}
+                      </div>
+                      <p className="text-xs text-muted-foreground">Leave unchecked to allow all connected providers.</p>
+                    </div>
+                  )}
+
+                  {filteredModels.length > 0 && (
+                    <div className="space-y-2">
+                      <Label>Allowed Models</Label>
+                      <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                        {filteredModels.map(m => (
+                          <label key={m.modelId} className="flex items-center gap-2 text-sm cursor-pointer">
+                            <Checkbox
+                              checked={selectedModels.includes(m.modelId)}
+                              onCheckedChange={() => toggleModel(m.modelId)}
+                              data-testid={`checkbox-model-${m.modelId}`}
+                            />
+                            <span className="font-mono text-xs">{m.modelId}</span>
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 no-default-hover-elevate no-default-active-elevate">{m.provider}</Badge>
+                          </label>
+                        ))}
+                      </div>
+                      <p className="text-xs text-muted-foreground">Leave unchecked to allow all org-enabled models.</p>
+                    </div>
+                  )}
+
                   <Button className="w-full" onClick={() => createMutation.mutate()} disabled={!email || createMutation.isPending} data-testid="button-submit-member">
                     {createMutation.isPending ? "Adding..." : "Add Member"}
                   </Button>
@@ -470,44 +567,30 @@ export default function MembersPage() {
         )}
       </div>
 
+      {!hasProviders && user?.orgRole !== "MEMBER" && (
+        <Card className="p-4 border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20" data-testid="warning-no-providers">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">No AI providers connected</p>
+              <p className="text-xs text-amber-600 dark:text-amber-400">Connect at least one provider before adding members. Go to Settings → AI Providers.</p>
+            </div>
+          </div>
+        </Card>
+      )}
+
       {isLoading ? (
         <div className="space-y-4">{[1, 2, 3].map(i => <Skeleton key={i} className="h-32" />)}</div>
       ) : members && members.length > 0 ? (
-        <Tabs defaultValue="all">
-          <TabsList data-testid="tabs-members">
-            <TabsTrigger value="all" data-testid="tab-all">
-              <Users className="w-3.5 h-3.5 mr-1.5" />
-              All ({members.length})
-            </TabsTrigger>
-            <TabsTrigger value="team" data-testid="tab-team">
-              <Key className="w-3.5 h-3.5 mr-1.5" />
-              Teams Members ({teamTypeMembers.length})
-            </TabsTrigger>
-            <TabsTrigger value="voucher" data-testid="tab-voucher">
-              <Ticket className="w-3.5 h-3.5 mr-1.5" />
-              Voucher Recipients ({voucherTypeMembers.length})
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value="all" className="space-y-3 mt-4">
-            {members.map(m => <MemberCard key={m.id} member={m} providers={providers || []} onRemove={(id) => removeMutation.mutate(id)} />)}
-          </TabsContent>
-          <TabsContent value="team" className="space-y-3 mt-4">
-            {teamTypeMembers.length > 0 ? teamTypeMembers.map(m => <MemberCard key={m.id} member={m} providers={providers || []} onRemove={(id) => removeMutation.mutate(id)} />) : (
-              <EmptyState icon={<Users className="w-8 h-8 text-muted-foreground" />} title="No team members" description="Add members with monthly resetting budgets" />
-            )}
-          </TabsContent>
-          <TabsContent value="voucher" className="space-y-3 mt-4">
-            {voucherTypeMembers.length > 0 ? voucherTypeMembers.map(m => <MemberCard key={m.id} member={m} providers={providers || []} onRemove={(id) => removeMutation.mutate(id)} />) : (
-              <EmptyState icon={<Users className="w-8 h-8 text-muted-foreground" />} title="No voucher recipients" description="Create vouchers to distribute fixed-budget access" />
-            )}
-          </TabsContent>
-        </Tabs>
+        <div className="space-y-3" data-testid="members-list">
+          {members.map(m => <MemberCard key={m.id} member={m} onRemove={(id) => removeMutation.mutate(id)} />)}
+        </div>
       ) : (
         <EmptyState
           icon={<Users className="w-10 h-10 text-muted-foreground" />}
           title="No members yet"
-          description="Add team members to start distributing AI access"
-          action={user?.orgRole !== "MEMBER" ? { label: "Add Member", onClick: () => setOpen(true) } : undefined}
+          description={hasProviders ? "Add team members to start distributing AI access" : "Connect a provider first, then add members"}
+          action={user?.orgRole !== "MEMBER" && hasProviders ? { label: "Add Member", onClick: () => setOpen(true) } : undefined}
         />
       )}
     </div>

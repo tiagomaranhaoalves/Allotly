@@ -67,6 +67,8 @@ export interface IStorage {
 
   createAllotlyApiKey(data: { userId: string; membershipId: string; keyHash: string; keyPrefix: string }): Promise<AllotlyApiKey>;
   getApiKeyByHash(hash: string): Promise<AllotlyApiKey | undefined>;
+  updateAllotlyApiKey(id: string, data: Partial<AllotlyApiKey>): Promise<AllotlyApiKey | undefined>;
+  getActiveKeyByUserId(userId: string): Promise<AllotlyApiKey | undefined>;
 
   createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
   getAuditLogsByOrg(orgId: string, limit?: number, offset?: number): Promise<AuditLog[]>;
@@ -323,6 +325,17 @@ export class DrizzleStorage implements IStorage {
 
   async getApiKeyByHash(hash: string): Promise<AllotlyApiKey | undefined> {
     const [result] = await db.select().from(allotlyApiKeys).where(eq(allotlyApiKeys.keyHash, hash));
+    return result;
+  }
+
+  async updateAllotlyApiKey(id: string, data: Partial<AllotlyApiKey>): Promise<AllotlyApiKey | undefined> {
+    const [result] = await db.update(allotlyApiKeys).set({ ...data, updatedAt: new Date() }).where(eq(allotlyApiKeys.id, id)).returning();
+    return result;
+  }
+
+  async getActiveKeyByUserId(userId: string): Promise<AllotlyApiKey | undefined> {
+    const [result] = await db.select().from(allotlyApiKeys)
+      .where(and(eq(allotlyApiKeys.userId, userId), eq(allotlyApiKeys.status, "ACTIVE")));
     return result;
   }
 

@@ -147,22 +147,20 @@ export default function TeamsPage() {
   const [teamName, setTeamName] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
   const [adminName, setAdminName] = useState("");
-  const [adminPassword, setAdminPassword] = useState("");
 
   const { data: teams, isLoading } = useQuery<any[]>({ queryKey: ["/api/teams"] });
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      await apiRequest("POST", "/api/teams", { teamName, adminEmail, adminName, adminPassword });
+      await apiRequest("POST", "/api/teams", { teamName, adminEmail, adminName });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
-      toast({ title: "Team created successfully" });
+      toast({ title: "Team created — invite sent to admin" });
       setOpen(false);
       setTeamName("");
       setAdminEmail("");
       setAdminName("");
-      setAdminPassword("");
     },
     onError: (err: any) => {
       toast({ title: "Failed to create team", description: err.message, variant: "destructive" });
@@ -214,7 +212,7 @@ export default function TeamsPage() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Create New Team</DialogTitle>
-              <DialogDescription>A new team admin account will be created with the credentials you provide.</DialogDescription>
+              <DialogDescription>An invite email will be sent to the team admin to set their password.</DialogDescription>
             </DialogHeader>
             <div className="space-y-4 pt-2">
               <div className="space-y-2">
@@ -228,10 +226,6 @@ export default function TeamsPage() {
               <div className="space-y-2">
                 <Label>Team Admin Name</Label>
                 <Input placeholder="Jane Smith" value={adminName} onChange={e => setAdminName(e.target.value)} data-testid="input-admin-name" />
-              </div>
-              <div className="space-y-2">
-                <Label>Password</Label>
-                <Input type="password" placeholder="Set initial password" value={adminPassword} onChange={e => setAdminPassword(e.target.value)} data-testid="input-admin-password" />
               </div>
               <Button className="w-full" onClick={() => createMutation.mutate()} disabled={!teamName || !adminEmail || createMutation.isPending} data-testid="button-submit-team">
                 {createMutation.isPending ? "Creating..." : "Create Team"}

@@ -48,7 +48,17 @@ All money values are handled in integer cents to avoid floating-point inaccuraci
 - `/dashboard/*` — Protected dashboard routes (overview, providers, teams, members, vouchers, bundles, analytics, audit-log, settings, keys, usage)
 
 ## Milestone Status
-- Milestones 1-9: COMPLETE
+- Milestones 1-9, v4 migration, Admin Control Center: COMPLETE
+- Milestone 3 (Provider Connections): COMPLETE — encryption, key gen, provider adapters, provider UI, model allowlist
+- Milestone 4 (Team Admin + Member Management): COMPLETE
+  - Team admin invite flow: POST /api/teams creates INVITED admin + sends invite email with /invite/:token link
+  - Member creation v4: POST /api/members creates INVITED member, generates allotly_sk_ key, inits Redis budget, returns raw key
+  - Invite acceptance: GET/POST /api/invite/:token validates + accepts invites, sets password, activates user
+  - Member welcome page: /invite/:token shows KeyRevealCard, quickstart (curl+Python), available models, budget info
+  - Key management: POST /api/members/:id/regenerate-key, POST /api/members/:id/revoke-key (TEAM only)
+  - Members page: provider check warning, allowed providers/models in form, KeyRevealCard after creation, regenerate/revoke key buttons
+  - Teams page: no password field, invite-based flow
+  - Audit events: team.created, member.created, key.generated, key.regenerated, key.revoked, member.suspended, member.reactivated, member.removed
 - Milestone 10 (Landing Page + Docs Page): COMPLETE — Full landing page rewrite with 12 sections (sticky frosted header, hero with dashboard mockup, problem stats dark strip, solution intro, two feature cards with hover lift, voucher callout with code visual, tabbed how-it-works, dark trust section, 3-tier pricing with Most Popular ribbon, social proof vignettes, final CTA, dark footer), smooth scroll, fade-in animations via IntersectionObserver, mobile hamburger menu, dark mode support. Docs page with fixed sidebar (6 collapsible sections, 31 items), active section tracking, code blocks with copy buttons, comprehensive real documentation for all sections including API reference with curl examples, error codes table, response headers, streaming docs, and 5 FAQ answers.
 - Footer Pages: COMPLETE — 6 pages (About, Careers, Contact, Privacy, Terms, Security) with shared PublicLayout (header+footer), scroll-to-top on route change.
 - Milestone 11 (Phase 2 Analytics): COMPLETE — Full analytics dashboard at /dashboard/analytics with 5 sections and 5 backend API endpoints:

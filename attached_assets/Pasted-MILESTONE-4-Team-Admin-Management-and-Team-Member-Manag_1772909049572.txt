@@ -1,0 +1,74 @@
+MILESTONE 4: Team Admin Management and Team Member Management with Proxy Keys
+
+This is where v4 diverges most from v3. There is NO provider-level key provisioning. All members get allotly_sk_ proxy keys.
+
+BUILD THESE:
+
+1. TEAM ADMIN MANAGEMENT (Root Admin only)
+   - Page: /dashboard/teams
+   - "Create Team Admin" button: form with email, name, team name
+   - Creates User (role=TEAM_ADMIN, status=INVITED) + Team (admin=new user)
+   - Sends team-admin-invite email (log for now — templates come later)
+   - List all teams: name, admin, member count (X/20), total spend, budget utilization
+
+2. TEAM ADMIN INVITE ACCEPTANCE
+   - Page: /invite/[token]
+   - Team Admin sets password, activates account, redirects to /dashboard
+
+3. TEAM MEMBER MANAGEMENT (v4 Section 4 — new flow)
+   - Page: /dashboard/members
+   - Show warning if no providers are connected ("Connect at least one provider before adding members")
+   - "Add Member" button opens form:
+     - Email, name
+     - Monthly budget (cents) — cannot exceed org ceiling
+     - Allowed providers: checkboxes (only connected providers shown)
+     - Allowed models: from org allowlist, filtered by selected providers
+   - On submit (v4 Section 4 new flow):
+     a. Create User (role=MEMBER, status=INVITED)
+     b. Create TeamMembership (accessType=TEAM, monthlyBudgetCents, allowedModels, allowedProviders, periodStart=now, periodEnd=end of month)
+     c. Generate allotly_sk_ key using generateAllotlyKey()
+     d. SHA-256 hash → store in AllotlyApiKey table (with userId AND membershipId)
+     e. Initialize Redis: SET allotly:budget:{membershipId} {budgetCents}
+     f. Show key to admin ONCE via KeyRevealCard with warning and copy button
+     g. Send member-invite email with secure invite link (NOT the key itself — see v4 Section 12.1)
+   - Member count enforced: max 5 on Free, max 20 on Team plan (count includes both TEAM and VOUCHER members)
+
+4. MEMBER INVITE ACCEPTANCE (v4 Section 12.1)
+   - Member clicks invite link → /invite/[token]
+   - Sets password → lands on "Welcome to Allotly" page showing:
+     - Their allotly_sk_ key (shown ONCE, KeyRevealCard with copy + warning)
+     - Quickstart code block: curl + Python using api.allotly.com/v1 (v4 Section 12.4)
+     - Available models with ProviderBadges
+     - Budget info: "$50/month, resets on [date]"
+     - "Go to Dashboard" button
+   - After navigating away, key is NEVER shown again
+
+5. UNIFIED MEMBERS TABLE (v4 Section 4)
+   - Single DataTable showing ALL members (no tabs for direct vs proxy):
+     - Columns: Name, Email, Type (FeatureBadge: Team/Voucher), Budget, Spent, BudgetBar, Status, Actions
+     - TEAM members show "$50/mo" with reset indicator
+     - VOUCHER members show "$25 (fixed)" with expiry date
+   - Actions: edit budget/models (TEAM only), suspend, reactivate, revoke key, remove
+
+6. KEY MANAGEMENT — UNIFIED (v4 Section 4)
+   - POST /api/members/[id]/regenerate-key — revoke old allotly_sk_ + generate new + update Redis (TEAM members only)
+   - POST /api/members/[id]/revoke-key — set AllotlyApiKey.status = REVOKED + clear Redis budget
+   - NO provider parameter — there is only one key type
+   - DO NOT create: /provision, /regenerate-key/[provider], /revoke-key/[provider], /mark-complete/[provider]
+
+7. PERMISSION ENFORCEMENT (v4 Section 8)
+   - Every route checks orgRole
+   - Team Admins only access own team
+   - Root Admin accesses any team
+   - Members cannot access these routes
+
+8. AUDIT LOGGING
+   - Log: "team.created", "team.removed", "member.created", "member.suspended", "member.reactivated", "key.generated", "key.revoked", "key.regenerated"
+
+VERIFY BY:
+- Root Admin creates Team Admin → Team Admin logs in → adds member → member's allotly_sk_ key shown once
+- Member accepts invite → sees key on welcome page → key not visible after navigating away
+- Members table shows FeatureBadge for type (all should show "Team" at this point)
+- Regenerate key works: old key revoked, new key generated, shown once
+- Member count limits enforced
+- Confirm NO provider-specific provisioning routes exist (no /provision, no /regenerate-key/openai, etc.)

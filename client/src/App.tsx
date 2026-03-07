@@ -22,6 +22,7 @@ import PrivacyPage from "@/pages/privacy";
 import TermsPage from "@/pages/terms";
 import SecurityPage from "@/pages/security";
 import ComponentsShowcase from "@/pages/components-showcase";
+import InvitePage from "@/pages/invite";
 import AdminLoginPage from "@/pages/admin-login";
 import AdminPage from "@/pages/admin";
 import DashboardOverview from "@/pages/dashboard/overview";
@@ -55,6 +56,7 @@ function Router() {
       <Route path="/redeem" component={RedeemPage} />
       <Route path="/forgot-password" component={ForgotPasswordPage} />
       <Route path="/reset-password" component={ResetPasswordPage} />
+      <Route path="/invite/:token" component={InvitePage} />
       <Route path="/docs" component={DocsPage} />
       <Route path="/about" component={AboutPage} />
       <Route path="/careers" component={CareersPage} />

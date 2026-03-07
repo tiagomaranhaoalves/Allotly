@@ -18,7 +18,7 @@ import { runVoucherExpiry } from "./lib/jobs/voucher-expiry";
 import { runBundleExpiry } from "./lib/jobs/bundle-expiry";
 import { runRedisReconciliation } from "./lib/jobs/redis-reconciliation";
 import { handleChatCompletion, handleListModels } from "./lib/proxy/handler";
-import { redisSet, redisGet, redisIncr, REDIS_KEYS } from "./lib/redis";
+import { redisSet, redisGet, redisDel, redisIncr, REDIS_KEYS } from "./lib/redis";
 import { runProviderValidation } from "./lib/jobs/provider-validation";
 import { runSnapshotCleanup } from "./lib/jobs/snapshot-cleanup";
 import { runSpendAnomalyCheck } from "./lib/jobs/spend-anomaly";
@@ -227,6 +227,159 @@ export async function registerRoutes(
         return res.status(400).json({ message: e.errors[0]?.message || "Validation error" });
       }
       console.error("Reset password error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/invite/:token", async (req, res) => {
+    try {
+      const crypto = await import("crypto");
+      const tokenHash = crypto.createHash("sha256").update(req.params.token).digest("hex");
+      const tokenRecord = await storage.getPasswordResetToken(tokenHash);
+
+      if (!tokenRecord || tokenRecord.usedAt || new Date(tokenRecord.expiresAt) < new Date()) {
+        return res.status(400).json({ message: "Invalid or expired invite link" });
+      }
+
+      const invitedUser = await storage.getUser(tokenRecord.userId);
+      if (!invitedUser) return res.status(404).json({ message: "User not found" });
+
+      res.json({
+        userId: invitedUser.id,
+        email: invitedUser.email,
+        name: invitedUser.name,
+        orgRole: invitedUser.orgRole,
+        status: invitedUser.status,
+      });
+    } catch (e: any) {
+      console.error("Invite validate error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/invite/:token/accept", async (req, res) => {
+    try {
+      const { password } = z.object({
+        password: z.string().min(8, "Password must be at least 8 characters"),
+      }).parse(req.body);
+
+      const crypto = await import("crypto");
+      const tokenHash = crypto.createHash("sha256").update(req.params.token).digest("hex");
+      const tokenRecord = await storage.getPasswordResetToken(tokenHash);
+
+      if (!tokenRecord || tokenRecord.usedAt || new Date(tokenRecord.expiresAt) < new Date()) {
+        return res.status(400).json({ message: "Invalid or expired invite link" });
+      }
+
+      const invitedUser = await storage.getUser(tokenRecord.userId);
+      if (!invitedUser) return res.status(404).json({ message: "User not found" });
+
+      const newPasswordHash = await hashPassword(password);
+      await storage.updateUser(invitedUser.id, {
+        passwordHash: newPasswordHash,
+        status: "ACTIVE",
+      } as any);
+
+      await storage.markPasswordResetTokenUsed(tokenRecord.id);
+      await storage.deletePasswordResetTokensForUser(invitedUser.id);
+
+      req.session.userId = invitedUser.id;
+      req.session.orgId = invitedUser.orgId;
+      req.session.orgRole = invitedUser.orgRole;
+
+      const org = await storage.getOrganization(invitedUser.orgId);
+
+      let welcomeData: any = null;
+      if (invitedUser.orgRole === "MEMBER") {
+        const membership = await storage.getMembershipByUser(invitedUser.id);
+        if (membership) {
+          const activeKey = await storage.getActiveKeyByUserId(invitedUser.id);
+          const team = await storage.getTeam(membership.teamId);
+          const providerConnections = await storage.getProviderConnectionsByOrg(invitedUser.orgId);
+          const allowedModels = membership.allowedModels as string[] | null;
+          const models = await storage.getModelPricing();
+          const filteredModels = allowedModels
+            ? models.filter(m => allowedModels.includes(m.modelId))
+            : models;
+
+          const pendingKey = await redisGet(`allotly:pending_key:${invitedUser.id}`);
+          if (pendingKey) {
+            await redisDel(`allotly:pending_key:${invitedUser.id}`);
+          }
+
+          welcomeData = {
+            apiKey: pendingKey || null,
+            keyPrefix: activeKey?.keyPrefix || null,
+            teamName: team?.name || null,
+            budgetCents: membership.monthlyBudgetCents,
+            accessType: membership.accessType,
+            periodEnd: membership.periodEnd,
+            voucherExpiresAt: membership.voucherExpiresAt,
+            allowedModels: filteredModels.map(m => ({
+              modelId: m.modelId,
+              displayName: m.displayName,
+              provider: m.provider,
+            })),
+            allowedProviders: membership.allowedProviders || providerConnections.filter(c => c.status === "ACTIVE").map(c => c.provider),
+          };
+        }
+      }
+
+      res.json({
+        user: {
+          id: invitedUser.id,
+          email: invitedUser.email,
+          name: invitedUser.name,
+          orgRole: invitedUser.orgRole,
+          orgId: invitedUser.orgId,
+        },
+        organization: org ? { id: org.id, name: org.name, plan: org.plan } : null,
+        welcomeData,
+      });
+    } catch (e: any) {
+      if (e instanceof z.ZodError) {
+        return res.status(400).json({ message: e.errors[0]?.message || "Validation error" });
+      }
+      console.error("Invite accept error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/members/me/welcome", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || user.orgRole !== "MEMBER") return res.status(403).json({ message: "Forbidden" });
+
+      const membership = await storage.getMembershipByUser(user.id);
+      if (!membership) return res.status(404).json({ message: "No membership found" });
+
+      const activeKey = await storage.getActiveKeyByUserId(user.id);
+      const team = await storage.getTeam(membership.teamId);
+      const providerConnections = await storage.getProviderConnectionsByOrg(user.orgId);
+      const allowedModels = membership.allowedModels as string[] | null;
+      const models = await storage.getModelPricing();
+      const filteredModels = allowedModels
+        ? models.filter(m => allowedModels.includes(m.modelId))
+        : models;
+
+      res.json({
+        keyPrefix: activeKey?.keyPrefix || null,
+        teamName: team?.name || null,
+        budgetCents: membership.monthlyBudgetCents,
+        spentCents: membership.currentPeriodSpendCents,
+        accessType: membership.accessType,
+        periodEnd: membership.periodEnd,
+        voucherExpiresAt: membership.voucherExpiresAt,
+        allowedModels: filteredModels.map(m => ({
+          modelId: m.modelId,
+          displayName: m.displayName,
+          provider: m.provider,
+        })),
+        allowedProviders: membership.allowedProviders || providerConnections.filter(c => c.status === "ACTIVE").map(c => c.provider),
+        status: membership.status,
+      });
+    } catch (e: any) {
+      console.error("Welcome data error:", e);
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -474,14 +627,16 @@ export async function registerRoutes(
         return res.status(400).json({ message: adminCheck.message });
       }
 
-      const passwordHash = adminPassword ? await hashPassword(adminPassword) : await hashPassword("changeme123");
+      const crypto = await import("crypto");
+      const randomPassword = crypto.randomBytes(32).toString("hex");
+      const passwordHash = await hashPassword(randomPassword);
       const adminUser = await storage.createUser({
         email: adminEmail,
         name: adminName || adminEmail.split("@")[0],
         passwordHash,
         orgId: user.orgId,
         orgRole: "TEAM_ADMIN",
-        status: "ACTIVE",
+        status: "INVITED",
         isVoucherUser: false,
       });
 
@@ -490,6 +645,21 @@ export async function registerRoutes(
         orgId: user.orgId,
         adminId: adminUser.id,
       });
+
+      const rawToken = crypto.randomBytes(32).toString("hex");
+      const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      await storage.createPasswordResetToken({ userId: adminUser.id, tokenHash, expiresAt });
+
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      const inviteUrl = `${baseUrl}/invite/${rawToken}`;
+      const inviteEmailContent = emailTemplates.teamAdminInvite(
+        adminName || adminEmail.split("@")[0],
+        (await storage.getOrganization(user.orgId))?.name || "your organization",
+        user.name || user.email,
+        inviteUrl
+      );
+      sendEmail(adminEmail, inviteEmailContent.subject, inviteEmailContent.html);
 
       await storage.createAuditLog({
         orgId: user.orgId,
@@ -500,7 +670,7 @@ export async function registerRoutes(
         metadata: { teamName, adminEmail },
       });
 
-      res.json({ team, admin: { id: adminUser.id, email: adminUser.email, name: adminUser.name } });
+      res.json({ team, admin: { id: adminUser.id, email: adminUser.email, name: adminUser.name, status: "INVITED" } });
     } catch (e: any) {
       if (e.code === "23505") {
         return res.status(400).json({ message: "Email already in use" });
@@ -589,7 +759,7 @@ export async function registerRoutes(
         passwordHash,
         orgId: user.orgId,
         orgRole: "MEMBER",
-        status: "ACTIVE",
+        status: "INVITED",
         isVoucherUser: false,
       });
 
@@ -610,6 +780,18 @@ export async function registerRoutes(
         status: "ACTIVE",
       });
 
+      const { key: rawKey, hash: keyHash, prefix: keyPrefix } = generateAllotlyKey();
+      await storage.createAllotlyApiKey({
+        userId: memberUser.id,
+        membershipId: membership.id,
+        keyHash: keyHash,
+        keyPrefix: keyPrefix,
+      });
+
+      await redisSet(REDIS_KEYS.budget(membership.id), String(budgetCents));
+
+      await redisSet(`allotly:pending_key:${memberUser.id}`, rawKey, 7 * 24 * 60 * 60);
+
       await storage.createAuditLog({
         orgId: user.orgId,
         actorId: user.id,
@@ -617,6 +799,15 @@ export async function registerRoutes(
         targetType: "team_membership",
         targetId: membership.id,
         metadata: { email, accessType: accessType || "TEAM" },
+      });
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "key.generated",
+        targetType: "allotly_api_key",
+        targetId: membership.id,
+        metadata: { memberUserId: memberUser.id, keyPrefix },
       });
 
       const baseUrl = `${req.protocol}://${req.get('host')}`;
@@ -627,7 +818,7 @@ export async function registerRoutes(
       await storage.createPasswordResetToken({ userId: memberUser.id, tokenHash, expiresAt });
 
       const team = await storage.getTeam(targetTeamId);
-      const setupUrl = `${baseUrl}/reset-password?token=${rawToken}`;
+      const setupUrl = `${baseUrl}/invite/${rawToken}`;
       const inviteEmail = emailTemplates.memberInvite(
         name || email.split("@")[0],
         team?.name || "your team",
@@ -636,7 +827,7 @@ export async function registerRoutes(
       );
       sendEmail(email, inviteEmail.subject, inviteEmail.html);
 
-      res.json({ membership, user: { id: memberUser.id, email: memberUser.email, name: memberUser.name } });
+      res.json({ membership, user: { id: memberUser.id, email: memberUser.email, name: memberUser.name }, apiKey: rawKey, keyPrefix });
     } catch (e: any) {
       if (e.code === "23505") {
         return res.status(400).json({ message: "Email already in use" });
@@ -749,6 +940,92 @@ export async function registerRoutes(
       res.json({ message: "Member removed" });
     } catch (e: any) {
       console.error("Member remove error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/members/:id/regenerate-key", requireAuth, regenerateKeyLimiter, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
+
+      const membership = await storage.getMembership(req.params.id);
+      if (!membership) return res.status(404).json({ message: "Not found" });
+
+      const team = await storage.getTeam(membership.teamId);
+      if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
+      if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
+
+      if (membership.accessType !== "TEAM") {
+        return res.status(400).json({ message: "Key regeneration is only available for TEAM members" });
+      }
+
+      const existingKeys = await storage.getApiKeysByMembership(membership.id);
+      for (const key of existingKeys) {
+        if (key.status === "ACTIVE") {
+          await storage.updateAllotlyApiKey(key.id, { status: "REVOKED" });
+        }
+      }
+
+      const { key: rawKey, hash, prefix } = generateAllotlyKey();
+      await storage.createAllotlyApiKey({
+        userId: membership.userId,
+        membershipId: membership.id,
+        keyHash: hash,
+        keyPrefix: prefix,
+      });
+
+      await redisSet(REDIS_KEYS.budget(membership.id), String(membership.monthlyBudgetCents - membership.currentPeriodSpendCents));
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "key.regenerated",
+        targetType: "team_membership",
+        targetId: membership.id,
+        metadata: { memberUserId: membership.userId, keyPrefix: prefix },
+      });
+
+      res.json({ apiKey: rawKey, keyPrefix: prefix });
+    } catch (e: any) {
+      console.error("Key regenerate error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/members/:id/revoke-key", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
+
+      const membership = await storage.getMembership(req.params.id);
+      if (!membership) return res.status(404).json({ message: "Not found" });
+
+      const team = await storage.getTeam(membership.teamId);
+      if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
+      if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
+
+      const existingKeys = await storage.getApiKeysByMembership(membership.id);
+      for (const key of existingKeys) {
+        if (key.status === "ACTIVE") {
+          await storage.updateAllotlyApiKey(key.id, { status: "REVOKED" });
+        }
+      }
+
+      await redisDel(REDIS_KEYS.budget(membership.id));
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "key.revoked",
+        targetType: "team_membership",
+        targetId: membership.id,
+        metadata: { memberUserId: membership.userId },
+      });
+
+      res.json({ message: "Key revoked" });
+    } catch (e: any) {
+      console.error("Key revoke error:", e);
       res.status(500).json({ message: "Internal server error" });
     }
   });
