@@ -1,4 +1,3 @@
-import { runUsagePoll } from "./usage-poll";
 import { runBudgetReset } from "./budget-reset";
 import { runVoucherExpiry } from "./voucher-expiry";
 import { runBundleExpiry } from "./bundle-expiry";
@@ -8,7 +7,6 @@ import { runSnapshotCleanup } from "./snapshot-cleanup";
 import { runSpendAnomalyCheck } from "./spend-anomaly";
 import { selfHealConcurrency } from "../proxy/safeguards";
 
-let usagePollTimer: ReturnType<typeof setInterval> | null = null;
 let budgetResetTimer: ReturnType<typeof setInterval> | null = null;
 let concurrencyHealTimer: ReturnType<typeof setInterval> | null = null;
 let voucherExpiryTimer: ReturnType<typeof setInterval> | null = null;
@@ -18,7 +16,6 @@ let providerValidationTimer: ReturnType<typeof setInterval> | null = null;
 let snapshotCleanupTimer: ReturnType<typeof setInterval> | null = null;
 let spendAnomalyTimer: ReturnType<typeof setInterval> | null = null;
 
-const USAGE_POLL_INTERVAL = 5 * 60 * 1000;
 const BUDGET_RESET_INTERVAL = 60 * 60 * 1000;
 const CONCURRENCY_HEAL_INTERVAL = 30 * 1000;
 const VOUCHER_EXPIRY_INTERVAL = 60 * 60 * 1000;
@@ -30,15 +27,6 @@ const SPEND_ANOMALY_INTERVAL = 60 * 60 * 1000;
 
 export function startJobScheduler() {
   console.log("[scheduler] Starting background job scheduler...");
-
-  usagePollTimer = setInterval(async () => {
-    try {
-      console.log("[scheduler] Running usage poll job...");
-      await runUsagePoll();
-    } catch (e: any) {
-      console.error("[scheduler] Usage poll job failed:", e.message);
-    }
-  }, USAGE_POLL_INTERVAL);
 
   budgetResetTimer = setInterval(async () => {
     try {
@@ -110,7 +98,6 @@ export function startJobScheduler() {
     }
   }, SPEND_ANOMALY_INTERVAL);
 
-  console.log(`[scheduler] Usage poll: every ${USAGE_POLL_INTERVAL / 1000}s`);
   console.log(`[scheduler] Budget reset: every ${BUDGET_RESET_INTERVAL / 1000}s`);
   console.log(`[scheduler] Concurrency self-heal: every ${CONCURRENCY_HEAL_INTERVAL / 1000}s`);
   console.log(`[scheduler] Voucher expiry: every ${VOUCHER_EXPIRY_INTERVAL / 1000}s`);
@@ -122,7 +109,6 @@ export function startJobScheduler() {
 }
 
 export function stopJobScheduler() {
-  if (usagePollTimer) { clearInterval(usagePollTimer); usagePollTimer = null; }
   if (budgetResetTimer) { clearInterval(budgetResetTimer); budgetResetTimer = null; }
   if (concurrencyHealTimer) { clearInterval(concurrencyHealTimer); concurrencyHealTimer = null; }
   if (voucherExpiryTimer) { clearInterval(voucherExpiryTimer); voucherExpiryTimer = null; }

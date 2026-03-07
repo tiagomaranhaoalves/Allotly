@@ -95,13 +95,13 @@
   --elevate-2: rgba(255,255,255, .09);
   --background: 222 47% 11%;
   --foreground: 0 0% 98%;
-  --border: 217 33% 17%;
-  --card: 220 39% 13%;
+  --border: 217 19% 27%;
+  --card: 217 33% 17%;
   --card-foreground: 0 0% 98%;
-  --card-border: 217 33% 16%;
-  --sidebar: 220 39% 15%;
+  --card-border: 217 19% 27%;
+  --sidebar: 217 33% 17%;
   --sidebar-foreground: 0 0% 98%;
-  --sidebar-border: 217 33% 18%;
+  --sidebar-border: 217 19% 27%;
   --sidebar-primary: 239 84% 67%;
   --sidebar-primary-foreground: 0 0% 100%;
   --sidebar-accent: 220 39% 18%;

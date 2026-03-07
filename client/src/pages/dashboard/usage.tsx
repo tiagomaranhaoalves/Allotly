@@ -103,7 +103,7 @@ export default function UsagePage() {
             <EmptyState
               icon={<Activity className="w-10 h-10 text-muted-foreground" />}
               title="No usage data yet"
-              description="Your API usage will appear here once you start making requests through your provisioned API keys."
+              description="Once your team starts making API calls, usage will appear here"
             />
           )}
         </div>
@@ -111,7 +111,7 @@ export default function UsagePage() {
         <EmptyState
           icon={<Activity className="w-10 h-10 text-muted-foreground" />}
           title="No usage data yet"
-          description="Your API usage will appear here once you start making requests. Ask your team admin to provision API access for you."
+          description="Once your team starts making API calls, usage will appear here"
         />
       )}
     </div>

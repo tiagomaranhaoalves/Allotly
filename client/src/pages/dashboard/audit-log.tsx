@@ -246,7 +246,7 @@ export default function AuditLogPage() {
         <EmptyState
           icon={<FileText className="w-10 h-10 text-muted-foreground" />}
           title="No audit entries found"
-          description={actionFilter || targetTypeFilter ? "Try adjusting your filters" : "Actions taken in your organization will appear here"}
+          description={actionFilter || targetTypeFilter ? "Try adjusting your filters" : "Admin actions will be logged here"}
         />
       )}
 

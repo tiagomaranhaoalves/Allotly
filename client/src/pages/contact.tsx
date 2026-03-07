@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Mail, Headphones, Building2, Send, CheckCircle2 } from "lucide-react";
 import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 const contacts = [
   {
@@ -30,10 +31,12 @@ const contacts = [
 
 export default function ContactPage() {
   const [submitted, setSubmitted] = useState(false);
+  const { toast } = useToast();
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSubmitted(true);
+    toast({ title: "Message sent", description: "Thanks for reaching out. We'll be in touch soon." });
   }
 
   return (

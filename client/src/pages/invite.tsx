@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { KeyRevealCard } from "@/components/brand/key-reveal-card";
 import { FeatureBadge } from "@/components/brand/feature-badge";
 import { ProviderBadge } from "@/components/brand/provider-badge";
+import { LogoFull } from "@/components/logo";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -263,6 +264,9 @@ print(response.choices[0].message.content)`}
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md p-8 space-y-6">
         <div className="text-center space-y-2">
+          <div className="flex justify-center mb-4">
+            <LogoFull size={36} />
+          </div>
           <Shield className="w-12 h-12 text-primary mx-auto" />
           <h1 className="text-2xl font-bold" data-testid="text-invite-heading">
             {inviteInfo.orgRole === "TEAM_ADMIN" ? "Team Admin Invitation" : "Team Member Invitation"}

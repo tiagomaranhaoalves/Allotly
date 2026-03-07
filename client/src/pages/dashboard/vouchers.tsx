@@ -62,7 +62,7 @@ export default function VouchersPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/voucher-limits"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bundles"] });
       setCreatedCode(data.code);
-      toast({ title: "Voucher created" });
+      toast({ title: "Voucher created", description: "Make sure to copy the voucher code before closing this dialog." });
     },
     onError: (err: any) => {
       toast({ title: "Failed to create voucher", description: err.message, variant: "destructive" });
@@ -393,7 +393,7 @@ export default function VouchersPage() {
       ) : (
         <EmptyState
           icon={<Ticket className="w-10 h-10 text-muted-foreground" />}
-          title="No vouchers yet"
+          title="Create your first voucher"
           description="Create voucher codes to distribute AI access to anyone"
           action={{ label: "Create Voucher", onClick: () => setOpen(true) }}
         />

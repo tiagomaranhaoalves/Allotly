@@ -1,0 +1,244 @@
+MILESTONE 13: Dark Mode Pass, Polish, Testing, and Security Review
+
+This is the final milestone. Every item below is numbered and mandatory. Do not skip any item. Do not mark an item complete unless you have verified it yourself.
+
+
+=== SECTION A: DARK MODE PASS ===
+
+A1. You MUST open every page listed below in dark mode and fix any element that has wrong background color, unreadable text, incorrect borders, missing dark: prefix, or broken contrast. Every fix must be committed before moving to the next page.
+
+  A1.1   Landing page (/)
+  A1.2   Voucher redemption page (/redeem)
+  A1.3   Documentation page (/docs)
+  A1.4   Login page (/login)
+  A1.5   Signup page (/signup)
+  A1.6   Invite acceptance page (/invite/[token])
+  A1.7   Root Admin dashboard (/dashboard as ROOT_ADMIN)
+  A1.8   Root Admin providers page (/dashboard/providers)
+  A1.9   Root Admin teams page (/dashboard/teams)
+  A1.10  Root Admin vouchers page (/dashboard/vouchers)
+  A1.11  Root Admin bundles page (/dashboard/bundles)
+  A1.12  Root Admin analytics page (/dashboard/analytics)
+  A1.13  Root Admin audit log page (/dashboard/audit-log)
+  A1.14  Root Admin settings page (/dashboard/settings)
+  A1.15  Team Admin dashboard (/dashboard as TEAM_ADMIN)
+  A1.16  Team Admin members page (/dashboard/members)
+  A1.17  Team Admin vouchers page (/dashboard/vouchers)
+  A1.18  Team Admin bundles page (/dashboard/bundles)
+  A1.19  Team Admin settings page (/dashboard/settings)
+  A1.20  Member dashboard — TEAM type (/dashboard as MEMBER with accessType=TEAM)
+  A1.21  Member dashboard — VOUCHER type (/dashboard as MEMBER with accessType=VOUCHER)
+  A1.22  About page (/about)
+  A1.23  Careers page (/careers)
+  A1.24  Contact page (/contact)
+  A1.25  Privacy Policy page (/privacy)
+  A1.26  Terms of Service page (/terms)
+  A1.27  Security page (/security)
+
+A2. You MUST verify every modal, dropdown, tooltip, popover, and toast notification in dark mode. Specifically:
+  A2.1   "Connect Provider" modal
+  A2.2   "Add Member" modal/form
+  A2.3   "Create Voucher" modal/form
+  A2.4   "Buy Bundle" flow
+  A2.5   Confirmation dialogs (disconnect provider, remove member, revoke key, revoke voucher)
+  A2.6   KeyRevealCard in revealed state
+  A2.7   Toast notifications (success, error)
+  A2.8   DataTable filter/sort dropdowns
+  A2.9   Date/time pickers
+
+A3. You MUST verify all Recharts charts render correctly in dark mode:
+  A3.1   Spend-by-team chart (Root Admin)
+  A3.2   Spend-by-provider donut chart (Root Admin)
+  A3.3   Cost-per-model bar chart (Analytics)
+  A3.4   Spend forecast line chart (Analytics)
+  A3.5   Member spend trend chart (Team Admin)
+
+A4. Dark mode color rules that MUST be followed:
+  A4.1   Page backgrounds MUST be #111827 (Neutral 900)
+  A4.2   Card/sidebar backgrounds MUST be #1E293B
+  A4.3   Hover states MUST be #334155
+  A4.4   Primary text MUST be white or Neutral 100
+  A4.5   Secondary text MUST be Neutral 400
+  A4.6   Borders MUST be visible (Neutral 700 or similar — not invisible against dark backgrounds)
+
+
+=== SECTION B: POLISH ===
+
+B1. You MUST implement loading skeletons (NOT spinners) on every page that fetches data:
+  B1.1   Root Admin dashboard overview
+  B1.2   Providers list
+  B1.3   Teams list
+  B1.4   Members list
+  B1.5   Vouchers list
+  B1.6   Bundles list
+  B1.7   Analytics charts
+  B1.8   Audit log table
+  B1.9   Member dashboard (budget, requests)
+  B1.10  Team Admin dashboard overview
+
+B2. You MUST implement empty states with descriptive messaging and a CTA button on:
+  B2.1   No providers connected → "Connect your first AI provider" → button: "Connect Provider"
+  B2.2   No team members → "Add your first team member" → button: "Add Member"
+  B2.3   No vouchers created → "Create your first voucher" → button: "Create Voucher"
+  B2.4   No bundles purchased → "Purchase a bundle for more voucher capacity" → button: "Buy Bundle"
+  B2.5   No usage data yet → "Once your team starts making API calls, usage will appear here"
+  B2.6   No analytics data → "Analytics will populate as usage data accumulates"
+  B2.7   No audit log entries → "Admin actions will be logged here"
+  B2.8   No requests in member recent requests table → "Make your first API call using the quickstart above"
+
+B3. You MUST implement error boundaries on every dashboard page group:
+  B3.1   Root Admin pages
+  B3.2   Team Admin pages
+  B3.3   Member pages
+  B3.4   Each error boundary MUST show a friendly error message with a "Reload" button, not a raw stack trace
+
+B4. You MUST implement confirmation dialogs for ALL destructive actions:
+  B4.1   Disconnect provider
+  B4.2   Remove Team Admin (and explain: "This will suspend all members on their team")
+  B4.3   Remove member
+  B4.4   Suspend member
+  B4.5   Revoke API key
+  B4.6   Revoke voucher
+  B4.7   Each dialog MUST require the user to click a red "Confirm" button — no single-click destructive actions
+
+B5. You MUST implement toast notifications for:
+  B5.1   Provider connected successfully
+  B5.2   Provider disconnected
+  B5.3   Member created (with key copy reminder)
+  B5.4   Member suspended / reactivated
+  B5.5   API key regenerated
+  B5.6   API key revoked
+  B5.7   Voucher created (with code copy reminder)
+  B5.8   Voucher revoked
+  B5.9   Bundle purchased
+  B5.10  Settings saved
+  B5.11  Contact form submitted
+  B5.12  API key copied to clipboard
+
+B6. You MUST verify responsive layout at these breakpoints:
+  B6.1   375px (mobile) — sidebar collapses, tables scroll horizontally, cards stack vertically
+  B6.2   768px (tablet) — sidebar may collapse, two-column layouts adjust
+  B6.3   1024px (small desktop) — full layout
+  B6.4   1440px (desktop) — full layout with comfortable spacing
+
+B7. You MUST verify the Allotly logo appears on:
+  B7.1   Landing page header
+  B7.2   Dashboard sidebar
+  B7.3   Favicon (browser tab)
+  B7.4   Login page
+  B7.5   Signup page
+  B7.6   Voucher redemption page (/redeem)
+  B7.7   Docs page
+  B7.8   Invite acceptance page
+  B7.9   Email template headers (at least the LogoMono variant)
+  B7.10  Footer (LogoMono)
+
+B8. You MUST implement smooth transitions:
+  B8.1   Page transitions between dashboard routes
+  B8.2   Modal open/close animations
+  B8.3   Sidebar collapse/expand (mobile)
+  B8.4   Toast slide-in/fade-out
+  B8.5   Card hover lift effect on landing page feature cards
+
+
+=== SECTION C: TESTING ===
+
+C1. You MUST create and run the following UNIT TESTS (Vitest):
+  C1.1   Encryption roundtrip: encrypt a string with encryptProviderKey(), decrypt with decryptProviderKey(), VERIFY output matches original
+  C1.2   Allotly key generation: call generateAllotlyKey(), VERIFY key starts with "allotly_sk_", VERIFY hash is 64-char hex, VERIFY prefix is first 15 chars + "..."
+  C1.3   Budget threshold calculation: given spend=80 budget=100, VERIFY 80% threshold triggers. Given spend=90, VERIFY 90%. Given spend=100, VERIFY 100%.
+  C1.4   Budget calculation in cents: VERIFY $1.50 = 150 cents, VERIFY no floating point anywhere in budget math
+  C1.5   Voucher code generation: generate 100 codes, VERIFY all match ALLOT-XXXX-XXXX-XXXX format, VERIFY no characters from excluded set (0, O, 1, I, L), VERIFY all unique
+  C1.6   Permission matrix: for EVERY row in v4 Section 8 permission matrix, VERIFY ROOT_ADMIN is allowed/denied correctly, VERIFY TEAM_ADMIN is allowed/denied correctly, VERIFY MEMBER is allowed/denied correctly
+  C1.7   Token clamping: given remaining budget $0.10 and GPT-4o pricing, VERIFY maxAffordableOutput is calculated correctly. Given maxAffordable < 50, VERIFY request is rejected with suggested cheaper model.
+  C1.8   Request translation — OpenAI to Anthropic: VERIFY system message moves to top-level, VERIFY max_tokens is set, VERIFY model name is correct
+  C1.9   Request translation — OpenAI to Google: VERIFY messages become contents, VERIFY max_tokens becomes generationConfig.maxOutputTokens
+  C1.10  Redis budget reservation: VERIFY DECRBY reserves correct amount, VERIFY INCRBY refunds correct amount, VERIFY negative balance triggers rollback
+  C1.11  Rate limit tier derivation: VERIFY Free plan → 20 req/min + 2 concurrent, VERIFY Team plan TEAM member → 60 req/min + 5 concurrent, VERIFY Team plan VOUCHER member → 30 req/min + 2 concurrent
+
+C2. You MUST create and run the following INTEGRATION TESTS:
+  C2.1   Team member full lifecycle: create member → generate key → make proxy request → budget deducted → make requests until 80% → VERIFY alert created → continue to 100% → VERIFY key revoked → trigger budget-reset job → VERIFY key re-enabled → VERIFY budget reset to full amount
+  C2.2   Voucher full lifecycle: create voucher → validate code → redeem → get key → make proxy request → budget deducted → exhaust budget → VERIFY 402 returned → VERIFY key status is REVOKED
+  C2.3   Bundle full lifecycle: purchase bundle → create voucher from bundle → redeem → make proxy requests → VERIFY bundle request counter decrements → exhaust request pool → VERIFY 402 "proxy_requests_exhausted"
+  C2.4   Proxy concurrency safeguard: fire requests exceeding the member's concurrent limit simultaneously → VERIFY excess requests get 429 with retry_after header
+  C2.5   Proxy token clamping: set a member with $0.05 remaining budget → make a request for an expensive model → VERIFY max_tokens was clamped in the forwarded request → VERIFY response header X-Allotly-Max-Tokens-Applied reflects the clamped value
+  C2.6   Redis reconciliation: manually SET a Redis budget key to a wrong value → run reconciliation job → VERIFY Redis value is corrected to match Postgres
+  C2.7   Provider disconnect cascade: disconnect a provider → VERIFY all members with that provider in allowedProviders have it removed → VERIFY members with empty allowedProviders are suspended
+
+C3. You MUST create and run the following E2E TESTS (Playwright):
+  C3.1   Root Admin signup → connect provider → create Team Admin → VERIFY Team Admin appears in teams list
+  C3.2   Team Admin: accept invite → add member → VERIFY member's allotly_sk_ key is shown once → navigate away → VERIFY key is masked and not retrievable
+  C3.3   Member: accept invite → see key on welcome page → copy key → VERIFY proxy request succeeds with that key
+  C3.4   Voucher flow: Team Admin creates voucher → copy code → open /redeem in new browser context → enter code → choose "Get Key Instantly" → VERIFY key is shown → VERIFY proxy request succeeds
+  C3.5   Bundle flow: purchase bundle → create voucher from bundle → redeem → VERIFY bundle counters decrement in dashboard
+
+C4. You MUST run ALL tests from C1, C2, and C3. You MUST fix ALL failures before proceeding. Show me the test output.
+
+
+=== SECTION D: SECURITY REVIEW ===
+
+D1. You MUST verify rate limiting (Redis-backed) is active on:
+  D1.1   Proxy endpoint — per plan/tier limits (test: exceed limit → VERIFY 429 returned)
+  D1.2   /api/vouchers/redeem — 5 attempts per hour per IP (test: fire 6 → VERIFY 6th is blocked)
+  D1.3   /api/auth/login — 10 attempts per hour per IP
+  D1.4   /api/members/[id]/regenerate-key — 3 per hour per member
+
+D2. You MUST verify RBAC on every API route:
+  D2.1   Make a request to every provider route as TEAM_ADMIN → VERIFY 403
+  D2.2   Make a request to every provider route as MEMBER → VERIFY 403
+  D2.3   Make a request to a team member route as MEMBER → VERIFY 403
+  D2.4   Make a request as TEAM_ADMIN for a member NOT on their team → VERIFY 403
+  D2.5   Make a request to audit-log as TEAM_ADMIN → VERIFY 403
+  D2.6   Make a request to billing routes as TEAM_ADMIN → VERIFY 403
+
+D3. You MUST verify Zod validation on ALL API inputs:
+  D3.1   Send a POST /api/providers with empty body → VERIFY 400 with validation error
+  D3.2   Send a POST /api/members with negative budget → VERIFY 400
+  D3.3   Send a POST /api/vouchers with expiry in the past → VERIFY 400
+  D3.4   Send a POST /api/v1/chat/completions with missing model field → VERIFY 400
+
+D4. You MUST verify provider admin keys are NEVER exposed:
+  D4.1   Check all API response bodies → VERIFY no route returns adminApiKeyEncrypted, adminApiKeyIv, or adminApiKeyTag
+  D4.2   Check browser Network tab on provider pages → VERIFY no decrypted key in any response
+  D4.3   Check server logs → VERIFY no provider key logged in plaintext
+  D4.4   Check error messages → VERIFY provider keys are not included in any error output
+
+D5. You MUST verify allotly_sk_ keys are shown only once:
+  D5.1   Create a team member → VERIFY key shown in KeyRevealCard → navigate away → return to member detail → VERIFY only masked prefix visible
+  D5.2   Redeem a voucher → VERIFY key shown on success page → navigate to dashboard → VERIFY only masked prefix visible
+  D5.3   Check AllotlyApiKey table in database → VERIFY only keyHash and keyPrefix are stored, NOT the full key
+
+D6. You MUST verify the audit log is append-only:
+  D6.1   VERIFY there is no API route that updates or deletes AuditLog records
+  D6.2   VERIFY the Prisma schema has no updateMany or deleteMany operations on AuditLog in any service file
+  D6.3   VERIFY the audit log UI has no edit or delete buttons
+
+D7. You MUST verify all money calculations use integer cents:
+  D7.1   Search the entire codebase for any floating-point money operations (e.g., / 100, * 0.01, parseFloat for money) → VERIFY none exist outside of display formatting
+  D7.2   VERIFY all database money fields are Int type (not Float or Decimal)
+  D7.3   VERIFY Redis budget values are integers (DECRBY/INCRBY only work on integers)
+
+D8. You MUST verify Redis persistence:
+  D8.1   VERIFY Redis is configured with RDB or AOF persistence (check redis.conf or Upstash settings)
+  D8.2   VERIFY the redis-reconciliation job is running every 60 seconds as a safety net
+
+D9. You MUST verify no v3-only concepts remain in the codebase:
+  D9.1   Search for "ProviderMemberLink" → VERIFY zero results
+  D9.2   Search for "AccessMode" or "DIRECT" (as enum value) → VERIFY zero results
+  D9.3   Search for "SetupStatus" or "AWAITING_MEMBER" or "PROVISIONING" → VERIFY zero results
+  D9.4   Search for "AutomationLevel" or "FULL_AUTO" or "SEMI_AUTO" or "GUIDED" → VERIFY zero results
+  D9.5   Search for "usage-poll" or "usagePoll" → VERIFY zero results (no polling job)
+  D9.6   Search for "automation-badge" or "AutomationBadge" → VERIFY zero results
+  D9.7   Search for routes: /provision, /regenerate-key/[provider], /revoke-key/[provider], /mark-complete → VERIFY zero results
+  D9.8   Search for "direct provider" or "zero proxy" or "zero latency" in any user-facing text → VERIFY zero results
+
+
+=== FINAL VERIFICATION ===
+
+V1. VERIFY: Show me a screenshot of every page in BOTH light and dark mode (or walk through each one live)
+V2. VERIFY: Show me the complete test output — all unit, integration, and E2E tests passing
+V3. VERIFY: Show me empty states rendering on a completely fresh account (new org, no providers, no members)
+V4. VERIFY: Show me rate limiting working (hit a limit, show the 429 response)
+V5. VERIFY: Show me the Lighthouse score for the landing page (MUST be >90 on all four categories)
+V6. VERIFY: Show me the codebase search results for D9.1 through D9.8 (all zero results)
+V7. VERIFY: Confirm the total number of passing tests across all test suites

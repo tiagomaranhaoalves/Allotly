@@ -26,7 +26,7 @@ export default function KeysPage() {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    toast({ title: "Copied to clipboard" });
+    toast({ title: "API key copied to clipboard" });
   };
 
   return (

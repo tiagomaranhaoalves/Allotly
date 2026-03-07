@@ -200,9 +200,9 @@ export default function ProvidersPage() {
       ) : (
         <EmptyState
           icon={<Plug className="w-10 h-10 text-muted-foreground" />}
-          title="No AI Providers connected"
+          title="Connect your first AI provider"
           description="Connect your OpenAI, Anthropic, or Google account to start provisioning API keys for your team."
-          action={{ label: "Connect AI Provider", onClick: () => setOpen(true) }}
+          action={{ label: "Connect Provider", onClick: () => setOpen(true) }}
         />
       )}
     </div>

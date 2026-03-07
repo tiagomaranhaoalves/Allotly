@@ -343,18 +343,18 @@ function TwoFeaturesSection() {
                 </div>
                 <div>
                   <h3 className="text-xl font-bold">Allotly Teams</h3>
-                  <p className="text-sm text-muted-foreground">Direct Provider Access</p>
+                  <p className="text-sm text-muted-foreground">Managed AI Access</p>
                 </div>
               </div>
-              <p className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 mb-2">Direct API keys with guardrails</p>
+              <p className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 mb-2">Unified proxy with guardrails</p>
               <p className="text-muted-foreground mb-6 leading-relaxed">
-                Your team calls OpenAI, Anthropic, and Gemini directly — no proxy sitting between them and the model. Allotly provisions scoped API keys at the provider level, so you get full control without adding latency or a single point of failure.
+                Your team uses Allotly proxy keys to call OpenAI, Anthropic, and Gemini through one unified endpoint. Real-time budget enforcement, automatic token clamping, and per-member spend tracking — all built in.
               </p>
               <ul className="space-y-3 mb-6">
                 {[
-                  "Zero added latency — direct provider calls",
-                  "Keys work even if Allotly is offline",
-                  "Budget tracking via provider usage polling",
+                  "One API key per member — works with every provider",
+                  "Real-time budget enforcement on every request",
+                  "Automatic token clamping prevents overspend",
                   "Model-level access restrictions",
                 ].map(item => (
                   <li key={item} className="flex items-start gap-2.5 text-sm">
@@ -365,7 +365,7 @@ function TwoFeaturesSection() {
               </ul>
               <div className="pt-5 border-t">
                 <p className="text-xs italic text-muted-foreground mb-2">Built for: engineering teams, R&D groups, and internal governance workflows.</p>
-                <p className="text-xs text-muted-foreground/70">Uses provider-level API key scoping. Budget checks run via polling (15-60 min).</p>
+                <p className="text-xs text-muted-foreground/70">Uses Allotly proxy keys with real-time budget enforcement on every request.</p>
               </div>
             </Card>
           </FadeIn>
@@ -558,9 +558,9 @@ function TrustSection() {
           {[
             {
               icon: <Eye className="w-5 h-5" />,
-              title: "Teams: Zero Data Path",
-              subtitle: "Direct provider access",
-              desc: "Your team calls providers directly. Allotly never sees, stores, or touches prompts or responses. We only read aggregated usage data via admin APIs.",
+              title: "Teams: Minimal Data Footprint",
+              subtitle: "Proxy processes, never persists",
+              desc: "The proxy forwards requests in real time and only records metadata: model, token count, and cost. No prompts, no completions, no conversation history is ever stored.",
               accent: "from-indigo-500 to-indigo-600",
               accentBorder: "border-indigo-500/20",
               accentBg: "bg-indigo-500/10",
@@ -849,7 +849,7 @@ function Footer() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8 lg:gap-12">
           <div className="col-span-2 md:col-span-1">
-            <LogoMono size={24} className="text-neutral-400" />
+            <span data-testid="logo-footer"><LogoMono size={24} className="text-neutral-400" /></span>
             <p className="mt-4 text-sm text-neutral-500 leading-relaxed max-w-xs">
               The AI spend control plane for teams and organizations.
             </p>

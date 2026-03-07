@@ -177,9 +177,9 @@ export default function BundlesPage() {
       ) : (
         <EmptyState
           icon={<Package className="w-10 h-10 text-muted-foreground" />}
-          title="No bundles purchased"
+          title="Purchase a bundle for more voucher capacity"
           description="Purchase a $10 Voucher Bundle to create vouchers with higher limits, more redemptions, and longer expiry. Available on all plans."
-          action={{ label: "Buy Bundle — $10", onClick: () => purchaseMutation.mutate() }}
+          action={{ label: "Buy Bundle", onClick: () => purchaseMutation.mutate() }}
         />
       )}
     </div>

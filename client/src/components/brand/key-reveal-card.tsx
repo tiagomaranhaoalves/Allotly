@@ -2,6 +2,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Copy, Check, Eye, EyeOff, AlertTriangle } from "lucide-react";
 import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 interface KeyRevealCardProps {
   keyValue: string;
@@ -13,12 +14,14 @@ interface KeyRevealCardProps {
 export function KeyRevealCard({ keyValue, masked = true, className = "" }: KeyRevealCardProps) {
   const [isRevealed, setIsRevealed] = useState(!masked);
   const [copied, setCopied] = useState(false);
+  const { toast } = useToast();
 
   const displayValue = isRevealed ? keyValue : keyValue.slice(0, 15) + "..." + keyValue.slice(-4);
 
   const copy = () => {
     navigator.clipboard.writeText(keyValue);
     setCopied(true);
+    toast({ title: "API key copied to clipboard" });
     setTimeout(() => setCopied(false), 2000);
   };
 

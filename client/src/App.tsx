@@ -41,7 +41,9 @@ function DashboardRoute({ component: Component }: { component: React.ComponentTy
   return (
     <DashboardShell>
       <ErrorBoundary>
-        <Component />
+        <div className="animate-in fade-in duration-200">
+          <Component />
+        </div>
       </ErrorBoundary>
     </DashboardShell>
   );

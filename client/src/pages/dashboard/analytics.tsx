@@ -71,7 +71,7 @@ function CostPerModelSection() {
           {[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full" />)}
         </div>
       ) : chartData.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-8 text-center" data-testid="text-no-cost-data">No usage data available for the selected period.</p>
+        <p className="text-sm text-muted-foreground py-8 text-center" data-testid="text-no-cost-data">Analytics will populate as usage data accumulates</p>
       ) : (
         <div>
           <div className="h-[300px]" data-testid="chart-cost-per-model">
@@ -177,7 +177,7 @@ function TopSpendersSection() {
           {[1, 2, 3].map(i => <Skeleton key={i} className="h-10 w-full" />)}
         </div>
       ) : !data || data.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-8 text-center" data-testid="text-no-spenders">No member spend data available.</p>
+        <p className="text-sm text-muted-foreground py-8 text-center" data-testid="text-no-spenders">Analytics will populate as usage data accumulates</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm" data-testid="table-top-spenders">

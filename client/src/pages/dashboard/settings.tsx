@@ -67,7 +67,7 @@ export default function SettingsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/org/settings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/session"] });
-      toast({ title: "Settings updated" });
+      toast({ title: "Settings saved" });
     },
     onError: (err: any) => {
       toast({ title: "Update failed", description: err.message, variant: "destructive" });

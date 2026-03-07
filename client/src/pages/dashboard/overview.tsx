@@ -359,8 +359,8 @@ function TeamAdminOverview() {
           ) : (
             <EmptyState
               icon={<Users className="w-8 h-8 text-muted-foreground" />}
-              title="No direct members"
-              description="Add team members for direct provider access"
+              title="Add your first team member"
+              description="Add team members to start managing AI access"
               action={{ label: "Add Member", onClick: () => window.location.href = "/dashboard/members" }}
             />
           )}
@@ -615,7 +615,7 @@ function ProxyMemberOverview({ data }: { data: any }) {
           <EmptyState
             icon={<Zap className="w-8 h-8 text-muted-foreground" />}
             title="No requests yet"
-            description="Make your first API call to see activity here"
+            description="Make your first API call using the quickstart above"
           />
         )}
       </Card>

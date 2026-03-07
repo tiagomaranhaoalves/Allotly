@@ -12,7 +12,6 @@ import { generateAllotlyKey, hashKey } from "./lib/keys";
 import { getProviderAdapter } from "./lib/providers";
 import { stripeService } from "./stripeService";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
-import { runUsagePoll } from "./lib/jobs/usage-poll";
 import { runBudgetReset } from "./lib/jobs/budget-reset";
 import { runVoucherExpiry } from "./lib/jobs/voucher-expiry";
 import { runBundleExpiry } from "./lib/jobs/bundle-expiry";
@@ -1102,17 +1101,6 @@ export async function registerRoutes(
     next();
   }
 
-  app.post("/api/cron/usage-poll", requireCronAuth, async (_req, res) => {
-    try {
-      console.log("[cron] Manual usage poll triggered");
-      const result = await runUsagePoll();
-      res.json({ message: "Usage poll completed", ...result });
-    } catch (e: any) {
-      console.error("[cron] Usage poll error:", e);
-      res.status(500).json({ message: "Usage poll failed", error: e.message });
-    }
-  });
-
   app.post("/api/cron/budget-reset", requireCronAuth, async (_req, res) => {
     try {
       console.log("[cron] Manual budget reset triggered");
@@ -1193,7 +1181,6 @@ export async function registerRoutes(
   app.get("/api/cron/status", requireCronAuth, async (_req, res) => {
     res.json({
       jobs: [
-        { name: "usage-poll", description: "Polls provider usage APIs", intervalMinutes: 5 },
         { name: "budget-reset", description: "Resets expired budget periods", intervalMinutes: 60 },
         { name: "voucher-expiry", description: "Expires vouchers and revokes keys", intervalMinutes: 60 },
         { name: "bundle-expiry", description: "Expires bundles and associated vouchers", intervalMinutes: 60 },

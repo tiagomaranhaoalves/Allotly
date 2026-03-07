@@ -103,14 +103,14 @@ function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string) => voi
                 <AlertDialogHeader>
                   <AlertDialogTitle>Remove Team</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Are you sure you want to remove <strong>{team.name}</strong>? All member access will be suspended. This action cannot be undone.
+                    Are you sure you want to remove <strong>{team.name}</strong>? This will suspend all members on their team. This action cannot be undone.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
                   <AlertDialogAction
                     onClick={() => { onDelete(team.id); setConfirmOpen(false); }}
-                    className="bg-destructive text-destructive-foreground"
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                     data-testid="button-confirm-delete"
                   >
                     Remove Team

@@ -85,7 +85,7 @@ function MemberCard({ member, onRemove }: { member: any; onRemove: (id: string) 
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/members"] });
       setRegenKeyValue(data.apiKey);
-      toast({ title: "New key generated" });
+      toast({ title: "API key regenerated", description: "Make sure to copy the API key — it won't be shown again." });
     },
     onError: (err: any) => {
       toast({ title: "Failed to regenerate key", description: err.message, variant: "destructive" });
@@ -98,7 +98,7 @@ function MemberCard({ member, onRemove }: { member: any; onRemove: (id: string) 
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/members"] });
-      toast({ title: "Key revoked" });
+      toast({ title: "API key revoked" });
     },
     onError: (err: any) => {
       toast({ title: "Failed to revoke key", description: err.message, variant: "destructive" });
@@ -211,7 +211,7 @@ function MemberCard({ member, onRemove }: { member: any; onRemove: (id: string) 
                       </AlertDialogHeader>
                       <AlertDialogFooter>
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => regenerateKeyMutation.mutate()} data-testid="button-confirm-regenerate">
+                        <AlertDialogAction onClick={() => regenerateKeyMutation.mutate()} className="bg-destructive text-destructive-foreground hover:bg-destructive/90" data-testid="button-confirm-regenerate">
                           Regenerate Key
                         </AlertDialogAction>
                       </AlertDialogFooter>
@@ -243,7 +243,7 @@ function MemberCard({ member, onRemove }: { member: any; onRemove: (id: string) 
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => revokeKeyMutation.mutate()} className="bg-destructive text-destructive-foreground" data-testid="button-confirm-revoke">
+                    <AlertDialogAction onClick={() => revokeKeyMutation.mutate()} className="bg-destructive text-destructive-foreground hover:bg-destructive/90" data-testid="button-confirm-revoke">
                       Revoke Key
                     </AlertDialogAction>
                   </AlertDialogFooter>
@@ -275,7 +275,7 @@ function MemberCard({ member, onRemove }: { member: any; onRemove: (id: string) 
                       <AlertDialogCancel data-testid="button-cancel-suspend">Cancel</AlertDialogCancel>
                       <AlertDialogAction
                         onClick={() => suspendMutation.mutate()}
-                        className="bg-destructive text-destructive-foreground"
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                         data-testid="button-confirm-suspend"
                       >
                         Suspend Member
@@ -316,7 +316,7 @@ function MemberCard({ member, onRemove }: { member: any; onRemove: (id: string) 
                   <AlertDialogCancel data-testid="button-cancel-remove">Cancel</AlertDialogCancel>
                   <AlertDialogAction
                     onClick={() => { onRemove(member.id); setConfirmRemoveOpen(false); }}
-                    className="bg-destructive text-destructive-foreground"
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                     data-testid="button-confirm-remove"
                   >
                     Remove Member
@@ -392,8 +392,9 @@ export default function MembersPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/members"] });
       if (data.apiKey) {
         setNewMemberKey(data.apiKey);
+        toast({ title: "Member created", description: "Make sure to copy the API key — it won't be shown again." });
       } else {
-        toast({ title: "Member added successfully" });
+        toast({ title: "Member created" });
         setOpen(false);
       }
       setEmail("");
@@ -588,7 +589,7 @@ export default function MembersPage() {
       ) : (
         <EmptyState
           icon={<Users className="w-10 h-10 text-muted-foreground" />}
-          title="No members yet"
+          title="Add your first team member"
           description={hasProviders ? "Add team members to start distributing AI access" : "Connect a provider first, then add members"}
           action={user?.orgRole !== "MEMBER" && hasProviders ? { label: "Add Member", onClick: () => setOpen(true) } : undefined}
         />

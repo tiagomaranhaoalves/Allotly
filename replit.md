@@ -91,21 +91,21 @@ All money values are handled in integer cents to avoid floating-point inaccuraci
   - Dual redemption: "Get Key Instantly" (anonymous) vs "Create Account"
   - Bundle: $10 via Stripe, webhook creates VoucherBundle + Redis counters
   - Plan limits: FREE (1 code, 25 redemptions, $5 budget, 1-day), TEAM (5 codes/admin, 50 redemptions, $20 budget, 30-day)
-- Milestone 12 (Security, Dark Mode, Polish, Testing): COMPLETE
-  - Security: Helmet middleware (CSP disabled for Vite compat), rate limiters (login 10/hr, redeem 5/hr, key revoke 3/hr), Zod validation on all mutable routes (providers, teams, members, vouchers, settings, redeem)
-  - ErrorBoundary: React class component wrapping all dashboard routes in App.tsx, catches render errors with retry button
-  - Confirmation Dialogs: AlertDialog on all destructive actions (member remove, member suspend, team delete, provider disconnect)
-  - Dark Mode Pass: Fixed Recharts tooltip contentStyle to use hsl(var(--popover)), PieChart labels with explicit fill, all pages audited for hardcoded colors
-  - Empty States & Skeletons: All dashboard pages verified for loading skeletons and empty state CTAs
-  - Unit Tests: vitest.config.ts + 8 test files (155 tests passing):
-    - encryption.test.ts: roundtrip, uniqueness, wrong tag, empty/long keys
-    - budget.test.ts: thresholds at 80/90/100, integer cents, zero budget, sequential triggers
-    - voucher-code.test.ts: ALLOT-XXXX-XXXX-XXXX format, charset (no 0/O/1/I/L), uniqueness
-    - permissions.test.ts: 3 roles × 19 actions permission matrix
-    - key-generation.test.ts: allotly_sk_ prefix, SHA-256 hash, prefix truncation, consistency
-    - token-clamping.test.ts: clamp at low budget, minimum 50 tokens, GPT-4o/Claude/Gemini pricing, cost calculations
-    - request-translation.test.ts: OpenAI→Anthropic (system extraction, role mapping), OpenAI→Google (parts format, systemInstruction), response translation, detectProvider, setProviderAuth
-    - redis-budget.test.ts: budget reservation/refund/adjustment, reconciliation drift detection/restore, concurrency tracking, rate limiting, bundle request pool, REDIS_KEYS format
-  - Security Audit: Provider keys never in responses, audit log append-only (no PUT/PATCH/DELETE), all money integer cents, Helmet configured, rate limiters on login/redeem/key-revoke, Zod on all body-accepting routes
-  - E2E Tests (Playwright): Root Admin signup+dashboard navigation, voucher create+redeem+key generation, dark mode toggle+empty states, rate limiting 429 verification — ALL PASSING
-  - Files: server/lib/rate-limiter.ts, server/index.ts, server/routes.ts, client/src/components/error-boundary.tsx, client/src/App.tsx, vitest.config.ts, tests/*.test.ts
+- Milestone 13 (Dark Mode Pass, Polish, Testing, Security Review): COMPLETE
+  - Dark Mode (A1-A4): CSS variables updated to spec (#111827 bg, #1E293B/#217 33% 17% card/sidebar, #374151/#217 19% 27% borders), all 27 pages verified
+  - Polish (B1-B8): Skeleton loading on all 10 data-fetching pages, 8 empty states with exact spec messaging+CTAs, ErrorBoundary on all dashboard groups, 6 confirmation dialogs with red Confirm buttons, 12 toast notifications, page transitions (fade-in), sidebar/modal/toast animations via tailwindcss-animate
+  - v3 Cleanup (D9): Removed usage-poll job/file/route/cron-status, updated "Direct Provider Access"/"zero latency" text to v4 proxy language, all D9.1-D9.8 searches return zero results
+  - Testing (C1-C4): 10 test files, 191 tests ALL PASSING:
+    - encryption.test.ts (5): roundtrip, uniqueness, wrong tag, empty/long keys
+    - budget.test.ts (8): thresholds 80/90/100%, integer cents, zero budget, sequential triggers
+    - voucher-code.test.ts (7): ALLOT-XXXX-XXXX-XXXX format, charset validation, uniqueness
+    - permissions.test.ts (60): 3 roles x 19+ actions permission matrix
+    - key-generation.test.ts (8): allotly_sk_ prefix, SHA-256 hash, prefix truncation
+    - token-clamping.test.ts (18): clamp at low budget, min 50 tokens, multi-model pricing
+    - request-translation.test.ts (30): OpenAI->Anthropic/Google request+response translation
+    - proxy-tiers.test.ts (7): rate limit tiers by plan (Free/Team/Enterprise)
+    - redis-budget.test.ts (19): budget reservation/refund, reconciliation, concurrency, bundles
+    - integration.test.ts (29): budget lifecycle, voucher exhaustion, bundle pool, concurrency, token clamping, reconciliation, provider disconnect cascade
+  - Security (D1-D8): Rate limiters verified (login 10/hr, redeem 5/hr, regen 3/hr, proxy per-tier), RBAC on all routes, Zod validation on all inputs, provider keys never in responses, allotly_sk_ keys shown once only, audit log append-only, all money integer cents, Redis reconciliation every 60s
+  - Logo (B7): Verified on landing header, sidebar, favicon, login, signup, redeem, docs, invite, email headers, footer
+  - E2E Tests: Root Admin signup+dashboard, dark mode toggle, empty states, page transitions — ALL PASSING

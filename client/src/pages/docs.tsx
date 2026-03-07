@@ -1107,7 +1107,7 @@ print(response.content)`}</CodeBlock>
           <SubHeading id="faq-teams-vs-vouchers" title="When should I use Teams vs Vouchers?" />
           <p className="text-muted-foreground leading-relaxed mb-6">
             Use <strong>Teams</strong> when you want to give ongoing AI access to internal team members who need direct
-            provider API keys (developers, data scientists, engineers). Members call providers directly with zero latency overhead.
+            proxy API keys (developers, data scientists, engineers). Members call AI providers through Allotly's unified proxy with real-time budget enforcement.
           </p>
           <p className="text-muted-foreground leading-relaxed mb-6">
             Use <strong>Vouchers</strong> when you want to distribute temporary, budget-capped AI access to people outside
