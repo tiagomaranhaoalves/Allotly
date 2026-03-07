@@ -2350,6 +2350,11 @@ export async function registerRoutes(
 
   app.post("/api/v1/chat/completions", handleChatCompletion);
   app.get("/api/v1/models", handleListModels);
+  app.get("/api/v1/health", (_req, res) => {
+    res.json({ status: "ok", proxy: true, timestamp: new Date().toISOString() });
+  });
+
+  console.log("[routes] Proxy routes registered: POST /api/v1/chat/completions, GET /api/v1/models, GET /api/v1/health");
 
   return httpServer;
 }
