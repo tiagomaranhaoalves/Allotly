@@ -1,0 +1,50 @@
+MILESTONE 3: Provider Connections and Org Model Allowlist
+
+Referring to v3 Sections 5 and 17 for encryption and provider validation, with v4 simplifications.
+
+BUILD THESE:
+
+1. ENCRYPTION (v3 Section 17.1) — UNCHANGED
+   - Create /lib/encryption.ts with AES-256-GCM encrypt/decrypt
+   - ALSO create allotly_sk_ key generation (v3 Section 17.2):
+     allotly_sk_ + 48 chars from crypto.randomBytes(36).toString('base64url')
+     SHA-256 hash for storage, prefix for display
+
+2. PROVIDER ADAPTERS — SIMPLIFIED from v3
+   - Create /lib/providers/types.ts with REDUCED ProviderAdapter interface:
+     validateAdminKey() — kept (validate on connect)
+     translateRequest() — kept (proxy needs this)
+     translateResponse() — kept (proxy needs this)
+     extractUsage() — kept (proxy needs this)
+     DO NOT implement: createMemberAccess, getUsage, revokeAccess, getAutomationLevel — REMOVED in v4
+
+   - Create /lib/providers/openai.ts — implement validateAdminKey + translateRequest/Response + extractUsage
+   - Create /lib/providers/anthropic.ts — same
+   - Create /lib/providers/google.ts — same (validateAdminKey can accept any key format since Google has no standard admin API)
+
+3. PROVIDER CONNECTION UI (Root Admin only)
+   - Page: /dashboard/providers
+   - "Connect Provider" button: select provider → paste admin API key → validate → encrypt → save
+   - Show connected providers as cards: provider name + ProviderBadge, status indicator (green/red), display name, last validated date
+   - NO automation level badges (removed in v4) — all providers work identically through the proxy
+   - Disconnect button with confirmation dialog
+   - When disconnecting: cascade to remove provider from all members' allowedProviders (v4 Section 12.3)
+
+4. ORG MODEL ALLOWLIST
+   - On provider detail page, show all models for that provider (from ModelPricing table)
+   - Toggle switches to enable/disable each model org-wide
+   - Save to ProviderConnection.orgAllowedModels
+
+5. API ROUTES
+   - GET/POST /api/providers, PATCH/DELETE /api/providers/[id], POST /api/providers/[id]/validate
+   - All enforce Root Admin role
+
+6. AUDIT LOGGING
+   - Log: "provider.connected", "provider.disconnected", "provider.validated"
+
+VERIFY BY:
+- Show provider connection flow working end-to-end
+- Show encryption working (encrypted in DB, decryptable)
+- Show model allowlist saving correctly
+- Confirm non-Root-Admin gets 403
+- Confirm no AutomationBadge or automation level anywhere in the UI
