@@ -186,31 +186,6 @@ export const emailTemplates = {
     };
   },
 
-  keyReady(memberName: string, provider: string, teamName: string, dashboardUrl: string) {
-    return {
-      subject: `Your ${provider} API key is ready`,
-      html: layout("API Key Provisioned", [
-        p(`Hi ${memberName},`),
-        p(`Your <strong>${provider}</strong> API key has been provisioned for the <strong>${teamName}</strong> team.`),
-        p("You can now start making API calls. View your key and setup instructions on your dashboard."),
-        btn("View Dashboard", dashboardUrl),
-      ].join("")),
-    };
-  },
-
-  setupInstructions(memberName: string, provider: string, steps: string[], dashboardUrl: string) {
-    return {
-      subject: `Setup instructions for ${provider}`,
-      html: layout(`${provider} Setup Instructions`, [
-        p(`Hi ${memberName},`),
-        p(`Follow these steps to complete your <strong>${provider}</strong> setup:`),
-        `<ol style="color:#475569;font-size:14px;line-height:1.8;padding-left:20px;margin:12px 0">
-${steps.map(s => `<li>${s}</li>`).join("")}
-</ol>`,
-        btn("Go to Dashboard", dashboardUrl),
-      ].join("")),
-    };
-  },
 
   budgetWarning80(memberName: string, spentPercent: number, budgetDollars: string, dashboardUrl: string) {
     return {

@@ -69,6 +69,13 @@ All money values are handled in integer cents to avoid floating-point inaccuraci
   - Optimization Recommendations: Model downgrade suggestions based on modelPricing differentials, budget reallocation tips
   - RBAC: Team Admin scoped to their team only (via teams.adminId); Root Admin sees all org data
   - Files: server/lib/analytics.ts (5 analytics functions), server/routes.ts (5 GET endpoints), client/src/pages/dashboard/analytics.tsx (Recharts + data tables)
+- Milestone 9 (Stripe, Plan Enforcement, Email Templates): COMPLETE
+  - Stripe subscription: checkout, 4 webhook handlers (checkout.session.completed, subscription.updated, subscription.deleted, invoice.payment_failed), seat management all pre-built
+  - Plan enforcement: member limits (5 Free/20 Team) count BOTH TEAM+VOUCHER, voucher limits, provider limits (3 per plan), bundle purchase allowed on all plans
+  - Email templates: 13 templates implemented (welcome, team-admin-invite, member-invite, voucher-notification, voucher-redeemed, budget-warning-80/90, budget-exhausted, budget-reset, voucher-expiring, bundle-purchased, provider-key-invalid, spend-anomaly)
+  - Removed dead templates: keyReady, setupInstructions (v4 spec: DO NOT build)
+  - Budget alerts 90%/100% now sent to BOTH member AND Team Admin
+  - Voucher redemption sends voucherRedeemed email to Team Admin
 - Milestone 7 (Background Jobs, Budget Alerts, Reconciliation): COMPLETE
   - Budget alerts: proxy post-processing sends emails at 80/90/100% via emailTemplates + revokes ALL active API keys at 100% + clears Redis cache for each revoked key
   - Budget reset job: sends budgetReset email after reactivation, clears Redis cache for reactivated keys

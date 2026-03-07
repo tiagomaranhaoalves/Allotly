@@ -1,0 +1,45 @@
+MILESTONE 9: Stripe Subscription, Plan Enforcement, and Email Templates
+
+BUILD THESE:
+
+1. STRIPE SUBSCRIPTION (v3 Section 15) — mostly unchanged
+   - Product: "Allotly Team — Team Admin Seat" at $20/month per seat
+   - Checkout flow, webhook handlers (checkout.session.completed, subscription.updated, subscription.deleted, invoice.payment_failed)
+   - Bundle purchase ($10 one-time) also via Stripe
+   - Seat management: add/remove Team Admins adjusts Stripe quantity
+
+2. PLAN ENFORCEMENT — apply on every mutation
+   Before creating members: count < limit (5 Free, 20 Team) — count BOTH accessType TEAM and VOUCHER
+   Before creating vouchers: active count < plan limit
+   Before connecting providers: count < plan limit (1 Free, 3 Team)
+   Bundle purchases: allowed on ALL plans including Free
+
+   REMOVED PLAN DIFFERENTIATORS (v4):
+   - DO NOT enforce different usage polling intervals (polling doesn't exist)
+   - Instead, rate limits per member differ by plan (enforced at proxy level, already built in Milestone 5)
+
+3. EMAIL TEMPLATES — 13 templates via Resend (v4 Section 10)
+   Professional design with Allotly logo header, indigo accent.
+
+   BUILD these:
+   - welcome (new org → Root Admin)
+   - team-admin-invite (Root Admin creates Team Admin → invited admin)
+   - member-invite (Team Admin creates member → CHANGED: includes invite link, NOT the API key. See v4 Section 12.1)
+   - voucher-notification (voucher created, optional email → external recipient)
+   - voucher-redeemed (someone redeems → Team Admin)
+   - budget-warning-80 (80% spent → member)
+   - budget-warning-90 (90% spent → member + Team Admin)
+   - budget-exhausted (100%, key revoked → member + Team Admin)
+   - budget-reset (monthly reset → TEAM members only)
+   - voucher-expiring (48h before expiry → voucher recipient)
+   - bundle-purchased (purchase confirmed → purchaser)
+   - provider-key-invalid (validation failed → Root Admin)
+   - spend-anomaly (unusual spend → Team Admin)
+
+   DO NOT build: key-ready, setup-instructions — REMOVED in v4
+
+VERIFY BY:
+- Stripe subscription flow: upgrade to Team → add Team Admin seat → verify in dashboard
+- Plan limits enforced: try to exceed member count on Free → blocked
+- Show at least 3 email templates rendering correctly with logo and formatting
+- Bundle purchase on Free plan works (not blocked by plan)

@@ -344,13 +344,19 @@ export async function handleChatCompletion(req: Request, res: Response) {
                 }
               }
 
+              const mTeam = await storage.getTeam(freshMembership.teamId);
+              const mOrg = mTeam ? await storage.getOrganization(mTeam.orgId) : null;
+              const adminUsers = mOrg ? await storage.getUsersByOrg(mOrg.id) : [];
+              const adminUser = adminUsers.find(u => u.orgRole === "ROOT_ADMIN");
+              const teamAdminUser = mTeam ? await storage.getUser(mTeam.adminId) : null;
+
               if (memberEmail) {
-                const mTeam = await storage.getTeam(freshMembership.teamId);
-                const mOrg = mTeam ? await storage.getOrganization(mTeam.orgId) : null;
-                const adminUsers = mOrg ? await storage.getUsersByOrg(mOrg.id) : [];
-                const adminUser = adminUsers.find(u => u.orgRole === "ROOT_ADMIN");
                 const tmpl = emailTemplates.budgetExhausted(memberName, budgetDollars, adminUser?.email || "your admin");
                 try { await sendEmail(memberEmail, tmpl.subject, tmpl.html); } catch {}
+              }
+              if (teamAdminUser?.email && teamAdminUser.email !== memberEmail) {
+                const tmpl = emailTemplates.budgetExhausted(memberName, budgetDollars, teamAdminUser.email);
+                try { await sendEmail(teamAdminUser.email, tmpl.subject, tmpl.html); } catch {}
               }
             }
           } else if (spendPercent >= 90) {
@@ -364,6 +370,12 @@ export async function handleChatCompletion(req: Request, res: Response) {
               if (memberEmail) {
                 const tmpl = emailTemplates.budgetWarning90(memberName, Math.round(spendPercent), budgetDollars, "/dashboard");
                 try { await sendEmail(memberEmail, tmpl.subject, tmpl.html); } catch {}
+              }
+              const mTeam90 = await storage.getTeam(freshMembership.teamId);
+              const teamAdmin90 = mTeam90 ? await storage.getUser(mTeam90.adminId) : null;
+              if (teamAdmin90?.email && teamAdmin90.email !== memberEmail) {
+                const tmpl = emailTemplates.budgetWarning90(memberName, Math.round(spendPercent), budgetDollars, "/dashboard");
+                try { await sendEmail(teamAdmin90.email, tmpl.subject, tmpl.html); } catch {}
               }
             }
           } else if (spendPercent >= 80) {

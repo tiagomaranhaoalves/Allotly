@@ -1665,6 +1665,17 @@ export async function registerRoutes(
         metadata: { code: voucher.code, email: userEmail },
       });
 
+      const teamAdmin = await storage.getUser(team.adminId);
+      if (teamAdmin?.email) {
+        const tmpl = emailTemplates.voucherRedeemed(
+          teamAdmin.name || "Admin",
+          voucher.code,
+          userEmail || "anonymous",
+          team.name
+        );
+        try { await sendEmail(teamAdmin.email, tmpl.subject, tmpl.html); } catch {}
+      }
+
       const models = await storage.getModelPricing();
       const allowedProviders = voucher.allowedProviders as string[];
       const availableModels = models.filter(m => allowedProviders.includes(m.provider));
