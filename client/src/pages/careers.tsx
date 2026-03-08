@@ -74,11 +74,11 @@ export default function Careers() {
             infrastructure, or the future of AI access, we'd love to hear from you.
           </p>
           <a
-            href="mailto:careers@allotly.com"
+            href="mailto:careers@allotly.ai"
             className="text-indigo-500 hover:text-indigo-400 font-medium transition-colors"
             data-testid="link-careers-email"
           >
-            careers@allotly.com
+            careers@allotly.ai
           </a>
         </div>
       </section>

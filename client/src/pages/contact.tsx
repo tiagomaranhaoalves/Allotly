@@ -14,19 +14,19 @@ const contacts = [
   {
     icon: Mail,
     title: "General Inquiries",
-    email: "hello@allotly.com",
+    email: "hello@allotly.ai",
     description: "Questions about Allotly, partnerships, or anything else.",
   },
   {
     icon: Building2,
     title: "Sales",
-    email: "sales@allotly.com",
+    email: "sales@allotly.ai",
     description: "Enterprise plans, volume pricing, and custom deployments.",
   },
   {
     icon: Headphones,
     title: "Support",
-    email: "support@allotly.com",
+    email: "support@allotly.ai",
     description: "Technical help, bug reports, and account assistance.",
   },
 ];

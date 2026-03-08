@@ -85,7 +85,7 @@ export default function PrivacyPage() {
               </ul>
               <p className="text-muted-foreground leading-relaxed mt-3">
                 To exercise any of these rights, contact us at{" "}
-                <a href="mailto:privacy@allotly.com" className="text-indigo-500 hover:text-indigo-400 transition-colors">privacy@allotly.com</a>.
+                <a href="mailto:privacy@allotly.ai" className="text-indigo-500 hover:text-indigo-400 transition-colors">privacy@allotly.ai</a>.
               </p>
             </section>
 
@@ -101,7 +101,7 @@ export default function PrivacyPage() {
               <h2 className="text-xl font-semibold mb-3" data-testid="section-contact-privacy">8. Contact</h2>
               <p className="text-muted-foreground leading-relaxed">
                 For privacy-related inquiries, reach us at{" "}
-                <a href="mailto:privacy@allotly.com" className="text-indigo-500 hover:text-indigo-400 transition-colors">privacy@allotly.com</a>.
+                <a href="mailto:privacy@allotly.ai" className="text-indigo-500 hover:text-indigo-400 transition-colors">privacy@allotly.ai</a>.
               </p>
             </section>
           </div>

@@ -231,11 +231,11 @@ export default function ComponentsShowcase() {
           <div className="flex flex-wrap items-end gap-6">
             <div className="space-y-2">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">200px</p>
-              <QRCode value="https://allotly.com/redeem?code=ALLOT-K3M7-R9P2-X4T6" size={200} />
+              <QRCode value="https://allotly.ai/redeem?code=ALLOT-K3M7-R9P2-X4T6" size={200} />
             </div>
             <div className="space-y-2">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">120px</p>
-              <QRCode value="https://allotly.com/redeem?code=ALLOT-K3M7-R9P2-X4T6" size={120} />
+              <QRCode value="https://allotly.ai/redeem?code=ALLOT-K3M7-R9P2-X4T6" size={120} />
             </div>
           </div>
         </section>

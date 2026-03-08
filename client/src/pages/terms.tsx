@@ -128,7 +128,7 @@ export default function TermsPage() {
               <h2 className="text-xl font-semibold mb-3" data-testid="section-contact-terms">12. Contact</h2>
               <p className="text-muted-foreground leading-relaxed">
                 For questions about these terms, contact us at{" "}
-                <a href="mailto:legal@allotly.com" className="text-indigo-500 hover:text-indigo-400 transition-colors">legal@allotly.com</a>.
+                <a href="mailto:legal@allotly.ai" className="text-indigo-500 hover:text-indigo-400 transition-colors">legal@allotly.ai</a>.
               </p>
             </section>
           </div>

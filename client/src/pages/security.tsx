@@ -206,11 +206,11 @@ export default function SecurityPage() {
                       Do not disclose it publicly until we've had a chance to address it.
                     </p>
                     <a
-                      href="mailto:security@allotly.com"
+                      href="mailto:security@allotly.ai"
                       className="text-sm font-medium text-indigo-500 hover:text-indigo-400 transition-colors"
                       data-testid="link-email-security"
                     >
-                      security@allotly.com
+                      security@allotly.ai
                     </a>
                   </div>
                 </CardContent>
