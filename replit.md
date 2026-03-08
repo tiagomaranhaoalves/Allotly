@@ -80,6 +80,7 @@ All money values are handled in integer cents to avoid floating-point inaccuraci
   - Budget alerts: proxy post-processing sends emails at 80/90/100% via emailTemplates + revokes ALL active API keys at 100% + clears Redis cache for each revoked key
   - Budget reset job: sends budgetReset email after reactivation, clears Redis cache for reactivated keys
   - All other jobs pre-built: voucher-expiry (hourly), bundle-expiry (hourly), provider-validation (daily), redis-reconciliation (60s), snapshot-cleanup (weekly), spend-anomaly (hourly)
+  - Model sync: every 6h + on startup (10s delay). Queries OpenAI/Anthropic/Google model list APIs via stored provider keys. Auto-adds new chat models with estimated pricing, removes deprecated models. Admin manual trigger: POST /api/admin/model-sync
   - Usage poll: no-op in v4 (all metering by proxy)
   - Concurrency self-heal: every 30s, resets zombie concurrent counters
 - Milestone 5 (Proxy v4 Refinements): COMPLETE — Tier-based rate limits (Free=20rpm/2conc, Team-TEAM=60rpm/5conc, Team-VOUCHER=30rpm/2conc, Enterprise=120rpm/10conc), configurable concurrency in checkConcurrency, 503 provider_unavailable for disconnected providers, 9 test files (162 tests)

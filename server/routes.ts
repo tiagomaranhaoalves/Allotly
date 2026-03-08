@@ -16,6 +16,7 @@ import { runBudgetReset } from "./lib/jobs/budget-reset";
 import { runVoucherExpiry } from "./lib/jobs/voucher-expiry";
 import { runBundleExpiry } from "./lib/jobs/bundle-expiry";
 import { runRedisReconciliation } from "./lib/jobs/redis-reconciliation";
+import { runModelSync } from "./lib/jobs/model-sync";
 import { handleChatCompletion, handleListModels } from "./lib/proxy/handler";
 import { redisSet, redisGet, redisDel, redisIncr, REDIS_KEYS } from "./lib/redis";
 import { runProviderValidation } from "./lib/jobs/provider-validation";
@@ -2459,6 +2460,26 @@ export async function registerRoutes(
     } catch (e: any) {
       console.error("Admin user delete error:", e);
       res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/model-sync", requireAdmin, async (_req, res) => {
+    try {
+      await runModelSync();
+      const allPricing = await storage.getModelPricing();
+      res.json({
+        message: "Model sync complete",
+        models: allPricing.map(p => ({
+          id: p.modelId,
+          provider: p.provider,
+          displayName: p.displayName,
+          inputPricePerMTok: p.inputPricePerMTok,
+          outputPricePerMTok: p.outputPricePerMTok,
+        })),
+      });
+    } catch (e: any) {
+      console.error("Admin model sync error:", e);
+      res.status(500).json({ message: "Model sync failed: " + e.message });
     }
   });
 

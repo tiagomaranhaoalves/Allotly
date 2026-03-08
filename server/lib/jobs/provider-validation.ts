@@ -15,7 +15,7 @@ export async function runProviderValidation(): Promise<void> {
       if (conn.status === "DISCONNECTED") continue;
 
       try {
-        const decryptedKey = decryptProviderKey(conn.encryptedApiKey as Buffer, conn.keyIv as Buffer);
+        const decryptedKey = decryptProviderKey(conn.adminApiKeyEncrypted, conn.adminApiKeyIv, conn.adminApiKeyTag);
         const adapter = getProviderAdapter(conn.provider);
         const result = await adapter.validateAdminKey(decryptedKey);
         const isValid = result.valid;

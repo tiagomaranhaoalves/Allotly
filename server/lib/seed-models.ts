@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { modelPricing } from "@shared/schema";
-import { eq, notInArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 const DEFAULT_MODELS = [
   { provider: "OPENAI" as const, modelId: "gpt-4o", displayName: "GPT-4o", inputPricePerMTok: 250, outputPricePerMTok: 1000 },
@@ -70,9 +70,18 @@ async function correctInflatedPrices(): Promise<void> {
 
 async function removeDeprecatedModels(): Promise<void> {
   if (DEPRECATED_MODELS.length === 0) return;
-  const result = await db.delete(modelPricing)
-    .where(notInArray(modelPricing.modelId, DEFAULT_MODELS.map(m => m.modelId)));
-  console.log(`[seed] Cleaned up deprecated model entries`);
+  let removed = 0;
+  for (const modelId of DEPRECATED_MODELS) {
+    const existing = await db.select({ id: modelPricing.id }).from(modelPricing)
+      .where(eq(modelPricing.modelId, modelId)).limit(1);
+    if (existing.length > 0) {
+      await db.delete(modelPricing).where(eq(modelPricing.modelId, modelId));
+      removed++;
+    }
+  }
+  if (removed > 0) {
+    console.log(`[seed] Removed ${removed} deprecated model entries`);
+  }
 }
 
 export async function seedModelPricing(): Promise<void> {

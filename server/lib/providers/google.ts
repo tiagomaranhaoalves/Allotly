@@ -6,7 +6,7 @@ export const googleAdapter: ProviderAdapter = {
   async validateAdminKey(apiKey: string): Promise<ValidationResult> {
     try {
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
+        `https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`
       );
 
       if (res.status === 400 || res.status === 403) {
