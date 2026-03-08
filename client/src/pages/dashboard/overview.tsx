@@ -15,7 +15,7 @@ import {
   DollarSign, Users, Ticket, Plug, Plus, ArrowRight,
   TrendingUp, Key, Activity, ShoppingCart, Clock,
   AlertTriangle, CheckCircle, XCircle, Copy, Zap,
-  Timer, Hash,
+  Timer, Hash, ShieldCheck,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -91,11 +91,16 @@ function RootAdminOverview() {
         <p className="text-muted-foreground mt-1">Organization overview and insights</p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatsCard
           title="Total Spend"
           value={`$${((data?.totalSpendCents || 0) / 100).toFixed(2)}`}
           icon={<DollarSign className="w-5 h-5" />}
+        />
+        <StatsCard
+          title="Team Admin Seats"
+          value={`${data?.activeTeamAdmins || 0} / ${data?.maxTeamAdmins || 0}`}
+          icon={<ShieldCheck className="w-5 h-5" />}
         />
         <StatsCard
           title="Active Members"

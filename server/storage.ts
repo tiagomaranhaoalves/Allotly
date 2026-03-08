@@ -402,7 +402,11 @@ export class DrizzleStorage implements IStorage {
     const providers = await this.getProviderConnectionsByOrg(orgId);
 
     const totalMembers = orgUsers.filter(u => u.orgRole === "MEMBER").length;
+    const activeTeamAdmins = orgUsers.filter(u => u.orgRole === "TEAM_ADMIN" && u.status === "ACTIVE").length;
     const activeVouchers = orgVouchers.filter(v => v.status === "ACTIVE").length;
+
+    const org = await this.getOrganization(orgId);
+    const maxTeamAdmins = org?.maxTeamAdmins || 0;
 
     let totalSpendCents = 0;
     for (const team of orgTeams) {
@@ -413,6 +417,8 @@ export class DrizzleStorage implements IStorage {
     return {
       totalSpendCents,
       totalMembers,
+      activeTeamAdmins,
+      maxTeamAdmins,
       activeVouchers,
       totalTeams: orgTeams.length,
       providerCount: providers.length,
