@@ -1,15 +1,15 @@
 import { db } from "../db";
 import { modelPricing } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 const DEFAULT_MODELS = [
   { provider: "OPENAI" as const, modelId: "gpt-4o", displayName: "GPT-4o", inputPricePerMTok: 250, outputPricePerMTok: 1000 },
   { provider: "OPENAI" as const, modelId: "gpt-4o-mini", displayName: "GPT-4o Mini", inputPricePerMTok: 15, outputPricePerMTok: 60 },
   { provider: "OPENAI" as const, modelId: "o3-mini", displayName: "o3 Mini", inputPricePerMTok: 110, outputPricePerMTok: 440 },
   { provider: "ANTHROPIC" as const, modelId: "claude-sonnet-4-20250514", displayName: "Claude Sonnet 4", inputPricePerMTok: 300, outputPricePerMTok: 1500 },
+  { provider: "GOOGLE" as const, modelId: "gemini-2.5-flash", displayName: "Gemini 2.5 Flash", inputPricePerMTok: 15, outputPricePerMTok: 60 },
+  { provider: "GOOGLE" as const, modelId: "gemini-2.5-pro", displayName: "Gemini 2.5 Pro", inputPricePerMTok: 125, outputPricePerMTok: 1000 },
   { provider: "GOOGLE" as const, modelId: "gemini-2.0-flash", displayName: "Gemini 2.0 Flash", inputPricePerMTok: 10, outputPricePerMTok: 40 },
-  { provider: "GOOGLE" as const, modelId: "gemini-2.5-flash-preview-05-20", displayName: "Gemini 2.5 Flash", inputPricePerMTok: 15, outputPricePerMTok: 60 },
-  { provider: "GOOGLE" as const, modelId: "gemini-2.5-pro-preview-06-05", displayName: "Gemini 2.5 Pro", inputPricePerMTok: 125, outputPricePerMTok: 1000 },
 ];
 
 const KNOWN_CORRECT_PRICES: Record<string, { input: number; output: number }> = {
@@ -27,6 +27,8 @@ const KNOWN_CORRECT_PRICES: Record<string, { input: number; output: number }> = 
   "gemini-1.5-pro": { input: 125, output: 500 },
   "gemini-1.5-flash": { input: 8, output: 30 },
   "gemini-2.0-flash": { input: 10, output: 40 },
+  "gemini-2.5-pro": { input: 125, output: 1000 },
+  "gemini-2.5-flash": { input: 15, output: 60 },
   "gemini-2.5-pro-preview-06-05": { input: 125, output: 1000 },
   "gemini-2.5-flash-preview-05-20": { input: 15, output: 60 },
 };
@@ -61,6 +63,14 @@ export async function seedModelPricing(): Promise<void> {
     const existing = await db.select({ id: modelPricing.id }).from(modelPricing).limit(1);
     if (existing.length > 0) {
       await correctInflatedPrices();
+      for (const model of DEFAULT_MODELS) {
+        const exists = await db.select({ id: modelPricing.id }).from(modelPricing)
+          .where(eq(modelPricing.modelId, model.modelId)).limit(1);
+        if (exists.length === 0) {
+          await db.insert(modelPricing).values(model).onConflictDoNothing();
+          console.log(`[seed] Added missing model: ${model.modelId}`);
+        }
+      }
       return;
     }
 

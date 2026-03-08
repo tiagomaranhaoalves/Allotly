@@ -85,7 +85,10 @@ async function getModelPricing(provider: string, model: string): Promise<ModelPr
   if (cached) return JSON.parse(cached);
 
   const allPricing = await storage.getModelPricingByProvider(provider);
-  const pricing = allPricing.find(p => p.modelId === model);
+  let pricing = allPricing.find(p => p.modelId === model);
+  if (!pricing) {
+    pricing = allPricing.find(p => model.startsWith(p.modelId) || p.modelId.startsWith(model));
+  }
   if (!pricing) return null;
 
   await redisSet(cacheKey, JSON.stringify(pricing), 3600);
