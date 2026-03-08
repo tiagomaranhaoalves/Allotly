@@ -301,6 +301,11 @@ function EditOrgDialog({ org, onClose }: { org: AdminOrg; onClose: () => void })
   const [name, setName] = useState(org.name);
   const { toast } = useToast();
 
+  const orgDetailQuery = useQuery<OrgDetail>({
+    queryKey: ["/api/admin/organizations", org.id],
+  });
+  const activeAdmins = orgDetailQuery.data?.users?.filter(u => u.orgRole === "TEAM_ADMIN" && u.status === "ACTIVE").length || 0;
+
   const mutation = useMutation({
     mutationFn: async () => {
       await apiRequest("PATCH", `/api/admin/organizations/${org.id}`, {
@@ -349,15 +354,25 @@ function EditOrgDialog({ org, onClose }: { org: AdminOrg; onClose: () => void })
             </Select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="max-admins">Max Team Admins</Label>
-            <Input
-              id="max-admins"
-              type="number"
-              min="1"
-              value={maxTeamAdmins}
-              onChange={(e) => setMaxTeamAdmins(e.target.value)}
-              data-testid="input-max-admins"
-            />
+            <Label htmlFor="max-admins">Team Admin Seats</Label>
+            <div className="flex items-center gap-3">
+              <Input
+                id="max-admins"
+                type="number"
+                min="0"
+                max="999"
+                value={maxTeamAdmins}
+                onChange={(e) => setMaxTeamAdmins(e.target.value)}
+                className="w-24"
+                data-testid="input-max-admins"
+              />
+              <span className="text-sm text-muted-foreground" data-testid="text-active-admins">
+                {activeAdmins} active of {maxTeamAdmins} seats
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Controls how many Team Admins (and teams) this org can have. Changes take effect immediately, bypassing Stripe.
+            </p>
           </div>
         </div>
         <DialogFooter>
