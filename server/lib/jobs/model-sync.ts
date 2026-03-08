@@ -42,24 +42,23 @@ function isChatModel(modelId: string, provider: string): boolean {
 
 function estimatePricing(modelId: string, provider: string): { input: number; output: number } {
   if (provider === "OPENAI") {
-    if (/4\.1-nano/.test(modelId)) return { input: 10, output: 40 };
-    if (/4\.1-mini/.test(modelId)) return { input: 40, output: 160 };
-    if (/4\.1(?!-)/.test(modelId)) return { input: 200, output: 800 };
-    if (/4o-mini/.test(modelId)) return { input: 15, output: 60 };
-    if (/4o/.test(modelId)) return { input: 250, output: 1000 };
+    if (/nano/.test(modelId)) return { input: 10, output: 40 };
+    if (/o[0-9]+-pro/.test(modelId)) return { input: 2000, output: 8000 };
     if (/o[0-9]+-mini/.test(modelId)) return { input: 110, output: 440 };
-    if (/o[0-9]+/.test(modelId)) return { input: 1000, output: 4000 };
-    if (/mini/.test(modelId)) return { input: 15, output: 60 };
+    if (/o[0-9]+/.test(modelId)) return { input: 200, output: 800 };
+    if (/4o-mini/.test(modelId)) return { input: 15, output: 60 };
+    if (/mini/.test(modelId)) return { input: 40, output: 160 };
     return { input: 250, output: 1000 };
   }
 
   if (provider === "ANTHROPIC") {
-    if (/haiku/i.test(modelId)) return { input: 80, output: 400 };
-    if (/opus/i.test(modelId)) return { input: 1500, output: 7500 };
+    if (/haiku/i.test(modelId)) return { input: 100, output: 500 };
+    if (/opus/i.test(modelId)) return { input: 500, output: 2500 };
     return { input: 300, output: 1500 };
   }
 
   if (provider === "GOOGLE") {
+    if (/lite/.test(modelId)) return { input: 10, output: 40 };
     if (/pro/.test(modelId)) return { input: 125, output: 1000 };
     return { input: 15, output: 60 };
   }
