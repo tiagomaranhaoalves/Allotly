@@ -339,7 +339,10 @@ export default function MembersPage() {
   const [name, setName] = useState("");
   const [budgetCents, setBudgetCents] = useState("5000");
   const [accessType, setAccessType] = useState("TEAM");
-  const [selectedTeam, setSelectedTeam] = useState("");
+  const [selectedTeam, setSelectedTeam] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("team") || "";
+  });
   const [selectedProviders, setSelectedProviders] = useState<string[]>([]);
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [newMemberKey, setNewMemberKey] = useState<string | null>(null);

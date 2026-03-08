@@ -83,7 +83,7 @@ function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string) => voi
               size="sm"
               variant="ghost"
               className="text-muted-foreground hover:text-foreground"
-              onClick={() => navigate("/dashboard/members")}
+              onClick={() => navigate(`/dashboard/members?team=${team.id}`)}
               data-testid={`button-view-members-${team.id}`}
             >
               <ChevronRight className="w-4 h-4" />

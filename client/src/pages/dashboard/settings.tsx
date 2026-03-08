@@ -9,9 +9,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
   Settings as SettingsIcon, Building, CreditCard, Shield,
   ExternalLink, Check, AlertTriangle, Users, Database,
-  Clock, Zap,
+  Clock, Zap, Plus,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 
@@ -35,6 +38,8 @@ export default function SettingsPage() {
   const { data: billing } = useQuery<any>({ queryKey: ["/api/billing/subscription"] });
 
   const [orgName, setOrgName] = useState("");
+  const [seatCount, setSeatCount] = useState("1");
+  const [addSeatsCount, setAddSeatsCount] = useState("1");
 
   useEffect(() => {
     if (orgData) setOrgName(orgData.name);
@@ -76,7 +81,10 @@ export default function SettingsPage() {
 
   const upgradeMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/stripe/create-checkout", { type: "team_upgrade" });
+      const res = await apiRequest("POST", "/api/stripe/create-checkout", {
+        type: "team_upgrade",
+        quantity: parseInt(seatCount),
+      });
       return res.json();
     },
     onSuccess: (data: any) => {
@@ -84,6 +92,29 @@ export default function SettingsPage() {
     },
     onError: (err: any) => {
       toast({ title: "Upgrade failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const addSeatsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/stripe/create-checkout", {
+        type: "add_seats",
+        quantity: parseInt(addSeatsCount),
+      });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/org/settings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/billing/subscription"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/session"] });
+      toast({
+        title: "Seats added",
+        description: `Updated from ${data.previousSeats} to ${data.newSeats} Team Admin seat(s).`,
+      });
+      setAddSeatsCount("1");
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to add seats", description: err.message, variant: "destructive" });
     },
   });
 
@@ -104,6 +135,7 @@ export default function SettingsPage() {
   const limits = plan === "TEAM" ? PLAN_LIMITS.TEAM : PLAN_LIMITS.FREE;
   const sub = billing?.subscription;
   const graceEndsAt = billing?.graceEndsAt || orgData?.graceEndsAt;
+  const currentSeats = sub?.seats || billing?.maxTeamAdmins || 0;
 
   return (
     <div className="space-y-8">
@@ -244,13 +276,29 @@ export default function SettingsPage() {
                     <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-500" /> 5 voucher codes per admin, 50 redemptions each</li>
                     <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-500" /> AI usage analytics + audit log</li>
                   </ul>
+                  <div className="flex items-center gap-3 mb-4">
+                    <Label className="text-sm shrink-0">Team Admin Seats:</Label>
+                    <Select value={seatCount} onValueChange={setSeatCount}>
+                      <SelectTrigger className="w-20" data-testid="select-seat-count">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
+                          <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span className="text-sm text-muted-foreground">
+                      = ${parseInt(seatCount) * 20}/mo
+                    </span>
+                  </div>
                   <Button
                     onClick={() => upgradeMutation.mutate()}
                     disabled={upgradeMutation.isPending}
                     data-testid="button-upgrade"
                     className="gap-2"
                   >
-                    {upgradeMutation.isPending ? "Redirecting to checkout..." : "Upgrade to Team"}
+                    {upgradeMutation.isPending ? "Redirecting to checkout..." : `Upgrade to Team (${seatCount} seat${parseInt(seatCount) > 1 ? 's' : ''})`}
                     <ExternalLink className="w-3.5 h-3.5" />
                   </Button>
                 </div>
@@ -282,6 +330,39 @@ export default function SettingsPage() {
                       Your subscription will end at the current period. You'll be downgraded to Free after {sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString() : "the end of the period"}.
                     </p>
                   </Card>
+                )}
+                {currentSeats < 10 && !sub?.cancelAtPeriodEnd && (
+                  <div className="p-4 rounded-lg border bg-muted/30">
+                    <p className="text-sm font-medium mb-3">Add Team Admin Seats</p>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      Each additional seat is $20/mo (prorated). You currently have {currentSeats} of 10 max seats.
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <Select value={addSeatsCount} onValueChange={setAddSeatsCount}>
+                        <SelectTrigger className="w-20" data-testid="select-add-seats">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 10 - currentSeats }, (_, i) => i + 1).map(n => (
+                            <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        onClick={() => addSeatsMutation.mutate()}
+                        disabled={addSeatsMutation.isPending}
+                        data-testid="button-add-seats"
+                        className="gap-2"
+                      >
+                        {addSeatsMutation.isPending ? "Adding..." : (
+                          <>
+                            <Plus className="w-3.5 h-3.5" />
+                            Add {addSeatsCount} Seat{parseInt(addSeatsCount) > 1 ? 's' : ''} (+${parseInt(addSeatsCount) * 20}/mo)
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
                 )}
                 <div className="flex gap-3">
                   {orgData?.stripeSubId && (

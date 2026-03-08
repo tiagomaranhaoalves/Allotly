@@ -1763,11 +1763,12 @@ export async function registerRoutes(
       if (!org) return res.status(404).json({ message: "Organization not found" });
 
       const checkoutSchema = z.object({
-        type: z.enum(["team_upgrade", "voucher_bundle"]),
+        type: z.enum(["team_upgrade", "voucher_bundle", "add_seats"]),
+        quantity: z.number().int().min(1).max(10).optional(),
       });
       const checkoutParsed = checkoutSchema.safeParse(req.body);
       if (!checkoutParsed.success) return res.status(400).json({ message: "Validation error", errors: checkoutParsed.error.errors });
-      const { type } = checkoutParsed.data;
+      const { type, quantity } = checkoutParsed.data;
 
       let customerId = org.stripeCustomerId;
       if (!customerId) {
@@ -1789,16 +1790,59 @@ export async function registerRoutes(
           return res.status(404).json({ message: "Team plan price not found" });
         }
 
+        const seatCount = quantity || 1;
         const session = await stripeService.createCheckoutSession({
           customerId,
           priceId: prices.data[0].id,
           mode: 'subscription',
           successUrl: `${baseUrl}/dashboard/settings?upgrade=success`,
           cancelUrl: `${baseUrl}/dashboard/settings?upgrade=cancelled`,
-          metadata: { orgId: org.id, type: 'team_upgrade' },
+          metadata: { orgId: org.id, type: 'team_upgrade', userId: user.id },
+          quantity: seatCount,
+          adjustableQuantity: true,
         });
 
         res.json({ url: session.url });
+      } else if (type === "add_seats") {
+        if (org.plan !== "TEAM" || !org.stripeSubId) {
+          return res.status(400).json({ message: "Must be on Team plan to add seats" });
+        }
+
+        const stripe = await getUncachableStripeClient();
+        const subscription = await stripe.subscriptions.retrieve(org.stripeSubId);
+        const currentQuantity = subscription.items?.data?.[0]?.quantity || 1;
+        const additionalSeats = quantity || 1;
+        const newQuantity = Math.min(currentQuantity + additionalSeats, 10);
+
+        if (newQuantity <= currentQuantity) {
+          return res.status(400).json({ message: "Already at maximum seats (10)" });
+        }
+
+        const updatedSub = await stripe.subscriptions.update(org.stripeSubId, {
+          items: [{
+            id: subscription.items.data[0].id,
+            quantity: newQuantity,
+          }],
+          proration_behavior: 'create_prorations',
+          payment_behavior: 'error_if_incomplete',
+        });
+
+        if (updatedSub.status !== 'active') {
+          return res.status(402).json({ message: "Payment failed. Please update your payment method via Manage Billing." });
+        }
+
+        await storage.updateOrganization(org.id, { maxTeamAdmins: newQuantity });
+
+        await storage.createAuditLog({
+          orgId: org.id,
+          actorId: user.id,
+          action: "plan.seats_updated",
+          targetType: "organization",
+          targetId: org.id,
+          metadata: { previousSeats: currentQuantity, newSeats: newQuantity },
+        });
+
+        res.json({ success: true, previousSeats: currentQuantity, newSeats: newQuantity });
       } else if (type === "voucher_bundle") {
         const products = await stripe.products.search({ query: "metadata['type']:'bundle'" });
         if (!products.data.length) {
@@ -1889,12 +1933,14 @@ export async function registerRoutes(
         });
 
         if (subscriptions.data.length > 0) {
+          const sub = subscriptions.data[0];
+          const seats = sub.items?.data?.[0]?.quantity || 1;
           await storage.updateOrganization(org.id, {
             plan: "TEAM",
-            stripeSubId: subscriptions.data[0].id,
-            maxTeamAdmins: 10,
+            stripeSubId: sub.id,
+            maxTeamAdmins: Math.max(seats, 1),
           });
-          return res.json({ success: true, plan: "TEAM" });
+          return res.json({ success: true, plan: "TEAM", seats });
         }
       } else if (type === "voucher_bundle") {
         const sessions = await stripe.checkout.sessions.list({

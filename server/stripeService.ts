@@ -18,12 +18,18 @@ export class StripeService {
     successUrl: string;
     cancelUrl: string;
     metadata?: Record<string, string>;
+    quantity?: number;
+    adjustableQuantity?: boolean;
   }) {
     const stripe = await getUncachableStripeClient();
+    const lineItem: any = { price: params.priceId, quantity: params.quantity || 1 };
+    if (params.adjustableQuantity) {
+      lineItem.adjustable_quantity = { enabled: true, minimum: 1, maximum: 10 };
+    }
     return await stripe.checkout.sessions.create({
       customer: params.customerId,
       payment_method_types: ['card'],
-      line_items: [{ price: params.priceId, quantity: 1 }],
+      line_items: [lineItem],
       mode: params.mode,
       success_url: params.successUrl,
       cancel_url: params.cancelUrl,
