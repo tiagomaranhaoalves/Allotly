@@ -22,7 +22,7 @@ import { redisSet, redisGet, redisDel, redisIncr, REDIS_KEYS } from "./lib/redis
 import { runProviderValidation } from "./lib/jobs/provider-validation";
 import { runSnapshotCleanup } from "./lib/jobs/snapshot-cleanup";
 import { runSpendAnomalyCheck } from "./lib/jobs/spend-anomaly";
-import { checkPlanLimit } from "./lib/plan-limits";
+import { checkPlanLimit, PLAN_LIMITS } from "./lib/plan-limits";
 import { sendEmail, emailTemplates } from "./lib/email";
 import { getCostPerModel, getTopSpenders, getSpendForecast, getAnomalies, getOptimizationRecommendations } from "./lib/analytics";
 import { loginLimiter, redeemLimiter, regenerateKeyLimiter } from "./lib/rate-limiter";
