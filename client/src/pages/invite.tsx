@@ -125,7 +125,7 @@ export default function InvitePage() {
   }
 
   if (accepted && inviteInfo.orgRole === "MEMBER") {
-    const baseUrl = typeof window !== "undefined" ? window.location.origin : "https://api.allotly.com";
+    const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
 
     return (
       <div className="min-h-screen bg-background p-4">

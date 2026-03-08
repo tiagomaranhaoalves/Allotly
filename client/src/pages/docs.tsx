@@ -227,6 +227,7 @@ function Sidebar({
 
 export default function DocsPage() {
   const { theme, toggleTheme } = useTheme();
+  const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
   const [activeId, setActiveId] = useState("what-is-allotly");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(() => {
@@ -669,7 +670,7 @@ Example:    ALLOT-7K3M-N9WT-4HVX`}</CodeBlock>
             The Allotly proxy is fully OpenAI-compatible. You can use it with any OpenAI SDK or HTTP client by simply
             changing the base URL and API key.
           </p>
-          <CodeBlock>{`Base URL: https://your-app.replit.app/api/v1
+          <CodeBlock>{`Base URL: ${baseUrl}/api/v1
 
 POST /api/v1/chat/completions   →  Chat completions (all providers)
 GET  /api/v1/models             →  List available models
@@ -725,7 +726,7 @@ from langchain_openai import ChatOpenAI
 llm = ChatOpenAI(
     model="gpt-4o",
     openai_api_key="allotly_sk_...",
-    openai_api_base="https://your-app.replit.app/api/v1"
+    openai_api_base="${baseUrl}/api/v1"
 )
 
 # LlamaIndex
@@ -733,13 +734,13 @@ from llama_index.llms.openai import OpenAI
 llm = OpenAI(
     model="gpt-4o",
     api_key="allotly_sk_...",
-    api_base="https://your-app.replit.app/api/v1"
+    api_base="${baseUrl}/api/v1"
 )
 
 # CrewAI / AutoGen / any OpenAI-compatible framework
 # Set OPENAI_API_KEY and OPENAI_API_BASE environment variables:
 export OPENAI_API_KEY="allotly_sk_..."
-export OPENAI_API_BASE="https://your-app.replit.app/api/v1"`}</CodeBlock>
+export OPENAI_API_BASE="${baseUrl}/api/v1"`}</CodeBlock>
 
           <SubHeading id="custom-apps" title="Custom Applications" />
           <p className="text-muted-foreground leading-relaxed mb-4">
@@ -1016,7 +1017,7 @@ Authorization: Bearer allotly_sk_...`}</CodeBlock>
           <p className="text-muted-foreground leading-relaxed mb-4">
             The proxy supports Server-Sent Events (SSE) streaming for all providers. Set <code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">"stream": true</code> in your request:
           </p>
-          <CodeBlock>{`curl https://your-app.replit.app/api/v1/chat/completions \\
+          <CodeBlock>{`curl ${baseUrl}/api/v1/chat/completions \\
   -H "Authorization: Bearer allotly_sk_..." \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -1034,7 +1035,7 @@ Authorization: Bearer allotly_sk_...`}</CodeBlock>
 
 client = OpenAI(
     api_key="allotly_sk_...",
-    base_url="https://your-app.replit.app/api/v1"
+    base_url="${baseUrl}/api/v1"
 )
 
 stream = client.chat.completions.create(
@@ -1049,7 +1050,7 @@ for chunk in stream:
 print()`}</CodeBlock>
 
           <h4 className="text-base font-semibold mt-6 mb-3">cURL Example</h4>
-          <CodeBlock>{`curl https://your-app.replit.app/api/v1/chat/completions \\
+          <CodeBlock>{`curl ${baseUrl}/api/v1/chat/completions \\
   -H "Authorization: Bearer allotly_sk_..." \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -1059,11 +1060,11 @@ print()`}</CodeBlock>
 
           <SectionHeading id="faq-allotly-down" title="What if Allotly goes down?" />
           <p className="text-muted-foreground leading-relaxed mb-4">
-            It depends on which access model you use:
+            All requests route through Allotly's unified proxy, so they would be unavailable if the proxy is down. Service resumes automatically when the proxy recovers. We monitor uptime 24/7 and target 99.9% availability.
           </p>
           <ul className="space-y-2 text-sm text-muted-foreground mb-4">
-            <li className="flex gap-2"><Key className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" /><span><strong>Teams (Direct Access):</strong> Your members' API keys are issued directly by the provider (OpenAI, Anthropic, Google). If Allotly is unavailable, those keys continue to work — members can still call the provider's API directly. Budget enforcement pauses until Allotly recovers, but access is uninterrupted.</span></li>
-            <li className="flex gap-2"><Ticket className="w-4 h-4 text-cyan-500 shrink-0 mt-0.5" /><span><strong>Vouchers (Proxy Access):</strong> Since requests route through Allotly's proxy, they will fail if the proxy is unavailable. Service resumes when the proxy recovers. We monitor uptime 24/7 and target 99.9% availability.</span></li>
+            <li className="flex gap-2"><Shield className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" /><span><strong>Auto-scaling:</strong> The proxy runs on auto-scaling infrastructure that spins up additional instances under load.</span></li>
+            <li className="flex gap-2"><Activity className="w-4 h-4 text-cyan-500 shrink-0 mt-0.5" /><span><strong>Health monitoring:</strong> Provider connections are validated regularly, and unhealthy providers are flagged automatically in the dashboard.</span></li>
           </ul>
 
           <SubHeading id="faq-store-prompts" title="Do you store prompts?" />
@@ -1075,12 +1076,8 @@ print()`}</CodeBlock>
 
           <SubHeading id="faq-budget-accuracy" title="How accurate are budgets?" />
           <p className="text-muted-foreground leading-relaxed mb-4">
-            Accuracy depends on the access model:
+            Budget enforcement is real-time per-request for both Teams and Vouchers. The proxy reserves budget before forwarding each request, then adjusts based on actual token usage from the provider response. Accuracy is within a fraction of a cent. Redis-backed counters are reconciled with the database every 60 seconds to prevent drift.
           </p>
-          <ul className="space-y-2 text-sm text-muted-foreground mb-4">
-            <li className="flex gap-2"><Key className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" /><span><strong>Teams:</strong> Budget accuracy depends on polling frequency. At 15-minute intervals, there may be a small overshoot window. In practice, overages are typically less than $0.50 before the next poll catches it.</span></li>
-            <li className="flex gap-2"><Ticket className="w-4 h-4 text-cyan-500 shrink-0 mt-0.5" /><span><strong>Vouchers:</strong> Budget enforcement is real-time per-request. The proxy tracks actual token usage from provider responses. Accuracy is within a fraction of a cent.</span></li>
-          </ul>
 
           <SubHeading id="faq-langchain-cursor" title="Can I use Allotly with LangChain, Cursor, or other tools?" />
           <p className="text-muted-foreground leading-relaxed mb-4">
@@ -1098,7 +1095,7 @@ print()`}</CodeBlock>
 llm = ChatOpenAI(
     model="gpt-4o-mini",
     openai_api_key="allotly_sk_...",
-    openai_api_base="https://your-app.replit.app/api/v1"
+    openai_api_base="${baseUrl}/api/v1"
 )
 
 response = llm.invoke("What is quantum computing?")
@@ -1106,8 +1103,7 @@ print(response.content)`}</CodeBlock>
 
           <SubHeading id="faq-teams-vs-vouchers" title="When should I use Teams vs Vouchers?" />
           <p className="text-muted-foreground leading-relaxed mb-6">
-            Use <strong>Teams</strong> when you want to give ongoing AI access to internal team members who need direct
-            proxy API keys (developers, data scientists, engineers). Members call AI providers through Allotly's unified proxy with real-time budget enforcement.
+            Use <strong>Teams</strong> when you want to give ongoing AI access to internal team members with monthly resetting budgets (developers, data scientists, engineers). Members call AI providers through Allotly's unified proxy with real-time budget enforcement.
           </p>
           <p className="text-muted-foreground leading-relaxed mb-6">
             Use <strong>Vouchers</strong> when you want to distribute temporary, budget-capped AI access to people outside
