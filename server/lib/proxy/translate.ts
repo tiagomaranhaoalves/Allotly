@@ -100,7 +100,7 @@ export function translateToProvider(
 
     const streamSuffix = request.stream ? ":streamGenerateContent?alt=sse" : ":generateContent";
     return {
-      url: `https://generativelanguage.googleapis.com/v1beta/models/${request.model}${streamSuffix}`,
+      url: `https://generativelanguage.googleapis.com/v1/models/${request.model}${streamSuffix}`,
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: googleBody,

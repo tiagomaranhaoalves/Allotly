@@ -225,18 +225,6 @@ export async function handleChatCompletion(req: Request, res: Response) {
     const translated = translateToProvider(parsed, provider, effectiveMaxTokens);
     const authInfo = setProviderAuth(translated.headers, provider, adminApiKey, translated.url);
 
-    if (clamped) {
-      res.setHeader("X-Allotly-Max-Tokens-Applied", String(effectiveMaxTokens));
-    }
-    res.setHeader("X-Allotly-Budget-Remaining", String(budgetResult.remaining));
-    res.setHeader("X-Allotly-Budget-Total", String(membership.monthlyBudgetCents));
-    const rlKey = REDIS_KEYS.ratelimit(membershipId);
-    const currentRequests = await redisGet(rlKey);
-    const requestsRemaining = Math.max(0, tier.rpm - (parseInt(currentRequests || "0")));
-    res.setHeader("X-Allotly-Requests-Remaining", String(requestsRemaining));
-    const periodEnd = new Date(membership.periodEnd);
-    res.setHeader("X-Allotly-Expires", periodEnd.toISOString());
-
     let providerResponse: globalThis.Response;
     try {
       providerResponse = await fetch(authInfo.url, {
@@ -246,7 +234,9 @@ export async function handleChatCompletion(req: Request, res: Response) {
       });
     } catch (fetchError: any) {
       await refundBudget(membershipId, reservedCostCents);
+      reservedCostCents = 0;
       await releaseConcurrency(membershipId, requestId);
+      concurrencyAcquired = false;
       return sendProxyError(res, createProxyError(502, "provider_error",
         `Failed to reach ${provider}: ${fetchError.message}`,
         "The provider may be temporarily unavailable. Try again later."
@@ -256,7 +246,9 @@ export async function handleChatCompletion(req: Request, res: Response) {
     if (!providerResponse.ok) {
       const errorBody = await providerResponse.text();
       await refundBudget(membershipId, reservedCostCents);
+      reservedCostCents = 0;
       await releaseConcurrency(membershipId, requestId);
+      concurrencyAcquired = false;
 
       let cleanMessage = `${provider} returned ${providerResponse.status}`;
       try {
@@ -275,6 +267,18 @@ export async function handleChatCompletion(req: Request, res: Response) {
         "The upstream provider returned an error. Check your request or try again later."
       ));
     }
+
+    if (clamped) {
+      res.setHeader("X-Allotly-Max-Tokens-Applied", String(effectiveMaxTokens));
+    }
+    res.setHeader("X-Allotly-Budget-Remaining", String(budgetResult.remaining));
+    res.setHeader("X-Allotly-Budget-Total", String(membership.monthlyBudgetCents));
+    const rlKey = REDIS_KEYS.ratelimit(membershipId);
+    const currentRequests = await redisGet(rlKey);
+    const requestsRemaining = Math.max(0, tier.rpm - (parseInt(currentRequests || "0")));
+    res.setHeader("X-Allotly-Requests-Remaining", String(requestsRemaining));
+    const periodEnd = new Date(membership.periodEnd);
+    res.setHeader("X-Allotly-Expires", periodEnd.toISOString());
 
     let actualInputTokens = inputTokens;
     let actualOutputTokens = 0;

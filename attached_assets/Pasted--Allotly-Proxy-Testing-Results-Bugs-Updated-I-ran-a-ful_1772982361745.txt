@@ -1,0 +1,147 @@
+# Allotly Proxy — Testing Results & Bugs (Updated)
+
+I ran a full manual test of the proxy endpoint using a voucher key from my terminal. The core proxy infrastructure works — auth, routing, budget headers, and Anthropic translation are solid. But I found several bugs that need fixing. Please check each one, verify if it still exists, and fix if so.
+
+---
+
+## Bug 1 (CRITICAL): Budget is deducted on failed upstream requests
+
+**Evidence:**
+I sent a request to `gemini-2.0-flash`. The response was HTTP 502 (Google returned a 404 because the model is deprecated). However, the budget headers showed:
+- Before: `x-allotly-budget-remaining: 492`
+- After: `x-allotly-budget-remaining: 490` and `x-allotly-requests-remaining` decremented
+
+The proxy reserved budget, forwarded the request, got an error from Google, returned 502 to the client — but **never refunded the reservation**.
+
+**Expected behavior (per spec, Section 9.3 — "ON ERROR/TIMEOUT"):**
+```
+ON ERROR/TIMEOUT at any point after reservation:
+  INCRBY allotly:budget:{membershipId} estimatedTotalCents  ← full refund
+  DECR allotly:concurrent:{membershipId}  ← release slot
+  DEL allotly:req:{requestId}
+  Return appropriate error to client
+```
+
+**What to fix:**
+Check the proxy error handling path. After forwarding to the provider, if the response is a 4xx or 5xx, the reserved budget must be refunded via `INCRBY` before returning the error to the client. The request counter should also not be decremented for failed requests.
+
+Note: On a second failed Google request, the budget did NOT decrease (stayed at 490), so the bug may be inconsistent — possibly only triggered on certain error types or race conditions. Please review all error paths in the proxy handler.
+
+---
+
+## Bug 2 (HIGH): Most seeded model IDs are invalid or deprecated
+
+**Evidence from testing each provider:**
+
+### Anthropic (1 of 4 models work):
+| Seeded Model ID | Result |
+|---|---|
+| `claude-sonnet-4-20250514` | ✅ Works perfectly |
+| `claude-3-5-sonnet-20241022` | ❌ Anthropic returns 404 |
+| `claude-3-5-haiku-20241022` | ❌ Anthropic returns 404 |
+| `claude-3-opus-20240229` | ❌ Likely 404 (not tested) |
+
+### Google (0 of 5 models work):
+| Seeded Model ID | Result |
+|---|---|
+| `gemini-2.0-flash` | ❌ Google 404: "no longer available to new users" |
+| `gemini-2.5-flash-preview-05-20` | ❌ Google 404: "not found for API version v1beta" |
+| `gemini-1.5-flash` | ❌ Not yet confirmed |
+| `gemini-1.5-pro` | ❌ Not yet confirmed |
+| `gemini-2.5-pro-preview-06-05` | ❌ Not yet confirmed |
+
+### OpenAI:
+| Seeded Model ID | Result |
+|---|---|
+| `gpt-4o-mini` | ✅ Works perfectly |
+| `gpt-4o` | ❓ Provider account was over quota, couldn't confirm model validity |
+| `gpt-4-turbo` | ❓ Possibly deprecated |
+| `gpt-3.5-turbo` | ❓ Possibly deprecated |
+| `o1`, `o1-mini`, `o3-mini` | ❓ Untested |
+
+**What to fix:**
+1. Verify every model ID against each provider's current API. For Anthropic, call `GET https://api.anthropic.com/v1/models`. For Google, call ListModels. For OpenAI, call `GET https://api.openai.com/v1/models`.
+2. Update the `ModelPricing` seed data with only currently valid model IDs
+3. Update pricing values to match current provider pricing
+4. Consider adding a model validation step — the `/api/v1/models` endpoint should not advertise models that will fail when used
+
+---
+
+## Bug 3 (HIGH): Google request translation appears broken
+
+**Evidence:**
+The error message from Google says: `"models/gemini-2.5-flash-preview-05-20 is not found for API version v1beta, or is not supported for generateContent"`
+
+Two issues here:
+
+1. **Wrong API version:** The proxy is using `v1beta`. Check if it should be using `v1` instead, or if the model IDs need to match the version.
+
+2. **Model ID format mismatch:** Google's generateContent API expects the model in the URL path like:
+   ```
+   POST https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent
+   ```
+   The proxy may be passing the full Allotly model ID (with preview suffixes) directly into the URL, when Google expects a different format.
+
+**What to fix:**
+1. Check the Google provider adapter (`/lib/providers/google.ts`) — verify the target URL construction and API version
+2. Verify what model IDs Google actually accepts by calling their ListModels endpoint
+3. Ensure the model ID in the seed data matches exactly what Google expects in the generateContent URL
+
+---
+
+## Bug 4 (MEDIUM): Upstream error messages are truncated
+
+**Evidence:**
+OpenAI 429 error response:
+```json
+{
+  "message": "OPENAI returned 429: {\"error\":{\"message\":\"You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/gu"
+}
+```
+
+The message cuts off mid-URL.
+
+**What to fix:**
+1. Check if there's a character limit when capturing upstream error bodies
+2. Either: capture the full upstream error message, or parse the upstream JSON and extract just the `message` field for a clean summary like: `"OPENAI returned 429: You exceeded your current quota, please check your plan and billing details."`
+
+---
+
+## Bug 5 (MEDIUM — needs confirmation): Pricing values may be 10x too high
+
+**Evidence:**
+The `/api/v1/models` response shows `gpt-4o-mini` with:
+- `input_price_per_m_tok: 150`
+- `output_price_per_m_tok: 600`
+
+OpenAI's actual pricing for gpt-4o-mini is $0.15 input / $0.60 output per 1M tokens. If the field unit is "cents per 1M tokens", the values should be `15` and `60`, not `150` and `600`.
+
+**Impact:** If real, every request costs users 10x more budget than it should. At small token counts the `ceil()` minimum of 1 cent masks this, but larger requests would be significantly overcharged.
+
+**What to fix:**
+1. Clarify the unit convention for `input_price_per_m_tok` — is it cents, tenths of cents, or hundredths of cents?
+2. Compare every seeded price against current provider pricing pages
+3. If 10x off, update all seed values and reconsider whether existing budget deductions need correction
+
+---
+
+## What's working well (no changes needed)
+
+- ✅ `allotly_sk_` key authentication
+- ✅ Model routing (gpt-* → OpenAI, claude-* → Anthropic, gemini-* → Google)
+- ✅ OpenAI format → Anthropic translation (request and response)
+- ✅ Redis budget ledger with `X-Allotly-Budget-Remaining` header
+- ✅ `X-Allotly-Budget-Total`, `X-Allotly-Expires`, `X-Allotly-Requests-Remaining` headers
+- ✅ Error wrapping with `allotly_error` type
+- ✅ OpenAI passthrough (gpt-4o-mini confirmed working end-to-end)
+- ✅ Anthropic proxy (claude-sonnet-4 confirmed working end-to-end)
+
+---
+
+## Priority order for fixes
+
+1. **Budget leak on errors** — users losing money on failed requests (Critical)
+2. **Google translation** — entire provider is non-functional (High)
+3. **Stale model IDs** — 404 errors on advertised models across all providers (High)
+4. **Error truncation** — poor user experience (Medium)
+5. **Pricing verification** — potential 10x overcharge (Medium)
