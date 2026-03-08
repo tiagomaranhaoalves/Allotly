@@ -104,6 +104,10 @@ export default function SettingsPage() {
       return res.json();
     },
     onSuccess: (data: any) => {
+      if (data.redirect && data.url) {
+        window.location.href = data.url;
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/org/settings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/billing/subscription"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/session"] });
