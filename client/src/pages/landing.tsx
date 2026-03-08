@@ -727,7 +727,7 @@ function PricingSection() {
         </div>
         <FadeIn delay={300}>
           <p className="text-center text-sm text-muted-foreground mt-8 max-w-xl mx-auto">
-            All plans include $10 Voucher Bundles — pre-loaded AI credit packs you can buy and distribute. Pay only for what you use.
+            All plans include $10 Voucher Bundles — pre-loaded AI credit packs you can buy and distribute.
           </p>
         </FadeIn>
       </div>
