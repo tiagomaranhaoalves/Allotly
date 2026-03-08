@@ -9,17 +9,15 @@ export const PLAN_LIMITS = {
     maxActiveVouchers: 1,
     maxRedemptionsPerVoucher: 25,
     retentionDays: 7,
-    pollingIntervalMin: 60,
   },
   TEAM: {
-    maxTeams: 3,
+    maxTeams: 10,
     maxTeamAdmins: 10,
     maxMembersPerTeam: 20,
     maxProviders: 3,
     maxActiveVouchersPerAdmin: 5,
     maxRedemptionsPerVoucher: 50,
     retentionDays: 90,
-    pollingIntervalMin: 15,
   },
   ENTERPRISE: {
     maxTeams: 999,
@@ -29,7 +27,6 @@ export const PLAN_LIMITS = {
     maxActiveVouchersPerAdmin: 999,
     maxRedemptionsPerVoucher: 999,
     retentionDays: 365,
-    pollingIntervalMin: 5,
   },
 } as const;
 

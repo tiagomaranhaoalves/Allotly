@@ -25,7 +25,7 @@ const PLAN_LIMITS = {
     usageTracking: "Real-time",
   },
   TEAM: {
-    maxTeams: 3, maxTeamAdmins: 10, maxMembersPerTeam: 20,
+    maxTeams: 10, maxTeamAdmins: 10, maxMembersPerTeam: 20,
     maxProviders: 3, maxActiveVouchers: "5/admin", retentionDays: 90,
     usageTracking: "Real-time",
   },
