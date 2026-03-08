@@ -254,10 +254,21 @@ export async function handleChatCompletion(req: Request, res: Response) {
       const errorBody = await providerResponse.text();
       await refundBudget(membershipId, reservedCostCents);
       await releaseConcurrency(membershipId, requestId);
+
+      let cleanMessage = `${provider} returned ${providerResponse.status}`;
+      try {
+        const parsed = JSON.parse(errorBody);
+        const msg = parsed?.error?.message || parsed?.message || parsed?.error?.status_message;
+        if (msg) cleanMessage += `: ${msg}`;
+      } catch {
+        const trimmed = errorBody.trim().slice(0, 200);
+        if (trimmed) cleanMessage += `: ${trimmed}`;
+      }
+
       return sendProxyError(res, createProxyError(
-        providerResponse.status >= 500 ? 502 : 502,
+        502,
         "provider_error",
-        `${provider} returned ${providerResponse.status}: ${errorBody.slice(0, 200)}`,
+        cleanMessage,
         "The upstream provider returned an error. Check your request or try again later."
       ));
     }

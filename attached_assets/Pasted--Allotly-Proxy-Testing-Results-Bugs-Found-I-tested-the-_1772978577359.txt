@@ -1,0 +1,80 @@
+# Allotly Proxy Testing Results — Bugs Found
+
+I tested the proxy endpoint (`/api/v1/chat/completions`) with a voucher key from my browser and terminal. The proxy is working well overall — auth, routing, request translation, Redis budget tracking, and response headers all function correctly. However, I found three issues that need attention.
+
+---
+
+## Bug 1: Most Anthropic model IDs in the seed data are invalid
+
+**What I tested:**
+I called `/api/v1/models` and got back 4 Anthropic models. I then tested each one via the proxy. Only 1 of 4 actually works — the other 3 return 404 from Anthropic's API.
+
+| Seeded Model ID | Result |
+|---|---|
+| `claude-sonnet-4-20250514` | ✅ Works |
+| `claude-3-5-sonnet-20241022` | ❌ Anthropic 404: model not found |
+| `claude-3-5-haiku-20241022` | ❌ Anthropic 404: model not found |
+| `claude-3-opus-20240229` | ❌ Not tested but likely 404 |
+
+**The problem:** The `ModelPricing` seed data contains model IDs that Anthropic doesn't recognize. Users see these in the model list, try to use them, and get errors.
+
+**What to do:**
+1. Check which Anthropic model IDs are currently valid by calling `GET https://api.anthropic.com/v1/models` with our admin key (or check their docs at https://docs.anthropic.com/en/docs/about-claude/models)
+2. Update the seed data to use only valid, current model IDs
+3. Do the same verification for OpenAI and Google models — I couldn't fully test those because both provider accounts are over quota (429 errors), but models like `gpt-4-turbo`, `gpt-3.5-turbo`, `o1`, and `o1-mini` may also be deprecated or invalid
+4. Consider: should the `/api/v1/models` endpoint only return models that have been verified against the provider, rather than everything in the seed table?
+
+---
+
+## Bug 2: Upstream error messages are truncated
+
+**What I saw:**
+When OpenAI returned a 429, the Allotly error response looked like this:
+
+```json
+{
+  "error": {
+    "code": "provider_error",
+    "message": "OPENAI returned 429: {\n    \"error\": {\n        \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/gu",
+    "suggestion": "The upstream provider returned an error. Check your request or try again later.",
+    "type": "allotly_error"
+  }
+}
+```
+
+The `message` field cuts off mid-URL (`/docs/gu...`). Same thing happened with Google's 429 error.
+
+**What to do:**
+1. Check if there's a string length limit or truncation when capturing the upstream error body
+2. Either capture the full upstream message, or don't include the raw upstream JSON at all — instead parse it and return a clean summary like: `"OPENAI returned 429: You exceeded your current quota, please check your plan and billing details."`
+3. The current half-raw, half-truncated format looks broken to end users
+
+---
+
+## Bug 3 (potential): Model pricing values may be 10x too high
+
+**What I saw:**
+The `/api/v1/models` response shows `gpt-4o-mini` with `input_price_per_m_tok: 150` and `output_price_per_m_tok: 600`. OpenAI's actual pricing for gpt-4o-mini is $0.15 / $0.60 per 1M tokens.
+
+If the pricing unit is "cents per 1M tokens" (as stated in the schema), then the correct values should be `15` and `60`, not `150` and `600`. The current values are 10x too high.
+
+**Why it matters:** If cost calculations use these inflated prices, every request costs the user 10x more budget than it should. In my test, two small Claude Sonnet 4 requests (~25 tokens each) deducted 6 cents from the budget, which seems high for ~50 total tokens.
+
+**What to do:**
+1. Check the pricing unit convention — is `input_price_per_m_tok` in cents, tenths of cents, or something else?
+2. Compare every seeded price against the actual current provider pricing
+3. Verify the cost calculation formula in the proxy: `cost = ceil((tokens / 1_000_000) * price_per_m_tok)` — make sure the units are consistent
+4. If the prices are wrong, update the seed data and recalculate any existing usage records
+
+---
+
+## What's working well
+
+For reference, these all checked out correctly:
+- `allotly_sk_` key authentication
+- Model routing (gpt-* → OpenAI, claude-* → Anthropic, gemini-* → Google)
+- OpenAI ↔ Anthropic request/response translation
+- Redis budget ledger with atomic deduction
+- `X-Allotly-Budget-Remaining`, `X-Allotly-Budget-Total`, `X-Allotly-Expires`, `X-Allotly-Requests-Remaining` headers all present and correct
+- Failed/errored requests do not appear to deduct budget (correct behavior)
+- Error wrapping with `allotly_error` type (structure is good, just fix truncation)
