@@ -341,53 +341,50 @@ export default function VouchersPage() {
       ) : vouchers && vouchers.length > 0 ? (
         <div className="grid sm:grid-cols-2 gap-4">
           {vouchers.map((v: any) => (
-            <div key={v.id} className="relative">
-              <VoucherCard
-                code={v.code}
-                status={v.status}
-                budgetCents={v.budgetCents}
-                label={v.label}
-                expiresAt={v.expiresAt}
-                redemptions={v.currentRedemptions}
-                maxRedemptions={v.maxRedemptions}
-              />
-              {v.status === "ACTIVE" && (
-                <div className="absolute top-3 right-14">
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 px-2 text-xs text-destructive hover:text-destructive"
-                        disabled={revokeMutation.isPending}
-                        data-testid={`button-revoke-voucher-${v.id}`}
+            <VoucherCard
+              key={v.id}
+              code={v.code}
+              status={v.status}
+              budgetCents={v.budgetCents}
+              label={v.label}
+              expiresAt={v.expiresAt}
+              redemptions={v.currentRedemptions}
+              maxRedemptions={v.maxRedemptions}
+              actions={v.status === "ACTIVE" ? (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                      disabled={revokeMutation.isPending}
+                      data-testid={`button-revoke-voucher-${v.id}`}
+                    >
+                      <Ban className="w-3.5 h-3.5 mr-1" />
+                      Revoke
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Revoke Voucher?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Are you sure you want to revoke voucher <strong>{v.code}</strong>? This will prevent any new redemptions. Existing members who already redeemed this voucher will not be affected. This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel data-testid="button-cancel-revoke-voucher">Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={() => revokeMutation.mutate(v.id)}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        data-testid="button-confirm-revoke-voucher"
                       >
-                        <Ban className="w-3.5 h-3.5 mr-1" />
-                        Revoke
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Revoke Voucher?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Are you sure you want to revoke voucher <strong>{v.code}</strong>? This will prevent any new redemptions. Existing members who already redeemed this voucher will not be affected. This action cannot be undone.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel data-testid="button-cancel-revoke-voucher">Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={() => revokeMutation.mutate(v.id)}
-                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                          data-testid="button-confirm-revoke-voucher"
-                        >
-                          Revoke Voucher
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </div>
-              )}
-            </div>
+                        Revoke Voucher
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              ) : undefined}
+            />
           ))}
         </div>
       ) : (
