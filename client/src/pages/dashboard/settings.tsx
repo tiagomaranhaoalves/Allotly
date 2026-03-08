@@ -22,12 +22,12 @@ const PLAN_LIMITS = {
   FREE: {
     maxTeams: 1, maxTeamAdmins: 0, maxMembersPerTeam: 5,
     maxProviders: 3, maxActiveVouchers: 1, retentionDays: 7,
-    pollingInterval: "60 min",
+    usageTracking: "Real-time",
   },
   TEAM: {
     maxTeams: 3, maxTeamAdmins: 10, maxMembersPerTeam: 20,
     maxProviders: 3, maxActiveVouchers: "5/admin", retentionDays: 90,
-    pollingInterval: "15 min",
+    usageTracking: "Real-time",
   },
 };
 
@@ -208,7 +208,7 @@ export default function SettingsPage() {
                 { label: "Providers", value: String(limits.maxProviders), icon: <Database className="w-4 h-4" /> },
                 { label: "Vouchers", value: String(limits.maxActiveVouchers), icon: <CreditCard className="w-4 h-4" /> },
                 { label: "Retention", value: `${limits.retentionDays}d`, icon: <Clock className="w-4 h-4" /> },
-                { label: "Polling", value: limits.pollingInterval, icon: <Clock className="w-4 h-4" /> },
+                { label: "Usage", value: limits.usageTracking, icon: <Clock className="w-4 h-4" /> },
               ].map(item => (
                 <div key={item.label} className="p-3 rounded-lg bg-muted/50" data-testid={`card-plan-limit-${item.label.toLowerCase().replace(/\//g, '-')}`}>
                   <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
@@ -272,7 +272,7 @@ export default function SettingsPage() {
                   <ul className="space-y-1.5 text-sm text-muted-foreground mb-4">
                     <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-500" /> Up to 10 Team Admins, 20 members per team</li>
                     <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-500" /> 3 AI Provider connections</li>
-                    <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-500" /> 15-minute usage polling, 90-day retention</li>
+                    <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-500" /> Real-time usage tracking, 90-day retention</li>
                     <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-500" /> 5 voucher codes per admin, 50 redemptions each</li>
                     <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-500" /> AI usage analytics + audit log</li>
                   </ul>

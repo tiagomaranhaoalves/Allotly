@@ -348,7 +348,7 @@ export default function DocsPage() {
               </div>
               <p className="text-sm text-muted-foreground">
                 Direct-access model. Members receive scoped API keys from their AI provider and call OpenAI, Anthropic,
-                or Google directly. Allotly monitors usage via polling and enforces budgets by revoking keys when limits are hit.
+                or Google through Allotly's unified proxy. Allotly tracks usage in real-time and enforces budgets per request.
               </p>
             </Card>
             <Card className="p-4">
@@ -450,7 +450,7 @@ export default function DocsPage() {
               <tbody className="text-muted-foreground">
                 <tr className="border-t border-border"><td className="px-4 py-2">Access Model</td><td className="px-4 py-2">Direct to provider</td><td className="px-4 py-2">Through Allotly proxy</td></tr>
                 <tr className="border-t border-border"><td className="px-4 py-2">Key Type</td><td className="px-4 py-2">Scoped provider key</td><td className="px-4 py-2">Allotly API key</td></tr>
-                <tr className="border-t border-border"><td className="px-4 py-2">Budget Enforcement</td><td className="px-4 py-2">Polling-based (15-60 min)</td><td className="px-4 py-2">Real-time per-request</td></tr>
+                <tr className="border-t border-border"><td className="px-4 py-2">Budget Enforcement</td><td className="px-4 py-2">Real-time per-request</td><td className="px-4 py-2">Real-time per-request</td></tr>
                 <tr className="border-t border-border"><td className="px-4 py-2">Account Required</td><td className="px-4 py-2">Yes (member account)</td><td className="px-4 py-2">Optional</td></tr>
                 <tr className="border-t border-border"><td className="px-4 py-2">Best For</td><td className="px-4 py-2">Internal teams, developers</td><td className="px-4 py-2">External users, workshops, contractors</td></tr>
                 <tr className="border-t border-border"><td className="px-4 py-2">Latency</td><td className="px-4 py-2">None (direct calls)</td><td className="px-4 py-2">Minimal (proxy hop)</td></tr>
@@ -541,7 +541,7 @@ export default function DocsPage() {
           </ol>
           <p className="text-sm text-muted-foreground mb-4">
             Since Google's API does not support programmatic key scoping, Allotly guides administrators through creating
-            individual keys manually. Budget enforcement relies on usage polling.
+            individual keys manually. Budget enforcement is handled in real-time through the proxy.
           </p>
 
           <SubHeading id="setting-budgets" title="Setting Budgets" />
@@ -788,36 +788,32 @@ export OPENAI_API_BASE="${baseUrl}/api/v1"`}</CodeBlock>
 
           <SectionHeading id="teams-budgets" title="How Teams Budgets Work" />
           <p className="text-muted-foreground leading-relaxed mb-4">
-            For Teams (direct access), budget enforcement is polling-based. Allotly periodically queries each provider's
-            usage API to check member spend against their budget limits.
+            Both Teams and Vouchers route through Allotly's unified proxy, enabling real-time budget enforcement on every API request.
+            Each member gets an <code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">allotly_sk_</code> key that routes through the proxy.
           </p>
           <div className="space-y-3 my-4">
             <div className="flex items-start gap-3 p-3 rounded-md bg-muted/50 text-sm">
               <Activity className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
               <div>
-                <strong className="block mb-0.5">Polling Frequency</strong>
-                <span className="text-muted-foreground">Usage is polled every 15 to 60 minutes depending on how close a member is to their budget limit. As usage approaches the limit, polling frequency increases.</span>
+                <strong className="block mb-0.5">Real-time Tracking</strong>
+                <span className="text-muted-foreground">Every API request is metered in real-time as it passes through the proxy. Usage is tracked per-token with accurate model-specific pricing.</span>
               </div>
             </div>
             <div className="flex items-start gap-3 p-3 rounded-md bg-muted/50 text-sm">
               <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
               <div>
                 <strong className="block mb-0.5">Alert Notifications</strong>
-                <span className="text-muted-foreground">Email alerts are sent at 80% and 90% of budget utilization. Team Admins and the member are both notified.</span>
+                <span className="text-muted-foreground">Email alerts are sent at 90% and 100% of budget utilization. Both the member and Team Admin are notified.</span>
               </div>
             </div>
             <div className="flex items-start gap-3 p-3 rounded-md bg-muted/50 text-sm">
               <Lock className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
               <div>
-                <strong className="block mb-0.5">Key Revocation at 100%</strong>
-                <span className="text-muted-foreground">When spend reaches 100% of budget, the member's scoped API key is automatically revoked at the provider level. The member can no longer make API calls until budget is reset or increased.</span>
+                <strong className="block mb-0.5">Key Deactivation at 100%</strong>
+                <span className="text-muted-foreground">When spend reaches 100% of budget, the member's API key is automatically deactivated. No further requests are allowed until budget is reset or increased.</span>
               </div>
             </div>
           </div>
-          <p className="text-sm text-muted-foreground mb-4">
-            Because enforcement is polling-based, there may be a small window where a member's actual spend slightly
-            exceeds their budget before the next poll detects it. This overshoot is typically minimal (a few cents).
-          </p>
 
           <SubHeading id="voucher-budgets" title="How Voucher Budgets Work" />
           <p className="text-muted-foreground leading-relaxed mb-4">
@@ -846,8 +842,8 @@ export OPENAI_API_BASE="${baseUrl}/api/v1"`}</CodeBlock>
               </thead>
               <tbody className="text-muted-foreground">
                 <tr className="border-t border-border"><td className="px-4 py-2 font-mono">80%</td><td className="px-4 py-2">Warning email to member + admin</td><td className="px-4 py-2">Warning in response headers</td></tr>
-                <tr className="border-t border-border"><td className="px-4 py-2 font-mono">90%</td><td className="px-4 py-2">Urgent email, increased polling</td><td className="px-4 py-2">Token clamping begins</td></tr>
-                <tr className="border-t border-border"><td className="px-4 py-2 font-mono">100%</td><td className="px-4 py-2">Key revoked at provider</td><td className="px-4 py-2">Requests rejected (402)</td></tr>
+                <tr className="border-t border-border"><td className="px-4 py-2 font-mono">90%</td><td className="px-4 py-2">Urgent email to member + admin</td><td className="px-4 py-2">Token clamping begins</td></tr>
+                <tr className="border-t border-border"><td className="px-4 py-2 font-mono">100%</td><td className="px-4 py-2">Key deactivated, requests rejected</td><td className="px-4 py-2">Requests rejected (402)</td></tr>
               </tbody>
             </table>
           </div>
