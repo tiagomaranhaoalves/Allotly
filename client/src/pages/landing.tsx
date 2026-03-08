@@ -648,7 +648,7 @@ function PricingSection() {
       description: "For growing teams with multiple admins",
       features: [
         "1 Root Admin (included)",
-        "$20 per new Team Admin, limited to 10",
+        "$20 per each additional Team Admin, limited to 10 Team Admins, including the Root Admin",
         "Up to 20 members per team",
         "3 AI Provider connections",
         "Real-time usage tracking",
