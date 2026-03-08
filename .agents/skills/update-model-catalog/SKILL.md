@@ -36,7 +36,7 @@ Update `server/lib/seed-models.ts` with the latest models and pricing from all 3
 
 6. **Update `detectProvider()`** in `server/lib/proxy/translate.ts` if new model prefixes are introduced (currently handles: `gpt-*`, `o3*`, `o4*`, `claude-*`, `gemini-*`)
 
-7. **Run tests**: `npx vitest run` — all 191+ tests must pass
+7. **Run tests**: `npx vitest run` — all tests must pass
 
 8. **Restart the app** to trigger the seed, then verify with SQL:
    ```sql
