@@ -726,8 +726,8 @@ function PricingSection() {
           ))}
         </div>
         <FadeIn delay={300}>
-          <p className="text-center text-sm text-muted-foreground mt-8 max-w-xl mx-auto">
-            All plans include $10 Voucher Bundles — pre-loaded AI credit packs you can buy and distribute.
+          <p className="text-center text-base font-medium text-foreground mt-10 max-w-2xl mx-auto" data-testid="text-voucher-bundles-cta">
+            You buy Vouchers from any plan. <Link href="/signup" className="text-indigo-500 hover:text-indigo-400 underline underline-offset-2 transition-colors" data-testid="link-buy-bundle">Click here</Link> to buy $10 Voucher Bundle with pre-loaded AI credit packs you can buy and distribute.
           </p>
         </FadeIn>
       </div>
