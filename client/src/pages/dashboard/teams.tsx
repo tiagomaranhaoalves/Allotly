@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -13,8 +14,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Users, Plus, Shield, DollarSign, Trash2, User, ChevronRight } from "lucide-react";
-import { useState } from "react";
+import { Users, Plus, Shield, DollarSign, Trash2, User, ChevronRight, CreditCard } from "lucide-react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 
 function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string) => void }) {
@@ -143,12 +144,37 @@ function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string) => voi
 export default function TeamsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const [location] = useLocation();
   const [open, setOpen] = useState(false);
+  const [seatDialogOpen, setSeatDialogOpen] = useState(false);
   const [teamName, setTeamName] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
   const [adminName, setAdminName] = useState("");
 
   const { data: teams, isLoading } = useQuery<any[]>({ queryKey: ["/api/teams"] });
+
+  const { data: capacity } = useQuery<{
+    plan: string;
+    currentTeams: number;
+    maxTeams: number;
+    currentAdmins: number;
+    maxAdmins: number;
+    hasSubscription: boolean;
+    canCreateTeam: boolean;
+    needsMoreSeats: boolean;
+  }>({
+    queryKey: ["/api/teams/capacity"],
+    enabled: user?.orgRole === "ROOT_ADMIN",
+  });
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("upgrade") === "success") {
+      toast({ title: "Subscription activated!", description: "You can now create new teams." });
+      queryClient.invalidateQueries({ queryKey: ["/api/teams/capacity"] });
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -156,6 +182,7 @@ export default function TeamsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/teams/capacity"] });
       toast({ title: "Team created — invite sent to admin" });
       setOpen(false);
       setTeamName("");
@@ -167,18 +194,51 @@ export default function TeamsPage() {
     },
   });
 
+  const addSeatMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/stripe/create-checkout", {
+        type: "add_seats",
+        quantity: 1,
+      });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      if (data.redirect && data.url) {
+        window.location.href = data.url;
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["/api/teams/capacity"] });
+        toast({ title: "Seat added!", description: "You can now create a new team." });
+        setSeatDialogOpen(false);
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to add seat", description: err.message, variant: "destructive" });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       await apiRequest("DELETE", `/api/teams/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/teams/capacity"] });
       toast({ title: "Team removed successfully" });
     },
     onError: (err: any) => {
       toast({ title: "Failed to remove team", description: err.message, variant: "destructive" });
     },
   });
+
+  function handleCreateTeamClick() {
+    if (capacity?.needsMoreSeats) {
+      setSeatDialogOpen(true);
+    } else if (capacity && capacity.currentTeams >= capacity.maxTeams) {
+      toast({ title: "Team limit reached", description: `Your plan allows ${capacity.maxTeams} teams.`, variant: "destructive" });
+    } else {
+      setOpen(true);
+    }
+  }
 
   if (user?.orgRole !== "ROOT_ADMIN") {
     return (
@@ -197,43 +257,77 @@ export default function TeamsPage() {
           <h1 className="text-2xl font-bold tracking-tight">Teams</h1>
           <p className="text-muted-foreground mt-1">
             Manage your organization's teams
-            {teams && teams.length > 0 && (
-              <span className="ml-1">· {teams.length} team{teams.length !== 1 ? "s" : ""}</span>
+            {capacity && (
+              <span className="ml-1">· {capacity.currentTeams} of {capacity.maxTeams} teams · {capacity.currentAdmins} of {capacity.maxAdmins} admin seats</span>
             )}
           </p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-create-team">
-              <Plus className="w-4 h-4 mr-1.5" />
-              Create Team
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Create New Team</DialogTitle>
-              <DialogDescription>An invite email will be sent to the team admin to set their password.</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 pt-2">
-              <div className="space-y-2">
-                <Label>Team Name</Label>
-                <Input placeholder="Engineering" value={teamName} onChange={e => setTeamName(e.target.value)} data-testid="input-team-name" />
-              </div>
-              <div className="space-y-2">
-                <Label>Team Admin Email</Label>
-                <Input type="email" placeholder="admin@company.com" value={adminEmail} onChange={e => setAdminEmail(e.target.value)} data-testid="input-admin-email" />
-              </div>
-              <div className="space-y-2">
-                <Label>Team Admin Name</Label>
-                <Input placeholder="Jane Smith" value={adminName} onChange={e => setAdminName(e.target.value)} data-testid="input-admin-name" />
-              </div>
-              <Button className="w-full" onClick={() => createMutation.mutate()} disabled={!teamName || !adminEmail || createMutation.isPending} data-testid="button-submit-team">
-                {createMutation.isPending ? "Creating..." : "Create Team"}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <Button onClick={handleCreateTeamClick} data-testid="button-create-team">
+          <Plus className="w-4 h-4 mr-1.5" />
+          Create Team
+        </Button>
       </div>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create New Team</DialogTitle>
+            <DialogDescription>An invite email will be sent to the team admin to set their password.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label>Team Name</Label>
+              <Input placeholder="Engineering" value={teamName} onChange={e => setTeamName(e.target.value)} data-testid="input-team-name" />
+            </div>
+            <div className="space-y-2">
+              <Label>Team Admin Email</Label>
+              <Input type="email" placeholder="admin@company.com" value={adminEmail} onChange={e => setAdminEmail(e.target.value)} data-testid="input-admin-email" />
+            </div>
+            <div className="space-y-2">
+              <Label>Team Admin Name</Label>
+              <Input placeholder="Jane Smith" value={adminName} onChange={e => setAdminName(e.target.value)} data-testid="input-admin-name" />
+            </div>
+            <Button className="w-full" onClick={() => createMutation.mutate()} disabled={!teamName || !adminEmail || createMutation.isPending} data-testid="button-submit-team">
+              {createMutation.isPending ? "Creating..." : "Create Team"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={seatDialogOpen} onOpenChange={setSeatDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Team Admin Seat</DialogTitle>
+            <DialogDescription>Each new team requires a Team Admin seat.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="p-4 rounded-lg border bg-muted/30 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Current seats</span>
+                <Badge variant="secondary" data-testid="text-current-seats">{capacity?.currentAdmins || 0} of {capacity?.maxAdmins || 0}</Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Cost per seat</span>
+                <span className="text-sm font-medium">$20/mo</span>
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {capacity?.hasSubscription
+                ? "Adding a seat will be prorated to your current billing cycle."
+                : "You'll be taken to checkout to set up your Team subscription."}
+            </p>
+            <Button
+              className="w-full gap-2"
+              onClick={() => addSeatMutation.mutate()}
+              disabled={addSeatMutation.isPending}
+              data-testid="button-buy-seat"
+            >
+              <CreditCard className="w-4 h-4" />
+              {addSeatMutation.isPending ? "Processing..." : capacity?.hasSubscription ? "Add 1 Seat (+$20/mo)" : "Subscribe & Add Seat ($20/mo)"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {isLoading ? (
         <div className="space-y-4">{[1, 2].map(i => <Skeleton key={i} className="h-28" />)}</div>
@@ -248,7 +342,7 @@ export default function TeamsPage() {
           icon={<Users className="w-10 h-10 text-muted-foreground" />}
           title="No teams yet"
           description="Create your first team to start managing members and budgets"
-          action={{ label: "Create Team", onClick: () => setOpen(true) }}
+          action={{ label: "Create Team", onClick: handleCreateTeamClick }}
         />
       )}
     </div>

@@ -626,6 +626,33 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/teams/capacity", requireRole("ROOT_ADMIN"), async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const org = await storage.getOrganization(user.orgId);
+      if (!org) return res.status(404).json({ message: "Organization not found" });
+
+      const teams = await storage.getTeamsByOrg(user.orgId);
+      const allUsers = await storage.getUsersByOrg(user.orgId);
+      const activeAdmins = allUsers.filter(u => u.orgRole === "TEAM_ADMIN" && u.status === "ACTIVE");
+      const maxAdmins = org.maxTeamAdmins || (org.plan === "TEAM" ? PLAN_LIMITS.TEAM.maxTeamAdmins : 0);
+      const maxTeams = org.plan === "TEAM" ? PLAN_LIMITS.TEAM.maxTeams : org.plan === "FREE" ? PLAN_LIMITS.FREE.maxTeams : PLAN_LIMITS.ENTERPRISE.maxTeams;
+
+      res.json({
+        plan: org.plan,
+        currentTeams: teams.length,
+        maxTeams,
+        currentAdmins: activeAdmins.length,
+        maxAdmins,
+        hasSubscription: !!org.stripeSubId,
+        canCreateTeam: teams.length < maxTeams && activeAdmins.length < maxAdmins,
+        needsMoreSeats: activeAdmins.length >= maxAdmins,
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   app.post("/api/teams", requireRole("ROOT_ADMIN"), async (req, res) => {
     try {
       const user = (req as any).user;
@@ -1825,11 +1852,31 @@ export async function registerRoutes(
 
         res.json({ url: session.url });
       } else if (type === "add_seats") {
-        if (org.plan !== "TEAM" || !org.stripeSubId) {
-          return res.status(400).json({ message: "Must be on Team plan to add seats" });
+        if (!org.stripeSubId) {
+          const products = await stripe.products.search({ query: "metadata['plan']:'TEAM'" });
+          if (!products.data.length) {
+            return res.status(404).json({ message: "Team plan product not found in Stripe. Run seed-stripe-products first." });
+          }
+          const prices = await stripe.prices.list({ product: products.data[0].id, active: true });
+          if (!prices.data.length) {
+            return res.status(404).json({ message: "Team plan price not found" });
+          }
+
+          const seatCount = quantity || 1;
+          const session = await stripeService.createCheckoutSession({
+            customerId,
+            priceId: prices.data[0].id,
+            mode: 'subscription',
+            successUrl: `${baseUrl}/dashboard/teams?upgrade=success`,
+            cancelUrl: `${baseUrl}/dashboard/teams?upgrade=cancelled`,
+            metadata: { orgId: org.id, type: 'team_upgrade', userId: user.id },
+            quantity: seatCount,
+            adjustableQuantity: true,
+          });
+
+          return res.json({ url: session.url, redirect: true });
         }
 
-        const stripe = await getUncachableStripeClient();
         const subscription = await stripe.subscriptions.retrieve(org.stripeSubId);
         const currentQuantity = subscription.items?.data?.[0]?.quantity || 1;
         const additionalSeats = quantity || 1;
