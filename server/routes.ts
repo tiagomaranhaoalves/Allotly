@@ -2463,6 +2463,59 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/admin/seed-stripe-products", requireAdmin, async (_req, res) => {
+    try {
+      const stripe = await getUncachableStripeClient();
+
+      const existingTeam = await stripe.products.search({ query: "metadata['plan']:'TEAM'" });
+      const existingBundle = await stripe.products.search({ query: "metadata['type']:'bundle'" });
+
+      const results: any = {};
+
+      if (existingTeam.data.length > 0) {
+        const prices = await stripe.prices.list({ product: existingTeam.data[0].id, active: true });
+        results.teamPlan = { product: existingTeam.data[0].id, price: prices.data[0]?.id, status: "already_exists" };
+      } else {
+        const teamProduct = await stripe.products.create({
+          name: 'Allotly Team Plan',
+          description: 'Team plan for Allotly - AI Spend Control Plane. Includes up to 10 Team Admins, 20 members per team, 3 AI Provider connections, and more.',
+          metadata: { type: 'subscription', plan: 'TEAM' },
+        });
+        const teamPrice = await stripe.prices.create({
+          product: teamProduct.id,
+          unit_amount: 2000,
+          currency: 'usd',
+          recurring: { interval: 'month' },
+          metadata: { plan: 'TEAM' },
+        });
+        results.teamPlan = { product: teamProduct.id, price: teamPrice.id, status: "created" };
+      }
+
+      if (existingBundle.data.length > 0) {
+        const prices = await stripe.prices.list({ product: existingBundle.data[0].id, active: true });
+        results.voucherBundle = { product: existingBundle.data[0].id, price: prices.data[0]?.id, status: "already_exists" };
+      } else {
+        const bundleProduct = await stripe.products.create({
+          name: 'Allotly Voucher Bundle',
+          description: '$10 Voucher Bundle - 50 voucher redemptions pooled across up to 10 codes, 25,000 proxy requests, $50 max budget per recipient, 30-day validity.',
+          metadata: { type: 'bundle', redemptions: '50', proxyRequests: '25000', maxBudgetPerRecipientCents: '5000', maxCodesPerBundle: '10', validityDays: '30' },
+        });
+        const bundlePrice = await stripe.prices.create({
+          product: bundleProduct.id,
+          unit_amount: 1000,
+          currency: 'usd',
+          metadata: { type: 'bundle' },
+        });
+        results.voucherBundle = { product: bundleProduct.id, price: bundlePrice.id, status: "created" };
+      }
+
+      res.json({ message: "Stripe products seeded", ...results });
+    } catch (e: any) {
+      console.error("Stripe product seed error:", e);
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   app.post("/api/admin/model-sync", requireAdmin, async (_req, res) => {
     try {
       await runModelSync();
