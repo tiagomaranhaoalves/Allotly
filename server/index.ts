@@ -7,6 +7,7 @@ import { runMigrations } from 'stripe-replit-sync';
 import { getStripeSync } from './stripeClient';
 import { WebhookHandlers } from './webhookHandlers';
 import { startJobScheduler } from './lib/jobs/scheduler';
+import { seedModelPricing } from './lib/seed-models';
 
 const app = express();
 app.set("trust proxy", 1);
@@ -138,6 +139,7 @@ app.use((req, res, next) => {
 
 (async () => {
   await initStripe();
+  await seedModelPricing();
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
