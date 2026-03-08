@@ -160,12 +160,13 @@ async function fetchGoogleModels(apiKey: string): Promise<DiscoveredModel[]> {
 export async function runModelSync(): Promise<void> {
   const orgs = await storage.getAllOrganizations();
   const discoveredByProvider: Record<string, DiscoveredModel[]> = {};
+  const triedProviders = new Set<string>();
+  const availableKeys: string[] = [];
 
   for (const org of orgs) {
     const connections = await storage.getProviderConnectionsByOrg(org.id);
     for (const conn of connections) {
       if (conn.status !== "ACTIVE") continue;
-      if (discoveredByProvider[conn.provider]) continue;
 
       try {
         const apiKey = decryptProviderKey(
@@ -174,23 +175,48 @@ export async function runModelSync(): Promise<void> {
           conn.adminApiKeyTag
         );
 
-        let models: DiscoveredModel[] = [];
-        if (conn.provider === "OPENAI") models = await fetchOpenAIModels(apiKey);
-        else if (conn.provider === "ANTHROPIC") models = await fetchAnthropicModels(apiKey);
-        else if (conn.provider === "GOOGLE") models = await fetchGoogleModels(apiKey);
+        if (!triedProviders.has(conn.provider)) {
+          triedProviders.add(conn.provider);
+          let models: DiscoveredModel[] = [];
+          if (conn.provider === "OPENAI") models = await fetchOpenAIModels(apiKey);
+          else if (conn.provider === "ANTHROPIC") models = await fetchAnthropicModels(apiKey);
+          else if (conn.provider === "GOOGLE") models = await fetchGoogleModels(apiKey);
 
-        console.log(`[model-sync] ${conn.provider}: discovered ${models.length} chat models`);
-        if (models.length > 0) {
-          discoveredByProvider[conn.provider] = models;
+          console.log(`[model-sync] ${conn.provider}: discovered ${models.length} chat models`);
+          if (models.length > 0) {
+            discoveredByProvider[conn.provider] = models;
+          }
+        }
+
+        if (!availableKeys.includes(apiKey)) {
+          availableKeys.push(apiKey);
         }
       } catch (e: any) {
-        console.error(`[model-sync] Error fetching models for ${conn.provider}:`, e.message);
+        console.error(`[model-sync] Error with ${conn.provider} connection:`, e.message);
+      }
+    }
+  }
+
+  const allProviders: Array<{ name: "OPENAI" | "ANTHROPIC" | "GOOGLE"; fetch: (k: string) => Promise<DiscoveredModel[]> }> = [
+    { name: "OPENAI", fetch: fetchOpenAIModels },
+    { name: "ANTHROPIC", fetch: fetchAnthropicModels },
+    { name: "GOOGLE", fetch: fetchGoogleModels },
+  ];
+
+  for (const { name, fetch } of allProviders) {
+    if (discoveredByProvider[name]) continue;
+    for (const key of availableKeys) {
+      const models = await fetch(key);
+      if (models.length > 0) {
+        console.log(`[model-sync] ${name}: discovered ${models.length} chat models (cross-key)`);
+        discoveredByProvider[name] = models;
+        break;
       }
     }
   }
 
   if (Object.keys(discoveredByProvider).length === 0) {
-    console.log("[model-sync] No provider connections found or no models discovered");
+    console.log("[model-sync] No models discovered from any provider");
     return;
   }
 
