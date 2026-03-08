@@ -7,6 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Mail, Headphones, Building2, Send, CheckCircle2 } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 
 const contacts = [
   {
@@ -33,10 +35,27 @@ export default function ContactPage() {
   const [submitted, setSubmitted] = useState(false);
   const { toast } = useToast();
 
+  const contactMutation = useMutation({
+    mutationFn: async (data: { name: string; email: string; message: string }) => {
+      const res = await apiRequest("POST", "/api/contact", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      setSubmitted(true);
+      toast({ title: "Message sent", description: "Thanks for reaching out. We'll be in touch soon." });
+    },
+    onError: () => {
+      toast({ title: "Failed to send", description: "Something went wrong. Please try again.", variant: "destructive" });
+    },
+  });
+
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setSubmitted(true);
-    toast({ title: "Message sent", description: "Thanks for reaching out. We'll be in touch soon." });
+    const form = e.currentTarget;
+    const name = (form.elements.namedItem("name") as HTMLInputElement).value;
+    const email = (form.elements.namedItem("email") as HTMLInputElement).value;
+    const message = (form.elements.namedItem("message") as HTMLTextAreaElement).value;
+    contactMutation.mutate({ name, email, message });
   }
 
   return (
@@ -106,9 +125,9 @@ export default function ContactPage() {
                       <Label htmlFor="message">Message</Label>
                       <Textarea id="message" placeholder="How can we help?" className="resize-none min-h-[120px]" required data-testid="input-message" />
                     </div>
-                    <Button type="submit" className="w-full gap-2 bg-indigo-600 border-indigo-700 text-white" data-testid="button-send-message">
+                    <Button type="submit" className="w-full gap-2 bg-indigo-600 border-indigo-700 text-white" data-testid="button-send-message" disabled={contactMutation.isPending}>
                       <Send className="w-4 h-4" />
-                      Send Message
+                      {contactMutation.isPending ? "Sending..." : "Send Message"}
                     </Button>
                   </form>
                 )}

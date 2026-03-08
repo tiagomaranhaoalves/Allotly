@@ -67,6 +67,27 @@ export async function registerRoutes(
 ): Promise<Server> {
   setupAuth(app);
 
+  app.post("/api/contact", async (req, res) => {
+    try {
+      const { name, email, message } = req.body;
+      if (!name || !email || !message) {
+        return res.status(400).json({ message: "All fields are required" });
+      }
+      const html = `<div style="font-family:sans-serif;max-width:560px">
+        <h2 style="color:#6366F1">New Contact Form Submission</h2>
+        <p><strong>Name:</strong> ${name}</p>
+        <p><strong>Email:</strong> <a href="mailto:${email}">${email}</a></p>
+        <p><strong>Message:</strong></p>
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;white-space:pre-wrap">${message}</div>
+      </div>`;
+      await sendEmail("tiagomaranhaoalves14nov@gmail.com", `[Allotly Contact] from ${name}`, html);
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("[contact] Error:", e.message);
+      res.status(500).json({ message: "Failed to send message" });
+    }
+  });
+
   app.post("/api/auth/signup", async (req, res) => {
     try {
       const data = signupSchema.parse(req.body);

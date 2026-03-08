@@ -50,14 +50,30 @@ async function sendEmail(to: string, subject: string, html: string): Promise<voi
 
   try {
     const resend = new Resend(credentials.apiKey);
+    let fromEmail = credentials.fromEmail;
     const { error } = await resend.emails.send({
-      from: credentials.fromEmail,
+      from: fromEmail,
       to,
       subject,
       html,
     });
     if (error) {
-      console.error(`[email] Failed to send to ${to}: ${JSON.stringify(error)}`);
+      if (error.message?.includes("domain is not verified") && fromEmail !== DEFAULT_FROM_EMAIL) {
+        console.log(`[email] Domain not verified, retrying with default sender`);
+        const { error: retryError } = await resend.emails.send({
+          from: DEFAULT_FROM_EMAIL,
+          to,
+          subject,
+          html,
+        });
+        if (retryError) {
+          console.error(`[email] Retry failed for ${to}: ${JSON.stringify(retryError)}`);
+        } else {
+          console.log(`[email] Sent to ${to} (via default sender): ${subject}`);
+        }
+      } else {
+        console.error(`[email] Failed to send to ${to}: ${JSON.stringify(error)}`);
+      }
     } else {
       console.log(`[email] Sent to ${to}: ${subject}`);
     }
