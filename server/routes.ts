@@ -2650,6 +2650,17 @@ export async function registerRoutes(
     }
   });
 
+  app.use("/api/v1", (req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+    res.setHeader("Access-Control-Expose-Headers", "X-Allotly-Budget-Remaining, X-Allotly-Budget-Total, X-Allotly-Expires, X-Allotly-Requests-Remaining");
+    if (req.method === "OPTIONS") {
+      return res.sendStatus(204);
+    }
+    next();
+  });
+
   app.post("/api/v1/chat/completions", handleChatCompletion);
   app.get("/api/v1/models", handleListModels);
   app.get("/api/v1/health", (_req, res) => {
