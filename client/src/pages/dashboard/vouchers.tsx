@@ -17,7 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Ticket, Plus, Copy, Check, Info, AlertTriangle, Link2, Mail, Send, Ban } from "lucide-react";
+import { Ticket, Plus, Copy, Check, Info, AlertTriangle, Link2, Mail, Send, Ban, ExternalLink } from "lucide-react";
 import { useState } from "react";
 
 export default function VouchersPage() {
@@ -218,6 +218,15 @@ export default function VouchersPage() {
                     Send via Email
                   </Button>
                 )}
+
+                <Button
+                  className="w-full"
+                  onClick={() => window.open(redeemLink, "_blank")}
+                  data-testid="button-activate-now"
+                >
+                  <ExternalLink className="w-4 h-4 mr-1.5" />
+                  Activate Code Now
+                </Button>
 
                 <Button variant="secondary" className="w-full" onClick={() => handleOpenChange(false)} data-testid="button-done">
                   Done
