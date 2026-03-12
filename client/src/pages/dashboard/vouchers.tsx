@@ -191,7 +191,7 @@ export default function VouchersPage() {
                   </Button>
                   <Button variant="outline" onClick={copyLink} data-testid="button-copy-redeem-link">
                     {copiedLink ? <Check className="w-4 h-4 mr-1.5" /> : <Link2 className="w-4 h-4 mr-1.5" />}
-                    {copiedLink ? "Copied!" : "Copy Link"}
+                    {copiedLink ? "Copied!" : "Copy Activation Link"}
                   </Button>
                 </div>
 
