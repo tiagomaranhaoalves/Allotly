@@ -46,8 +46,14 @@ const chatRequestSchema = z.object({
   top_p: z.number().optional(),
 }).passthrough();
 
-function sendProxyError(res: Response, error: ProxyError) {
+function sendProxyError(res: Response, error: ProxyError, budgetContext?: { remaining: number; total: number; expires: string; requestsRemaining: number }) {
   if (res.headersSent) return;
+  if (budgetContext) {
+    res.setHeader("X-Allotly-Budget-Remaining", String(budgetContext.remaining));
+    res.setHeader("X-Allotly-Budget-Total", String(budgetContext.total));
+    res.setHeader("X-Allotly-Expires", budgetContext.expires);
+    res.setHeader("X-Allotly-Requests-Remaining", String(budgetContext.requestsRemaining));
+  }
   res.status(error.status).json({
     error: {
       code: error.code,
@@ -95,12 +101,54 @@ async function getModelPricing(provider: string, model: string): Promise<ModelPr
   return pricing;
 }
 
+function formatZodError(zodError: z.ZodError): string {
+  const issues = zodError.issues;
+  if (issues.length === 0) return "Invalid request";
+  const parts = issues.map(issue => {
+    const field = issue.path.join(".");
+    if (issue.code === "invalid_type" && issue.received === "undefined") {
+      return `Missing required field: ${field}`;
+    }
+    if (issue.code === "invalid_type") {
+      return `Invalid type for '${field}': expected ${issue.expected}, got ${issue.received}`;
+    }
+    if (issue.code === "invalid_enum_value") {
+      return `Invalid value for '${field}': must be one of [${(issue as any).options?.join(", ") || ""}]`;
+    }
+    return `${field}: ${issue.message}`;
+  });
+  return parts.join("; ");
+}
+
+function getProviderErrorSuggestion(statusCode: number, errorMessage: string, provider: string): string {
+  const lower = errorMessage.toLowerCase();
+  if (lower.includes("deprecated") || lower.includes("no longer available") || lower.includes("decommissioned")) {
+    const alternatives: Record<string, string> = {
+      "OPENAI": "gpt-4o-mini or gpt-4o",
+      "ANTHROPIC": "claude-sonnet-4 or claude-haiku-3.5",
+      "GOOGLE": "gemini-2.5-flash or gemini-2.5-pro",
+    };
+    return `This model has been deprecated by the provider. Try ${alternatives[provider] || "a newer model"} instead.`;
+  }
+  if (statusCode === 429 || lower.includes("rate limit") || lower.includes("quota")) {
+    return "The provider is rate-limiting requests. Wait a moment and try again.";
+  }
+  if (statusCode === 401 || statusCode === 403 || lower.includes("unauthorized") || lower.includes("forbidden")) {
+    return "There may be an issue with the provider API key. Contact your admin.";
+  }
+  if (statusCode === 404 || lower.includes("not found")) {
+    return "This model may not exist or is no longer available. Check the /models endpoint for available models.";
+  }
+  return "The upstream provider returned an error. Check your request or try again later.";
+}
+
 export async function handleChatCompletion(req: Request, res: Response) {
   const startTime = Date.now();
   const requestId = crypto.randomUUID();
   let membershipId: string | null = null;
   let reservedCostCents = 0;
   let concurrencyAcquired = false;
+  let budgetCtx: { remaining: number; total: number; expires: string; requestsRemaining: number } | undefined;
 
   try {
     const authResult = await authenticateKey(req.headers.authorization);
@@ -123,79 +171,106 @@ export async function handleChatCompletion(req: Request, res: Response) {
 
     const tier = getRateLimitTier(org.plan, membership.accessType);
 
+    const periodEnd = new Date(membership.periodEnd);
+    const rlKey = REDIS_KEYS.ratelimit(membershipId);
+
+    const buildBudgetCtx = async (remaining?: number) => {
+      const currentRequests = await redisGet(rlKey);
+      const requestsRemaining = Math.max(0, tier.rpm - (parseInt(currentRequests || "0")));
+      const budgetKey = REDIS_KEYS.budget(membershipId!);
+      const budgetRemaining = remaining ?? parseInt(await redisGet(budgetKey) || String(membership.monthlyBudgetCents - membership.currentPeriodSpendCents));
+      return {
+        remaining: budgetRemaining,
+        total: membership.monthlyBudgetCents,
+        expires: periodEnd.toISOString(),
+        requestsRemaining,
+      };
+    };
+
     const concError = await checkConcurrency(membershipId, requestId, tier.maxConcurrent);
-    if (concError) return sendProxyError(res, concError);
+    if (concError) {
+      budgetCtx = await buildBudgetCtx();
+      return sendProxyError(res, concError, budgetCtx);
+    }
     concurrencyAcquired = true;
 
     const rlError = await checkRateLimit(membershipId, tier.rpm);
     if (rlError) {
       await releaseConcurrency(membershipId, requestId);
-      return sendProxyError(res, rlError);
+      budgetCtx = await buildBudgetCtx();
+      return sendProxyError(res, rlError, budgetCtx);
     }
 
     const bundleError = await checkBundleRequestPool(membership);
     if (bundleError) {
       await releaseConcurrency(membershipId, requestId);
-      return sendProxyError(res, bundleError);
+      budgetCtx = await buildBudgetCtx();
+      return sendProxyError(res, bundleError, budgetCtx);
     }
 
     const parseResult = chatRequestSchema.safeParse(req.body);
     if (!parseResult.success) {
       await releaseConcurrency(membershipId, requestId);
-      return sendProxyError(res, createProxyError(400, "invalid_request", `Invalid request: ${parseResult.error.message}`));
+      budgetCtx = await buildBudgetCtx();
+      return sendProxyError(res, createProxyError(400, "invalid_request", formatZodError(parseResult.error)), budgetCtx);
     }
 
     const parsed = parseResult.data;
     const provider = detectProvider(parsed.model);
     if (!provider) {
       await releaseConcurrency(membershipId, requestId);
+      budgetCtx = await buildBudgetCtx();
       return sendProxyError(res, createProxyError(400, "unsupported_model",
         `Model "${parsed.model}" is not supported`,
         "Supported prefixes: gpt-*, o3*, o4* (OpenAI), claude-* (Anthropic), gemini-* (Google)"
-      ));
+      ), budgetCtx);
     }
 
     const allowedProviders = membership.allowedProviders as string[] | null;
     if (allowedProviders && allowedProviders.length > 0 && !allowedProviders.includes(provider)) {
       await releaseConcurrency(membershipId, requestId);
+      budgetCtx = await buildBudgetCtx();
       return sendProxyError(res, createProxyError(403, "provider_not_allowed",
         `Provider ${provider} is not allowed for your account`,
         `Allowed providers: ${allowedProviders.join(", ")}`
-      ));
+      ), budgetCtx);
     }
 
     const allowedModels = membership.allowedModels as string[] | null;
     if (allowedModels && allowedModels.length > 0 && !allowedModels.includes(parsed.model)) {
       await releaseConcurrency(membershipId, requestId);
+      budgetCtx = await buildBudgetCtx();
       return sendProxyError(res, createProxyError(403, "model_not_allowed",
         `Model "${parsed.model}" is not allowed for your account`,
         `Allowed models: ${allowedModels.join(", ")}`
-      ));
+      ), budgetCtx);
     }
 
     const connections = await storage.getProviderConnectionsByOrg(team.orgId);
     const connection = connections.find(c => c.provider === provider && c.status === "ACTIVE");
     if (!connection) {
       await releaseConcurrency(membershipId, requestId);
+      budgetCtx = await buildBudgetCtx();
       const existsButInactive = connections.some(c => c.provider === provider);
       if (existsButInactive) {
         return sendProxyError(res, createProxyError(503, "provider_unavailable",
           "The provider for this model is not currently available. Contact your admin."
-        ));
+        ), budgetCtx);
       }
       return sendProxyError(res, createProxyError(502, "provider_not_configured",
         `Provider ${provider} is not configured for this organization`,
         "Contact your admin to add this provider."
-      ));
+      ), budgetCtx);
     }
 
     const pricing = await getModelPricing(provider, parsed.model);
     if (!pricing) {
       await releaseConcurrency(membershipId, requestId);
+      budgetCtx = await buildBudgetCtx();
       return sendProxyError(res, createProxyError(400, "model_not_found",
         `Pricing for model "${parsed.model}" not found`,
         "This model may not be supported yet."
-      ));
+      ), budgetCtx);
     }
 
     const inputTokens = estimateInputTokens(parsed.messages);
@@ -213,7 +288,8 @@ export async function handleChatCompletion(req: Request, res: Response) {
     const budgetResult = await reserveBudget(membershipId, totalEstimatedCostCents);
     if ("status" in budgetResult) {
       await releaseConcurrency(membershipId, requestId);
-      return sendProxyError(res, budgetResult);
+      budgetCtx = await buildBudgetCtx();
+      return sendProxyError(res, budgetResult, budgetCtx);
     }
 
     const adminApiKey = decryptProviderKey(
@@ -237,10 +313,11 @@ export async function handleChatCompletion(req: Request, res: Response) {
       reservedCostCents = 0;
       await releaseConcurrency(membershipId, requestId);
       concurrencyAcquired = false;
+      budgetCtx = await buildBudgetCtx();
       return sendProxyError(res, createProxyError(502, "provider_error",
         `Failed to reach ${provider}: ${fetchError.message}`,
         "The provider may be temporarily unavailable. Try again later."
-      ));
+      ), budgetCtx);
     }
 
     if (!providerResponse.ok) {
@@ -260,12 +337,9 @@ export async function handleChatCompletion(req: Request, res: Response) {
         if (trimmed) cleanMessage += `: ${trimmed}`;
       }
 
-      return sendProxyError(res, createProxyError(
-        502,
-        "provider_error",
-        cleanMessage,
-        "The upstream provider returned an error. Check your request or try again later."
-      ));
+      const suggestion = getProviderErrorSuggestion(providerResponse.status, cleanMessage, provider);
+      budgetCtx = await buildBudgetCtx();
+      return sendProxyError(res, createProxyError(502, "provider_error", cleanMessage, suggestion), budgetCtx);
     }
 
     if (clamped) {
@@ -273,11 +347,9 @@ export async function handleChatCompletion(req: Request, res: Response) {
     }
     res.setHeader("X-Allotly-Budget-Remaining", String(budgetResult.remaining));
     res.setHeader("X-Allotly-Budget-Total", String(membership.monthlyBudgetCents));
-    const rlKey = REDIS_KEYS.ratelimit(membershipId);
     const currentRequests = await redisGet(rlKey);
     const requestsRemaining = Math.max(0, tier.rpm - (parseInt(currentRequests || "0")));
     res.setHeader("X-Allotly-Requests-Remaining", String(requestsRemaining));
-    const periodEnd = new Date(membership.periodEnd);
     res.setHeader("X-Allotly-Expires", periodEnd.toISOString());
 
     let actualInputTokens = inputTokens;
@@ -293,6 +365,26 @@ export async function handleChatCompletion(req: Request, res: Response) {
       } else {
         actualOutputTokens = Math.ceil(streamResult.fullContent.length / 4);
       }
+
+      if (actualOutputTokens === 0 && streamResult.fullContent.trim() === "") {
+        await refundBudget(membershipId, reservedCostCents);
+        reservedCostCents = 0;
+        await releaseConcurrency(membershipId, requestId);
+        concurrencyAcquired = false;
+        if (!res.writableEnded) {
+          const errorEvent = JSON.stringify({
+            error: {
+              code: "empty_response",
+              message: "The model returned an empty response. No budget was charged. Try again or use a different model.",
+              type: "allotly_error",
+            },
+          });
+          res.write(`data: ${errorEvent}\n\n`);
+          res.write("data: [DONE]\n\n");
+          res.end();
+        }
+        return;
+      }
     } else {
       const responseBody = await readNonStreamingResponse(providerResponse);
       const openaiResponse = translateResponseToOpenAI(provider, responseBody, parsed.model);
@@ -300,6 +392,18 @@ export async function handleChatCompletion(req: Request, res: Response) {
       if (openaiResponse.usage) {
         actualInputTokens = openaiResponse.usage.prompt_tokens;
         actualOutputTokens = openaiResponse.usage.completion_tokens;
+      }
+
+      const content = openaiResponse.choices?.[0]?.message?.content;
+      if (actualOutputTokens === 0 && (!content || content.trim() === "")) {
+        await refundBudget(membershipId, reservedCostCents);
+        reservedCostCents = 0;
+        await releaseConcurrency(membershipId, requestId);
+        concurrencyAcquired = false;
+        budgetCtx = await buildBudgetCtx();
+        return sendProxyError(res, createProxyError(502, "empty_response",
+          "The model returned an empty response. No budget was charged. Try again or use a different model."
+        ), budgetCtx);
       }
 
       res.json(openaiResponse);
@@ -429,7 +533,29 @@ export async function handleChatCompletion(req: Request, res: Response) {
     }
 
     if (!res.headersSent) {
-      sendProxyError(res, createProxyError(500, "internal_error", "An internal error occurred"));
+      if (budgetCtx) {
+        sendProxyError(res, createProxyError(500, "internal_error", "An internal error occurred"), budgetCtx);
+      } else if (membershipId) {
+        try {
+          const m = await storage.getMembership(membershipId);
+          if (m) {
+            const budgetKey = REDIS_KEYS.budget(membershipId);
+            const budgetRemaining = parseInt(await redisGet(budgetKey) || String(m.monthlyBudgetCents - m.currentPeriodSpendCents));
+            sendProxyError(res, createProxyError(500, "internal_error", "An internal error occurred"), {
+              remaining: budgetRemaining,
+              total: m.monthlyBudgetCents,
+              expires: new Date(m.periodEnd).toISOString(),
+              requestsRemaining: 0,
+            });
+          } else {
+            sendProxyError(res, createProxyError(500, "internal_error", "An internal error occurred"));
+          }
+        } catch {
+          sendProxyError(res, createProxyError(500, "internal_error", "An internal error occurred"));
+        }
+      } else {
+        sendProxyError(res, createProxyError(500, "internal_error", "An internal error occurred"));
+      }
     }
   }
 }

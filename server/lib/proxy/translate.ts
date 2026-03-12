@@ -172,6 +172,8 @@ export function translateResponseToOpenAI(
   if (provider === "GOOGLE") {
     const candidate = body.candidates?.[0];
     const text = candidate?.content?.parts?.map((p: any) => p.text || "").join("") || "";
+    const promptTokens = body.usageMetadata?.promptTokenCount || 0;
+    const completionTokens = body.usageMetadata?.candidatesTokenCount || 0;
     return {
       id: `chatcmpl-${Date.now()}`,
       object: "chat.completion",
@@ -183,9 +185,9 @@ export function translateResponseToOpenAI(
         finish_reason: candidate?.finishReason === "STOP" ? "stop" : (candidate?.finishReason?.toLowerCase() || "stop"),
       }],
       usage: {
-        prompt_tokens: body.usageMetadata?.promptTokenCount || 0,
-        completion_tokens: body.usageMetadata?.candidatesTokenCount || 0,
-        total_tokens: body.usageMetadata?.totalTokenCount || 0,
+        prompt_tokens: promptTokens,
+        completion_tokens: completionTokens,
+        total_tokens: promptTokens + completionTokens,
       },
     };
   }
@@ -269,10 +271,12 @@ export function translateStreamChunkToOpenAI(
         choices: [{ index: 0, delta: { content: text }, finish_reason: done ? "stop" : null }],
       };
 
+      const gPrompt = parsed.usageMetadata?.promptTokenCount || 0;
+      const gCompletion = parsed.usageMetadata?.candidatesTokenCount || 0;
       const usage = parsed.usageMetadata ? {
-        prompt_tokens: parsed.usageMetadata.promptTokenCount || 0,
-        completion_tokens: parsed.usageMetadata.candidatesTokenCount || 0,
-        total_tokens: parsed.usageMetadata.totalTokenCount || 0,
+        prompt_tokens: gPrompt,
+        completion_tokens: gCompletion,
+        total_tokens: gPrompt + gCompletion,
       } : undefined;
 
       return { sseData: `data: ${JSON.stringify(sseChunk)}\n\n`, done, usage };
