@@ -419,7 +419,7 @@ print(response.choices[0].message.content)`}
             <Card className="p-5 space-y-3">
               <h3 className="font-semibold">Where to Use Your Key</h3>
               <p className="text-xs text-muted-foreground">
-                Your Allotly key works anywhere that accepts a custom OpenAI-compatible endpoint. Just set the base URL and API key.
+                Your Allotly key works anywhere that accepts a custom Provider-compatible endpoint. Just set the base URL and API key.
               </p>
               <div className="grid grid-cols-2 gap-2">
                 <div className="p-3 rounded-lg bg-muted/50 space-y-1" data-testid="use-case-editors">
