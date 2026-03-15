@@ -115,7 +115,9 @@ function Header() {
         </div>
       </div>
       <div
-        className={`md:hidden border-t border-border/50 bg-background/95 backdrop-blur-xl ${mobileOpen ? "block" : "hidden"}`}
+        className={`md:hidden border-t border-border/50 bg-background/95 backdrop-blur-xl transition-all duration-300 ease-in-out overflow-hidden ${mobileOpen ? "max-h-80 opacity-100" : "max-h-0 opacity-0 border-t-transparent pointer-events-none"}`}
+        aria-hidden={!mobileOpen}
+        inert={!mobileOpen ? true : undefined}
       >
         <div className="px-4 py-4 space-y-3">
           <a href="#how-it-works" onClick={(e) => smoothScroll(e, "how-it-works")} className="block text-sm font-medium text-muted-foreground" data-testid="link-how-it-works-mobile">How It Works</a>
@@ -157,7 +159,7 @@ function Hero() {
                   Great teams use many models.{" "}
                   <span className="text-muted-foreground">Smart teams</span>
                   <br />
-                  <span className="bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 bg-clip-text text-transparent">
+                  <span className="bg-gradient-to-r from-indigo-600 via-cyan-500 to-indigo-600 bg-clip-text text-transparent animate-gradient-text">
                     run one budget.
                   </span>
                 </h1>
@@ -498,7 +500,7 @@ function HowItWorks() {
               </button>
               <button
                 onClick={() => setActiveTab("voucher")}
-                className={`px-6 py-2.5 rounded-lg text-sm font-semibold transition-all ${activeTab === "voucher" ? "bg-indigo-500 text-white shadow-sm" : "border border-border text-muted-foreground"}`}
+                className={`px-6 py-2.5 rounded-lg text-sm font-semibold transition-all ${activeTab === "voucher" ? "bg-cyan-500 text-white shadow-sm" : "border border-border text-muted-foreground"}`}
                 data-testid="tab-voucher"
               >
                 Allotly Vouchers
@@ -693,7 +695,7 @@ function PricingSection() {
         <div className="grid md:grid-cols-3 gap-6 lg:gap-8 max-w-5xl mx-auto">
           {plans.map((plan, i) => (
             <FadeIn key={plan.name} delay={i * 100}>
-              <Card className={`p-7 lg:p-8 relative flex flex-col h-full ${plan.popular ? "ring-2 ring-indigo-500 shadow-xl shadow-indigo-500/5 dark:shadow-none" : ""}`}>
+              <Card className={`p-7 lg:p-8 relative flex flex-col h-full transition-all duration-300 hover:-translate-y-1 ${plan.popular ? "ring-2 ring-indigo-500 shadow-xl shadow-indigo-500/5 dark:shadow-none hover:shadow-2xl hover:shadow-indigo-500/10" : "hover:shadow-lg"}`}>
                 {plan.popular && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2">
                     <Badge className="no-default-hover-elevate no-default-active-elevate shadow-sm px-3 py-0.5 text-xs font-semibold bg-indigo-500 text-white border-indigo-600">Most Popular</Badge>
@@ -715,7 +717,7 @@ function PricingSection() {
                     </li>
                   ))}
                 </ul>
-                <Link href={plan.name === "Enterprise" ? "/signup" : "/signup"}>
+                <Link href={plan.name === "Enterprise" ? "/contact" : "/signup"}>
                   <Button className="w-full font-semibold" variant={plan.variant} data-testid={`button-pricing-${plan.name.toLowerCase()}`}>
                     {plan.cta}
                     <ChevronRight className="w-4 h-4 ml-1" />
@@ -826,7 +828,7 @@ function FinalCTA() {
         <FadeIn>
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight">
             Stop guessing.{" "}
-            <span className="bg-gradient-to-r from-indigo-600 to-cyan-500 bg-clip-text text-transparent">Start governing.</span>
+            <span className="bg-gradient-to-r from-indigo-600 via-cyan-500 to-indigo-600 bg-clip-text text-transparent animate-gradient-text">Start governing.</span>
           </h2>
           <p className="mt-6 text-lg text-muted-foreground max-w-xl mx-auto">
             Get full visibility and control over your organization's AI spend in minutes. No credit card required.
