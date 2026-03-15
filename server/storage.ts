@@ -11,7 +11,7 @@ import {
   passwordResetTokens,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, sql, asc, gte, lte, count } from "drizzle-orm";
+import { eq, and, desc, sql, asc, gte, lte, count, inArray } from "drizzle-orm";
 
 export interface IStorage {
   createOrganization(org: InsertOrganization): Promise<Organization>;
@@ -396,22 +396,26 @@ export class DrizzleStorage implements IStorage {
   }
 
   async getDashboardStats(orgId: string): Promise<any> {
-    const orgTeams = await this.getTeamsByOrg(orgId);
-    const orgUsers = await this.getUsersByOrg(orgId);
-    const orgVouchers = await this.getVouchersByOrg(orgId);
-    const providers = await this.getProviderConnectionsByOrg(orgId);
+    const [orgTeams, orgUsers, orgVouchers, providers, org] = await Promise.all([
+      this.getTeamsByOrg(orgId),
+      this.getUsersByOrg(orgId),
+      this.getVouchersByOrg(orgId),
+      this.getProviderConnectionsByOrg(orgId),
+      this.getOrganization(orgId),
+    ]);
 
     const totalMembers = orgUsers.filter(u => u.orgRole === "MEMBER").length;
     const activeTeamAdmins = orgUsers.filter(u => u.orgRole === "TEAM_ADMIN" && u.status === "ACTIVE").length;
     const activeVouchers = orgVouchers.filter(v => v.status === "ACTIVE").length;
-
-    const org = await this.getOrganization(orgId);
     const maxTeamAdmins = org?.maxTeamAdmins || 0;
 
+    const teamIds = orgTeams.map(t => t.id);
     let totalSpendCents = 0;
-    for (const team of orgTeams) {
-      const memberships = await this.getMembershipsByTeam(team.id);
-      totalSpendCents += memberships.reduce((sum, m) => sum + m.currentPeriodSpendCents, 0);
+    if (teamIds.length > 0) {
+      const spendResult = await db.select({
+        total: sql<number>`COALESCE(SUM(${teamMemberships.currentPeriodSpendCents}), 0)`,
+      }).from(teamMemberships).where(inArray(teamMemberships.teamId, teamIds));
+      totalSpendCents = Number(spendResult[0]?.total || 0);
     }
 
     return {
@@ -472,33 +476,44 @@ export class DrizzleStorage implements IStorage {
 
   async getSpendByTeam(orgId: string): Promise<{ teamId: string; teamName: string; spendCents: number }[]> {
     const orgTeams = await this.getTeamsByOrg(orgId);
-    const result: { teamId: string; teamName: string; spendCents: number }[] = [];
-    for (const team of orgTeams) {
-      const memberships = await this.getMembershipsByTeam(team.id);
-      const spendCents = memberships.reduce((sum, m) => sum + m.currentPeriodSpendCents, 0);
-      result.push({ teamId: team.id, teamName: team.name, spendCents });
-    }
-    return result;
+    if (orgTeams.length === 0) return [];
+
+    const teamIds = orgTeams.map(t => t.id);
+    const spendRows = await db.select({
+      teamId: teamMemberships.teamId,
+      total: sql<number>`COALESCE(SUM(${teamMemberships.currentPeriodSpendCents}), 0)`,
+    }).from(teamMemberships)
+      .where(inArray(teamMemberships.teamId, teamIds))
+      .groupBy(teamMemberships.teamId);
+
+    const spendMap = new Map(spendRows.map(r => [r.teamId, Number(r.total)]));
+    return orgTeams.map(team => ({
+      teamId: team.id,
+      teamName: team.name,
+      spendCents: spendMap.get(team.id) || 0,
+    }));
   }
 
   async getSpendByProvider(orgId: string): Promise<{ provider: string; spendCents: number }[]> {
     const orgTeams = await this.getTeamsByOrg(orgId);
-    const providerMap: Record<string, number> = {};
-    for (const team of orgTeams) {
-      const memberships = await this.getMembershipsByTeam(team.id);
-      for (const m of memberships) {
-        const logs = await db.select({
-          provider: proxyRequestLogs.provider,
-          total: sql<number>`COALESCE(SUM(${proxyRequestLogs.costCents}), 0)`,
-        }).from(proxyRequestLogs)
-          .where(eq(proxyRequestLogs.membershipId, m.id))
-          .groupBy(proxyRequestLogs.provider);
-        for (const log of logs) {
-          providerMap[log.provider] = (providerMap[log.provider] || 0) + Number(log.total);
-        }
-      }
-    }
-    return Object.entries(providerMap).map(([provider, spendCents]) => ({ provider, spendCents }));
+    if (orgTeams.length === 0) return [];
+
+    const teamIds = orgTeams.map(t => t.id);
+    const membershipIds = await db.select({ id: teamMemberships.id })
+      .from(teamMemberships)
+      .where(inArray(teamMemberships.teamId, teamIds));
+
+    if (membershipIds.length === 0) return [];
+
+    const mIds = membershipIds.map(m => m.id);
+    const rows = await db.select({
+      provider: proxyRequestLogs.provider,
+      total: sql<number>`COALESCE(SUM(${proxyRequestLogs.costCents}), 0)`,
+    }).from(proxyRequestLogs)
+      .where(inArray(proxyRequestLogs.membershipId, mIds))
+      .groupBy(proxyRequestLogs.provider);
+
+    return rows.map(r => ({ provider: r.provider, spendCents: Number(r.total) }));
   }
 
   async getMemberDetailsForTeam(teamId: string): Promise<any[]> {

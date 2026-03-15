@@ -90,7 +90,7 @@ export function DataTable<T extends Record<string, any>>({
         </div>
       )}
 
-      <div className="rounded-lg border overflow-hidden">
+      <div className="rounded-lg border overflow-hidden overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/30">
@@ -151,10 +151,11 @@ export function DataTable<T extends Record<string, any>>({
               disabled={page === 0}
               onClick={() => setPage(p => p - 1)}
               data-testid="button-table-prev"
+              aria-label="Previous page"
             >
               <ChevronLeft className="w-4 h-4" />
             </Button>
-            <span className="text-xs font-medium px-2">
+            <span className="text-xs font-medium px-2" aria-live="polite">
               {page + 1} / {totalPages}
             </span>
             <Button
@@ -164,6 +165,7 @@ export function DataTable<T extends Record<string, any>>({
               disabled={page >= totalPages - 1}
               onClick={() => setPage(p => p + 1)}
               data-testid="button-table-next"
+              aria-label="Next page"
             >
               <ChevronRight className="w-4 h-4" />
             </Button>

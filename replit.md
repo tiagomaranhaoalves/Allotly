@@ -109,7 +109,7 @@ Domain fallback: If `allotly.ai` domain fails verification, automatically retrie
 - Sessions: secure cookies, connect-pg-simple store
 
 ## Testing
-- **10 test files, 191 tests ALL PASSING**:
+- **12 test files, 223 tests ALL PASSING**:
   - encryption.test.ts (5): roundtrip, uniqueness, wrong tag
   - budget.test.ts (8): threshold triggers 80/90/100%
   - voucher-code.test.ts (7): format, charset, uniqueness
@@ -120,6 +120,8 @@ Domain fallback: If `allotly.ai` domain fails verification, automatically retrie
   - proxy-tiers.test.ts (7): rate limits by plan
   - redis-budget.test.ts (19): reservation/refund, reconciliation
   - integration.test.ts (29): full lifecycle flows
+  - proxy-errors.test.ts (19): Zod error formatting, provider error suggestions
+  - model-catalog.test.ts (13): model catalog integrity, deprecated models, pricing sanity
 
 ## Key Files
 | File | Purpose |

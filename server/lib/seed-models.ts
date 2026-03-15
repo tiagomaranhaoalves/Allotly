@@ -2,7 +2,7 @@ import { db } from "../db";
 import { modelPricing } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
-const DEFAULT_MODELS = [
+export const DEFAULT_MODELS = [
   // OpenAI — GPT series
   { provider: "OPENAI" as const, modelId: "gpt-5.4", displayName: "GPT-5.4", inputPricePerMTok: 250, outputPricePerMTok: 1000 },
   { provider: "OPENAI" as const, modelId: "gpt-4.1", displayName: "GPT-4.1", inputPricePerMTok: 200, outputPricePerMTok: 800 },
@@ -37,7 +37,7 @@ const DEFAULT_MODELS = [
   { provider: "GOOGLE" as const, modelId: "gemini-2.5-flash-lite", displayName: "Gemini 2.5 Flash Lite", inputPricePerMTok: 10, outputPricePerMTok: 40 },
 ];
 
-const DEPRECATED_MODELS = [
+export const DEPRECATED_MODELS = [
   "gpt-4-turbo",
   "gpt-3.5-turbo",
   "o1",

@@ -101,7 +101,7 @@ async function getModelPricing(provider: string, model: string): Promise<ModelPr
   return pricing;
 }
 
-function formatZodError(zodError: z.ZodError): string {
+export function formatZodError(zodError: z.ZodError): string {
   const issues = zodError.issues;
   if (issues.length === 0) return "Invalid request";
   const parts = issues.map(issue => {
@@ -120,7 +120,7 @@ function formatZodError(zodError: z.ZodError): string {
   return parts.join("; ");
 }
 
-function getProviderErrorSuggestion(statusCode: number, errorMessage: string, provider: string): string {
+export function getProviderErrorSuggestion(statusCode: number, errorMessage: string, provider: string): string {
   const lower = errorMessage.toLowerCase();
   if (lower.includes("deprecated") || lower.includes("no longer available") || lower.includes("decommissioned")) {
     const alternatives: Record<string, string> = {

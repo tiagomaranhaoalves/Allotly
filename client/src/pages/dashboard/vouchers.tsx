@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
@@ -175,6 +175,9 @@ export default function VouchersPage() {
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>{createdCode ? "Voucher Created!" : "Create Voucher"}</DialogTitle>
+              <DialogDescription>
+                {createdCode ? "Share this code with your recipient." : "Set a budget, expiry, and allowed providers for a new voucher."}
+              </DialogDescription>
             </DialogHeader>
             {createdCode ? (
               <div className="space-y-4 pt-2">
@@ -268,22 +271,22 @@ export default function VouchersPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Label (optional)</Label>
-                  <Input placeholder="AI Workshop March 2026" value={label} onChange={e => setLabel(e.target.value)} data-testid="input-voucher-label" />
+                  <Label htmlFor="voucher-label">Label (optional)</Label>
+                  <Input id="voucher-label" placeholder="AI Workshop March 2026" value={label} onChange={e => setLabel(e.target.value)} data-testid="input-voucher-label" />
                 </div>
                 <div className="space-y-2">
-                  <Label>Budget per Recipient ($)</Label>
-                  <Input type="number" min="1" max={maxBudget} value={budgetDollars} onChange={e => setBudgetDollars(e.target.value)} data-testid="input-voucher-budget" />
+                  <Label htmlFor="voucher-budget">Budget per Recipient ($)</Label>
+                  <Input id="voucher-budget" type="number" min="1" max={maxBudget} value={budgetDollars} onChange={e => setBudgetDollars(e.target.value)} data-testid="input-voucher-budget" />
                   <p className="text-xs text-muted-foreground">Max ${maxBudget}</p>
                 </div>
                 <div className="space-y-2">
-                  <Label>Max Redemptions</Label>
-                  <Input type="number" min="1" max={maxRedemptionLimit} value={maxRedemptions} onChange={e => setMaxRedemptions(e.target.value)} data-testid="input-voucher-redemptions" />
+                  <Label htmlFor="voucher-redemptions">Max Redemptions</Label>
+                  <Input id="voucher-redemptions" type="number" min="1" max={maxRedemptionLimit} value={maxRedemptions} onChange={e => setMaxRedemptions(e.target.value)} data-testid="input-voucher-redemptions" />
                   <p className="text-xs text-muted-foreground">Max {maxRedemptionLimit}</p>
                 </div>
                 <div className="space-y-2">
-                  <Label>Expires In (days)</Label>
-                  <Input type="number" min="1" max={maxExpiry} value={expiryDays} onChange={e => setExpiryDays(e.target.value)} data-testid="input-voucher-expiry" />
+                  <Label htmlFor="voucher-expiry">Expires In (days)</Label>
+                  <Input id="voucher-expiry" type="number" min="1" max={maxExpiry} value={expiryDays} onChange={e => setExpiryDays(e.target.value)} data-testid="input-voucher-expiry" />
                   <p className="text-xs text-muted-foreground">Max {maxExpiry} day{maxExpiry !== 1 ? 's' : ''}</p>
                 </div>
                 <div className="space-y-2">
