@@ -1,0 +1,20 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "TcLkZzpLcQcczwM7BD7Cr"
+uri = "file://allotly-logo-full.svg"
+type = "image"
+title = "Allotly Logo (Full - Dark Text)"
+
+[[outputs]]
+id = "D4DPTvMmFPmosCdUwSBa5"
+uri = "file://allotly-logo-full-white.svg"
+type = "image"
+title = "Allotly Logo (Full - White Text)"
+
+[[outputs]]
+id = "FnIundaGocgbzR3kPXykS"
+uri = "file://allotly-logo-icon.svg"
+type = "image"
+title = "Allotly Logo (Icon Only)"
