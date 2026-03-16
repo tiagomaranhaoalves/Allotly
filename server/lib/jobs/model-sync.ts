@@ -3,6 +3,7 @@ import { modelPricing } from "@shared/schema";
 import { storage } from "../../storage";
 import { decryptProviderKey } from "../encryption";
 import { eq, and } from "drizzle-orm";
+import { DEPRECATED_MODELS } from "../seed-models";
 
 interface DiscoveredModel {
   id: string;
@@ -36,6 +37,7 @@ function isChatModel(modelId: string, provider: string): boolean {
 
   if (!patterns.some(p => p.test(modelId))) return false;
   if (EXCLUDE_PATTERNS.some(p => p.test(modelId))) return false;
+  if (DEPRECATED_MODELS.includes(modelId)) return false;
 
   return true;
 }

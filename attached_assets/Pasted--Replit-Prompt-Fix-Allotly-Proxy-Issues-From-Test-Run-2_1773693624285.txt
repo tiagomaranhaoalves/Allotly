@@ -1,0 +1,127 @@
+# Replit Prompt: Fix Allotly Proxy Issues (From Test Run 2)
+
+Paste everything below into Replit:
+
+---
+
+I just ran a full test suite against the Allotly proxy and found the following bugs. Please fix each one. I'll describe the exact behavior observed, the expected behavior, and the area of code likely involved.
+
+## Bug 1: `x-allotly-requests-remaining` counter resets mid-session
+
+**Observed:** The `x-allotly-requests-remaining` header decrements correctly for sequential non-streaming requests (29 → 28 → 27 → 26 → 25 → 24 → 23 → 22), but then **jumps back to 29** on the next streaming request. After the reset, it continues decrementing from 29 again (29 → 28 → 27).
+
+**Evidence:**
+```
+Request 1  (gpt-4o-mini, non-stream):       requests-remaining: 29
+Request 2  (claude-sonnet-4, non-stream):    requests-remaining: 28
+Request 3  (gemini-2.5-flash, non-stream):   requests-remaining: 27
+Request 4  (gemini-2.5-flash, non-stream):   requests-remaining: 26
+Request 5  (claude-3-5-haiku, 400 error):    requests-remaining: 25
+Request 6  (claude-3-5-sonnet, 400 error):   requests-remaining: 24
+Request 7  (gemini-2.0-flash, 502 error):    requests-remaining: 23
+Request 8  (gemini-1.5-flash, 400 error):    requests-remaining: 22
+Request 9  (gpt-4o-mini, STREAMING):         requests-remaining: 29  ← RESET
+Request 10 (gemini-2.5-pro, non-stream):     requests-remaining: 28
+Request 11 (missing model, 400 error):       requests-remaining: 27
+```
+
+**Expected:** The counter should decrement monotonically across all request types (streaming and non-streaming) and should NOT reset mid-session.
+
+**Likely cause:** The streaming code path may be reading the request count from a different source (e.g., a separate rate limiter, or reading the voucher's original limit instead of the current decremented count). Or there could be a race condition where the streaming response sends headers before the decrement is persisted.
+
+**Additional issue:** Failed requests (400, 502) are currently decrementing the counter. Consider whether error responses that never reached the upstream provider should count against the request limit.
+
+**Fix:** Find where `x-allotly-requests-remaining` is calculated in the response pipeline. Ensure both streaming and non-streaming paths read from the same atomically decremented counter. If using a database, make sure the streaming path does a read-after-write rather than reading a stale/cached value.
+
+---
+
+## Bug 2: Google `total_tokens` intermittently includes thinking tokens
+
+**Observed:** For Google Gemini models, the `usage.total_tokens` field sometimes includes internal thinking/reasoning tokens that are NOT reflected in `prompt_tokens` or `completion_tokens`.
+
+**Evidence:**
+```json
+// Call 1: gemini-2.5-flash — MISMATCH
+{ "prompt_tokens": 9, "completion_tokens": 2, "total_tokens": 55 }
+// 9 + 2 = 11, but total says 55. Delta: +44 unexplained tokens.
+
+// Call 2: gemini-2.5-flash — MATCHES
+{ "prompt_tokens": 11, "completion_tokens": 1, "total_tokens": 12 }
+// 11 + 1 = 12 = total. Correct.
+```
+
+**Expected:** Either:
+- (Option A — preferred) `total_tokens` should always equal `prompt_tokens + completion_tokens`, with a separate `thinking_tokens` field if you want to expose the thinking cost. This keeps the OpenAI-compatible contract intact.
+- (Option B) Add a `thinking_tokens` or `reasoning_tokens` field to the usage object and set `total_tokens = prompt_tokens + completion_tokens + thinking_tokens`.
+
+**Likely cause:** When Google Gemini's API returns usage data, it sometimes includes `thoughtsTokenCount` or similar in its native response. The proxy is likely passing through Google's raw `totalTokenCount` without normalizing it to match the OpenAI `prompt + completion = total` contract.
+
+**Fix:** In the Google response adapter (the code that converts Google's native response format into OpenAI-compatible format), calculate `total_tokens` as `prompt_tokens + completion_tokens` instead of using Google's raw total. Optionally expose the thinking token count in a separate field:
+
+```javascript
+// Pseudocode for the fix
+const promptTokens = googleResponse.usageMetadata.promptTokenCount;
+const completionTokens = googleResponse.usageMetadata.candidatesTokenCount;
+const thinkingTokens = googleResponse.usageMetadata.thoughtsTokenCount || 0;
+
+usage = {
+  prompt_tokens: promptTokens,
+  completion_tokens: completionTokens,
+  total_tokens: promptTokens + completionTokens,  // NOT Google's totalTokenCount
+  // Optional: expose thinking tokens for transparency
+  ...(thinkingTokens > 0 && { thinking_tokens: thinkingTokens })
+};
+```
+
+**Important for billing:** Verify that billing/budget calculations use `prompt_tokens + completion_tokens` (or explicitly include thinking tokens at a stated rate), NOT the raw `total_tokens` from Google.
+
+---
+
+## Bug 3: `gemini-2.0-flash` listed in `/models` but deprecated upstream
+
+**Observed:** The `/models` endpoint returns `gemini-2.0-flash` in the model catalog, but when you actually try to use it, Google returns a 404 saying the model is no longer available. The proxy surfaces this as a 502 `provider_error`.
+
+**Evidence:**
+```json
+// GET /models includes:
+{ "id": "gemini-2.0-flash", "owned_by": "google" }
+
+// But POST /chat/completions with model "gemini-2.0-flash" returns:
+{
+  "status": 502,
+  "error": {
+    "code": "provider_error",
+    "message": "GOOGLE returned 404: This model models/gemini-2.0-flash is no longer available to new users."
+  }
+}
+```
+
+**Fix:** Remove `gemini-2.0-flash` from the model catalog. If the model list is dynamically fetched from Google, add a denylist/blocklist for deprecated models. If the list is hardcoded or stored in a config/database, remove the entry.
+
+Also consider: add a background job or startup check that validates each listed model is actually callable, and automatically flags or removes models that return 404 from upstream.
+
+---
+
+## Bug 4: Legacy models missing from pricing table but still attempted
+
+**Observed:** These models are NOT in the `/models` catalog, but if a user sends a request for them, the proxy attempts to look up pricing and fails with `model_not_found`:
+- `claude-3-5-haiku-20241022`
+- `claude-3-5-sonnet-20241022`
+- `gemini-1.5-flash`
+
+**Current behavior:** Returns 400 with `"Pricing for model X not found"`.
+
+**This is actually fine as-is** — the error is clear and no budget is charged. However, two improvements would help:
+
+1. **Better suggestion in the error response:** Instead of `"This model may not be supported yet."`, say something like `"This model is not available. Try claude-haiku-4-5-20251001 instead."` — suggest the closest supported alternative.
+
+2. **Consider adding pricing for popular legacy models** if your upstream provider accounts still support them. `claude-3-5-sonnet-20241022` in particular is still widely used.
+
+---
+
+## Summary of fixes needed (in priority order):
+
+1. **Requests-remaining counter reset on streaming** — Fix the streaming path to use the same atomic counter as non-streaming. Decide whether failed requests should decrement the counter.
+2. **Google total_tokens normalization** — Calculate `total_tokens = prompt_tokens + completion_tokens` in the Google adapter instead of passing through Google's raw total. Optionally add a `thinking_tokens` field.
+3. **Remove gemini-2.0-flash from /models** — Denylist deprecated models from the catalog.
+4. **Improve model_not_found suggestions** — Suggest the closest supported alternative model in the error response.

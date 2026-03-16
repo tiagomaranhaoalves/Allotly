@@ -112,6 +112,14 @@ export async function checkRateLimit(membershipId: string, planLimit: number): P
   return null;
 }
 
+export async function releaseRateLimit(membershipId: string): Promise<void> {
+  const key = REDIS_KEYS.ratelimit(membershipId);
+  const newVal = await redisDecr(key);
+  if (newVal < 0) {
+    await redisSet(key, "0");
+  }
+}
+
 export function estimateInputTokens(messages: any[]): number {
   let totalChars = 0;
   for (const msg of messages) {

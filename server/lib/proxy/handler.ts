@@ -11,6 +11,7 @@ import {
   authenticateKey,
   checkConcurrency,
   checkRateLimit,
+  releaseRateLimit,
   checkBundleRequestPool,
   incrementBundleRequests,
   estimateInputTokens,
@@ -203,6 +204,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
 
     const bundleError = await checkBundleRequestPool(membership);
     if (bundleError) {
+      await releaseRateLimit(membershipId);
       await releaseConcurrency(membershipId, requestId);
       budgetCtx = await buildBudgetCtx();
       return sendProxyError(res, bundleError, budgetCtx);
@@ -210,6 +212,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
 
     const parseResult = chatRequestSchema.safeParse(req.body);
     if (!parseResult.success) {
+      await releaseRateLimit(membershipId);
       await releaseConcurrency(membershipId, requestId);
       budgetCtx = await buildBudgetCtx();
       return sendProxyError(res, createProxyError(400, "invalid_request", formatZodError(parseResult.error)), budgetCtx);
@@ -218,6 +221,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
     const parsed = parseResult.data;
     const provider = detectProvider(parsed.model);
     if (!provider) {
+      await releaseRateLimit(membershipId);
       await releaseConcurrency(membershipId, requestId);
       budgetCtx = await buildBudgetCtx();
       return sendProxyError(res, createProxyError(400, "unsupported_model",
@@ -228,6 +232,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
 
     const allowedProviders = membership.allowedProviders as string[] | null;
     if (allowedProviders && allowedProviders.length > 0 && !allowedProviders.includes(provider)) {
+      await releaseRateLimit(membershipId);
       await releaseConcurrency(membershipId, requestId);
       budgetCtx = await buildBudgetCtx();
       return sendProxyError(res, createProxyError(403, "provider_not_allowed",
@@ -238,6 +243,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
 
     const allowedModels = membership.allowedModels as string[] | null;
     if (allowedModels && allowedModels.length > 0 && !allowedModels.includes(parsed.model)) {
+      await releaseRateLimit(membershipId);
       await releaseConcurrency(membershipId, requestId);
       budgetCtx = await buildBudgetCtx();
       return sendProxyError(res, createProxyError(403, "model_not_allowed",
@@ -249,6 +255,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
     const connections = await storage.getProviderConnectionsByOrg(team.orgId);
     const connection = connections.find(c => c.provider === provider && c.status === "ACTIVE");
     if (!connection) {
+      await releaseRateLimit(membershipId);
       await releaseConcurrency(membershipId, requestId);
       budgetCtx = await buildBudgetCtx();
       const existsButInactive = connections.some(c => c.provider === provider);
@@ -265,11 +272,33 @@ export async function handleChatCompletion(req: Request, res: Response) {
 
     const pricing = await getModelPricing(provider, parsed.model);
     if (!pricing) {
+      await releaseRateLimit(membershipId);
       await releaseConcurrency(membershipId, requestId);
       budgetCtx = await buildBudgetCtx();
+      const alternatives: Record<string, Record<string, string>> = {
+        OPENAI: {
+          "gpt-4-turbo": "gpt-4o or gpt-4o-mini",
+          "gpt-3.5-turbo": "gpt-4o-mini",
+        },
+        ANTHROPIC: {
+          "claude-3-5-sonnet-20241022": "claude-sonnet-4",
+          "claude-3-5-haiku-20241022": "claude-haiku-4-5",
+          "claude-3-opus-20240229": "claude-sonnet-4",
+          "claude-3-7-sonnet-20250219": "claude-sonnet-4",
+        },
+        GOOGLE: {
+          "gemini-1.5-flash": "gemini-2.5-flash",
+          "gemini-1.5-pro": "gemini-2.5-pro",
+          "gemini-2.0-flash": "gemini-2.5-flash",
+        },
+      };
+      const alt = alternatives[provider]?.[parsed.model];
+      const suggestion = alt
+        ? `This model is not available. Try ${alt} instead.`
+        : "This model may not be supported yet. Check the /models endpoint for available models.";
       return sendProxyError(res, createProxyError(400, "model_not_found",
         `Pricing for model "${parsed.model}" not found`,
-        "This model may not be supported yet."
+        suggestion
       ), budgetCtx);
     }
 
@@ -287,6 +316,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
 
     const budgetResult = await reserveBudget(membershipId, totalEstimatedCostCents);
     if ("status" in budgetResult) {
+      await releaseRateLimit(membershipId);
       await releaseConcurrency(membershipId, requestId);
       budgetCtx = await buildBudgetCtx();
       return sendProxyError(res, budgetResult, budgetCtx);
@@ -311,6 +341,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
     } catch (fetchError: any) {
       await refundBudget(membershipId, reservedCostCents);
       reservedCostCents = 0;
+      await releaseRateLimit(membershipId);
       await releaseConcurrency(membershipId, requestId);
       concurrencyAcquired = false;
       budgetCtx = await buildBudgetCtx();
@@ -324,6 +355,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
       const errorBody = await providerResponse.text();
       await refundBudget(membershipId, reservedCostCents);
       reservedCostCents = 0;
+      await releaseRateLimit(membershipId);
       await releaseConcurrency(membershipId, requestId);
       concurrencyAcquired = false;
 
@@ -369,6 +401,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
       if (actualOutputTokens === 0 && streamResult.fullContent.trim() === "") {
         await refundBudget(membershipId, reservedCostCents);
         reservedCostCents = 0;
+        await releaseRateLimit(membershipId);
         await releaseConcurrency(membershipId, requestId);
         concurrencyAcquired = false;
         if (!res.writableEnded) {
@@ -398,6 +431,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
       if (actualOutputTokens === 0 && (!content || content.trim() === "")) {
         await refundBudget(membershipId, reservedCostCents);
         reservedCostCents = 0;
+        await releaseRateLimit(membershipId);
         await releaseConcurrency(membershipId, requestId);
         concurrencyAcquired = false;
         budgetCtx = await buildBudgetCtx();
@@ -527,6 +561,9 @@ export async function handleChatCompletion(req: Request, res: Response) {
 
     if (membershipId && reservedCostCents > 0) {
       try { await refundBudget(membershipId, reservedCostCents); } catch {}
+    }
+    if (membershipId) {
+      try { await releaseRateLimit(membershipId); } catch {}
     }
     if (membershipId && concurrencyAcquired) {
       try { await releaseConcurrency(membershipId, requestId); } catch {}
