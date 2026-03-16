@@ -1,0 +1,86 @@
+MILESTONE CC-5: PROVIDER AND API KEY MANAGEMENT
+Goal: Add provider key rotation, health monitoring, connection testing, and a centralized key audit view.
+Requirements
+
+MUST implement POST /api/providers/[providerId]/rotate-key endpoint.
+
+Request body: { newApiKey: string }.
+MUST validate the new key against the provider API (same validation used during initial connection).
+If valid: encrypt new key with AES-256-GCM → update ProviderConnection → wipe old encrypted key.
+MUST NOT disconnect the provider (no cascade, no member impact).
+MUST NOT revoke any allotly_sk_ keys — member access continues uninterrupted.
+MUST create AuditLog entry (do NOT log the key itself — log only "provider key rotated").
+VERIFY: Rotate OpenAI key → old key no longer in DB → new key works → member requests continue working without interruption.
+
+
+MUST implement POST /api/providers/[providerId]/validate-now endpoint.
+
+Triggers immediate key validation (same logic as the daily validation job).
+Returns: { valid: boolean, lastValidated: timestamp, error?: string }.
+MUST require Root Admin.
+VERIFY: Validate a good key → returns valid: true. Validate a revoked provider key → returns valid: false with error message.
+
+
+MUST implement POST /api/providers/[providerId]/test-connection endpoint.
+
+Sends a minimal test request through the proxy to the provider (e.g., "respond with OK" with max_tokens=5).
+Returns: { success: boolean, latencyMs: number, model: string, response?: string, error?: string }.
+Uses the cheapest available model for the provider (e.g., gpt-4o-mini for OpenAI, gemini-2.5-flash for Google).
+MUST require Root Admin.
+VERIFY: Test connection to a working provider → success: true with latency. Test connection with invalid key → success: false with error.
+
+
+MUST implement GET /api/providers/[providerId]/health endpoint.
+
+Returns aggregated health metrics:
+
+
+
+json     {
+       "lastValidated": "timestamp",
+       "validationStatus": "valid" | "invalid",
+       "last1h": { "requests": 150, "errors": 3, "errorRate": 0.02, "avgLatencyMs": 234 },
+       "last24h": { "requests": 2400, "errors": 12, "errorRate": 0.005, "avgLatencyMs": 245 },
+       "lastSuccessfulRequest": "timestamp",
+       "lastError": { "timestamp": "...", "statusCode": 502, "message": "..." }
+     }
+
+Computed from ProxyRequestLog table.
+MUST require Root Admin.
+VERIFY: Make 10 requests (2 fail) → health endpoint shows correct counts and error rate.
+
+
+MUST implement GET /api/keys endpoint (key audit view).
+
+Returns all active allotly_sk_ keys across the org.
+Fields per key: keyPrefix, ownerName, ownerEmail (or "anonymous" for voucher recipients), ownerType ("team" | "voucher"), teamName, createdAt, lastUsed, status, membershipId.
+Supports query params: status (active/revoked/all), teamId, type (team/voucher), search (name/email prefix match).
+MUST require Root Admin.
+VERIFY: View all keys → see every active key with correct owner info.
+
+
+MUST implement POST /api/keys/bulk-revoke endpoint.
+
+Request body: { keyIds: string[] }.
+Revokes each key: set DB status REVOKED, delete Redis state.
+MUST require Root Admin.
+MUST create AuditLog entries.
+VERIFY: Bulk revoke 5 keys → all return 401 on next use.
+
+
+MUST add UI for all provider/key operations.
+
+Provider connection page: add "Rotate Key" button (opens modal with new key input), "Validate Now" button, "Test Connection" button, health indicator (green/yellow/red based on error rate).
+New "API Keys" page in Control Center nav: table of all keys with search/filter, bulk revoke via checkboxes.
+Provider health: small dashboard card per provider showing error rate, latency, last validated.
+
+
+
+Tests
+
+Rotate key → verify seamless transition, no member disruption.
+Validate working key → verify valid: true.
+Validate dead key → verify valid: false.
+Test connection → verify round-trip works.
+Key audit view → verify all keys listed with correct metadata.
+Bulk revoke keys → verify all revoked.

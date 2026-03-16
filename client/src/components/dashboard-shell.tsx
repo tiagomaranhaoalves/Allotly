@@ -12,7 +12,7 @@ import { Link, useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   LayoutDashboard, Plug, Users, Ticket, Package, BarChart3, FileText,
-  Settings, Sun, Moon, LogOut, ChevronDown,
+  Settings, Sun, Moon, LogOut, ChevronDown, Key,
 } from "lucide-react";
 import { AdminRoleBadge } from "./brand/role-badge";
 import { Skeleton } from "./ui/skeleton";
@@ -25,6 +25,7 @@ const ROOT_ADMIN_NAV = [
   { title: "AI Providers", href: "/dashboard/providers", icon: Plug },
   { title: "Teams", href: "/dashboard/teams", icon: Users },
   { title: "Vouchers", href: "/dashboard/vouchers", icon: Ticket },
+  { title: "API Keys", href: "/dashboard/keys", icon: Key },
   { title: "Bundles", href: "/dashboard/bundles", icon: Package },
   { title: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
   { title: "Audit Log", href: "/dashboard/audit-log", icon: FileText },

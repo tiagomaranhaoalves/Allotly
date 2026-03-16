@@ -16,7 +16,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Plug, Plus, Trash2, Shield, RefreshCw, ChevronDown, ChevronRight } from "lucide-react";
+import { Plug, Plus, Trash2, Shield, RefreshCw, ChevronDown, ChevronRight, RotateCw, Zap, Activity } from "lucide-react";
 import { useState } from "react";
 
 interface ProviderConnection {
@@ -36,6 +36,23 @@ interface ModelPricing {
   modelDisplayName: string;
   inputPricePer1kTokens: string;
   outputPricePer1kTokens: string;
+}
+
+interface HealthData {
+  lastValidated: string | null;
+  validationStatus: "valid" | "invalid";
+  last1h: { requests: number; errors: number; errorRate: number; avgLatencyMs: number };
+  last24h: { requests: number; errors: number; errorRate: number; avgLatencyMs: number };
+  lastSuccessfulRequest: string | null;
+  lastError: { timestamp: string; statusCode: number; message: string } | null;
+}
+
+interface TestResult {
+  success: boolean;
+  latencyMs: number;
+  model: string;
+  response?: string;
+  error?: string;
 }
 
 export default function ProvidersPage() {
@@ -74,24 +91,6 @@ export default function ProvidersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/providers"] });
       toast({ title: "AI Provider disconnected" });
-    },
-  });
-
-  const validateMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await apiRequest("POST", `/api/providers/${id}/validate`);
-      return res.json();
-    },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/providers"] });
-      if (data.valid) {
-        toast({ title: "Key validated successfully" });
-      } else {
-        toast({ title: "Key validation failed", description: data.error, variant: "destructive" });
-      }
-    },
-    onError: (err: any) => {
-      toast({ title: "Validation error", description: err.message, variant: "destructive" });
     },
   });
 
@@ -185,9 +184,7 @@ export default function ProvidersPage() {
               connection={p}
               expanded={expandedId === p.id}
               onToggleExpand={() => setExpandedId(expandedId === p.id ? null : p.id)}
-              onValidate={() => validateMutation.mutate(p.id)}
               onDelete={() => deleteMutation.mutate(p.id)}
-              isValidating={validateMutation.isPending}
               isDeleting={deleteMutation.isPending}
             />
           ))}
@@ -213,19 +210,93 @@ function ProviderCard({
   connection: p,
   expanded,
   onToggleExpand,
-  onValidate,
   onDelete,
-  isValidating,
   isDeleting,
 }: {
   connection: ProviderConnection;
   expanded: boolean;
   onToggleExpand: () => void;
-  onValidate: () => void;
   onDelete: () => void;
-  isValidating: boolean;
   isDeleting: boolean;
 }) {
+  const { toast } = useToast();
+  const [rotateOpen, setRotateOpen] = useState(false);
+  const [newKey, setNewKey] = useState("");
+  const [showHealth, setShowHealth] = useState(false);
+  const [testResult, setTestResult] = useState<TestResult | null>(null);
+
+  const { data: health } = useQuery<HealthData>({
+    queryKey: ["/api/providers", p.id, "health"],
+    queryFn: async () => {
+      const res = await fetch(`/api/providers/${p.id}/health`);
+      if (!res.ok) throw new Error("Failed to fetch health");
+      return res.json();
+    },
+    refetchInterval: 60000,
+  });
+
+  const validateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/providers/${p.id}/validate-now`);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/providers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/providers", p.id, "health"] });
+      if (data.valid) {
+        toast({ title: "Key validated successfully" });
+      } else {
+        toast({ title: "Key validation failed", description: data.error, variant: "destructive" });
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: "Validation error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const rotateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/providers/${p.id}/rotate-key`, { newApiKey: newKey });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/providers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/providers", p.id, "health"] });
+      toast({ title: "Provider key rotated successfully" });
+      setRotateOpen(false);
+      setNewKey("");
+    },
+    onError: (err: any) => {
+      toast({ title: "Key rotation failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const testMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/providers/${p.id}/test-connection`);
+      return res.json();
+    },
+    onSuccess: (data: TestResult) => {
+      setTestResult(data);
+      if (data.success) {
+        toast({ title: `Connection test passed (${data.latencyMs}ms)` });
+      } else {
+        toast({ title: "Connection test failed", description: data.error, variant: "destructive" });
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: "Test failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const getHealthColor = () => {
+    if (!health) return "bg-gray-400";
+    if (health.validationStatus === "invalid") return "bg-red-500";
+    if (health.last1h.errorRate > 0.1) return "bg-red-500";
+    if (health.last1h.errorRate > 0.02) return "bg-yellow-500";
+    return "bg-emerald-500";
+  };
+
   return (
     <Card className="p-5" data-testid={`provider-card-${p.provider.toLowerCase()}`}>
       <div className="flex items-center justify-between gap-4">
@@ -234,6 +305,7 @@ function ProviderCard({
           {p.displayName && p.displayName !== p.provider && (
             <span className="text-sm text-muted-foreground">{p.displayName}</span>
           )}
+          <div className={`w-2.5 h-2.5 rounded-full ${getHealthColor()}`} title="Health indicator" data-testid={`health-indicator-${p.provider.toLowerCase()}`} />
         </div>
         <div className="flex items-center gap-2">
           <span
@@ -249,12 +321,31 @@ function ProviderCard({
           <Button
             size="icon"
             variant="secondary"
-            onClick={onValidate}
-            disabled={isValidating}
+            onClick={() => validateMutation.mutate()}
+            disabled={validateMutation.isPending}
             data-testid={`button-validate-${p.provider.toLowerCase()}`}
-            title="Re-validate key"
+            title="Validate Now"
           >
-            <RefreshCw className={`w-4 h-4 ${isValidating ? "animate-spin" : ""}`} />
+            <RefreshCw className={`w-4 h-4 ${validateMutation.isPending ? "animate-spin" : ""}`} />
+          </Button>
+          <Button
+            size="icon"
+            variant="secondary"
+            onClick={() => testMutation.mutate()}
+            disabled={testMutation.isPending}
+            data-testid={`button-test-${p.provider.toLowerCase()}`}
+            title="Test Connection"
+          >
+            <Zap className={`w-4 h-4 ${testMutation.isPending ? "animate-pulse" : ""}`} />
+          </Button>
+          <Button
+            size="icon"
+            variant="secondary"
+            onClick={() => setRotateOpen(true)}
+            data-testid={`button-rotate-${p.provider.toLowerCase()}`}
+            title="Rotate Key"
+          >
+            <RotateCw className="w-4 h-4" />
           </Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
@@ -284,20 +375,121 @@ function ProviderCard({
           </AlertDialog>
         </div>
       </div>
+
       {p.lastValidatedAt && (
         <p className="text-xs text-muted-foreground mt-3">
           Last validated: {new Date(p.lastValidatedAt).toLocaleString()}
         </p>
       )}
-      <button
-        onClick={onToggleExpand}
-        className="flex items-center gap-1 mt-3 text-xs font-medium text-primary hover:underline"
-        data-testid={`button-toggle-models-${p.provider.toLowerCase()}`}
-      >
-        {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-        Model Allowlist
-      </button>
+
+      {testResult && (
+        <div className={`mt-3 p-3 rounded-lg text-xs ${
+          testResult.success
+            ? "bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800"
+            : "bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800"
+        }`} data-testid={`test-result-${p.provider.toLowerCase()}`}>
+          <div className="flex items-center gap-3">
+            <span className="font-medium">{testResult.success ? "Test Passed" : "Test Failed"}</span>
+            <span className="text-muted-foreground">Model: {testResult.model}</span>
+            <span className="text-muted-foreground">Latency: {testResult.latencyMs}ms</span>
+            {testResult.response && <span className="text-muted-foreground">Response: "{testResult.response}"</span>}
+            {testResult.error && <span className="text-red-600 dark:text-red-400">{testResult.error}</span>}
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center gap-4 mt-3">
+        <button
+          onClick={() => setShowHealth(!showHealth)}
+          className="flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+          data-testid={`button-toggle-health-${p.provider.toLowerCase()}`}
+        >
+          {showHealth ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+          <Activity className="w-3.5 h-3.5" />
+          Health
+        </button>
+        <button
+          onClick={onToggleExpand}
+          className="flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+          data-testid={`button-toggle-models-${p.provider.toLowerCase()}`}
+        >
+          {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+          Model Allowlist
+        </button>
+      </div>
+
+      {showHealth && health && (
+        <div className="mt-3 pt-3 border-t" data-testid={`health-panel-${p.provider.toLowerCase()}`}>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="p-3 rounded-lg bg-muted/50">
+              <p className="text-[11px] text-muted-foreground uppercase">Last 1h</p>
+              <p className="text-lg font-bold mt-0.5">{health.last1h.requests}</p>
+              <p className="text-xs text-muted-foreground">requests</p>
+            </div>
+            <div className="p-3 rounded-lg bg-muted/50">
+              <p className="text-[11px] text-muted-foreground uppercase">Error Rate (1h)</p>
+              <p className={`text-lg font-bold mt-0.5 ${
+                health.last1h.errorRate > 0.1 ? "text-red-600 dark:text-red-400" :
+                health.last1h.errorRate > 0.02 ? "text-yellow-600 dark:text-yellow-400" :
+                "text-emerald-600 dark:text-emerald-400"
+              }`}>{(health.last1h.errorRate * 100).toFixed(1)}%</p>
+              <p className="text-xs text-muted-foreground">{health.last1h.errors} errors</p>
+            </div>
+            <div className="p-3 rounded-lg bg-muted/50">
+              <p className="text-[11px] text-muted-foreground uppercase">Avg Latency (1h)</p>
+              <p className="text-lg font-bold mt-0.5">{health.last1h.avgLatencyMs}ms</p>
+            </div>
+            <div className="p-3 rounded-lg bg-muted/50">
+              <p className="text-[11px] text-muted-foreground uppercase">24h Requests</p>
+              <p className="text-lg font-bold mt-0.5">{health.last24h.requests}</p>
+              <p className="text-xs text-muted-foreground">{health.last24h.errors} errors ({(health.last24h.errorRate * 100).toFixed(1)}%)</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-4 mt-3 text-xs text-muted-foreground">
+            <span>Validation: <span className={`font-medium ${health.validationStatus === "valid" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>{health.validationStatus}</span></span>
+            {health.lastValidated && <span>Last validated: {new Date(health.lastValidated).toLocaleString()}</span>}
+            {health.lastSuccessfulRequest && <span>Last success: {new Date(health.lastSuccessfulRequest).toLocaleString()}</span>}
+            {health.lastError && (
+              <span className="text-red-600 dark:text-red-400">
+                Last error: {health.lastError.message} at {new Date(health.lastError.timestamp).toLocaleString()}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       {expanded && <ModelAllowlist connection={p} />}
+
+      <Dialog open={rotateOpen} onOpenChange={(o) => { setRotateOpen(o); if (!o) setNewKey(""); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rotate {p.provider} Key</DialogTitle>
+            <DialogDescription>
+              Enter your new API key. It will be validated before replacing the current key. Member access will continue uninterrupted.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label>New API Key</Label>
+              <Input
+                type="password"
+                placeholder="Enter new API key..."
+                value={newKey}
+                onChange={e => setNewKey(e.target.value)}
+                data-testid="input-rotate-key"
+              />
+            </div>
+            <Button
+              className="w-full"
+              onClick={() => rotateMutation.mutate()}
+              disabled={!newKey || rotateMutation.isPending}
+              data-testid="button-confirm-rotate"
+            >
+              {rotateMutation.isPending ? "Validating & Rotating..." : "Validate & Rotate Key"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

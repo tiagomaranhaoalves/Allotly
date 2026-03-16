@@ -115,6 +115,9 @@ export interface IStorage {
   markPasswordResetTokenUsed(id: string): Promise<void>;
   deletePasswordResetTokensForUser(userId: string): Promise<void>;
   resetPasswordAtomically(tokenHash: string, newPasswordHash: string): Promise<{ success: boolean; userId?: string }>;
+
+  getProxyLogsByProvider(orgId: string, provider: string, since: Date): Promise<ProxyRequestLog[]>;
+  getAllApiKeysWithOwnerInfo(orgId: string, filters?: { status?: string; teamId?: string; type?: string; search?: string }): Promise<any[]>;
 }
 
 export class DrizzleStorage implements IStorage {
@@ -668,6 +671,76 @@ export class DrizzleStorage implements IStorage {
 
   async getVoucherById(id: string): Promise<Voucher | undefined> {
     return this.getVoucher(id);
+  }
+
+  async getProxyLogsByProvider(orgId: string, provider: string, since: Date): Promise<ProxyRequestLog[]> {
+    const orgTeams = await this.getTeamsByOrg(orgId);
+    if (orgTeams.length === 0) return [];
+    const teamIds = orgTeams.map(t => t.id);
+    const memberships = await db.select({ id: teamMemberships.id })
+      .from(teamMemberships)
+      .where(inArray(teamMemberships.teamId, teamIds));
+    if (memberships.length === 0) return [];
+    const membershipIds = memberships.map(m => m.id);
+    return db.select().from(proxyRequestLogs)
+      .where(and(
+        inArray(proxyRequestLogs.membershipId, membershipIds),
+        eq(proxyRequestLogs.provider, provider as any),
+        gte(proxyRequestLogs.createdAt, since)
+      ))
+      .orderBy(desc(proxyRequestLogs.createdAt));
+  }
+
+  async getAllApiKeysWithOwnerInfo(orgId: string, filters?: { status?: string; teamId?: string; type?: string; search?: string }): Promise<any[]> {
+    const orgTeams = await this.getTeamsByOrg(orgId);
+    if (orgTeams.length === 0) return [];
+    const teamMap = new Map(orgTeams.map(t => [t.id, t.name]));
+    let targetTeams = orgTeams;
+    if (filters?.teamId) {
+      targetTeams = orgTeams.filter(t => t.id === filters.teamId);
+      if (targetTeams.length === 0) return [];
+    }
+    const teamIds = targetTeams.map(t => t.id);
+    const memberships = await db.select().from(teamMemberships)
+      .where(inArray(teamMemberships.teamId, teamIds));
+    if (memberships.length === 0) return [];
+
+    const results: any[] = [];
+    for (const m of memberships) {
+      if (filters?.type === "team" && m.accessType !== "TEAM") continue;
+      if (filters?.type === "voucher" && m.accessType !== "VOUCHER") continue;
+
+      const keys = await this.getApiKeysByMembership(m.id);
+      const user = await this.getUser(m.userId);
+
+      for (const key of keys) {
+        if (filters?.status && filters.status !== "all") {
+          if (filters.status.toUpperCase() !== key.status) continue;
+        }
+
+        const ownerName = user?.name || "anonymous";
+        const ownerEmail = user?.email || "anonymous";
+        if (filters?.search) {
+          const s = filters.search.toLowerCase();
+          if (!ownerName.toLowerCase().startsWith(s) && !ownerEmail.toLowerCase().startsWith(s)) continue;
+        }
+
+        results.push({
+          id: key.id,
+          keyPrefix: key.keyPrefix,
+          ownerName,
+          ownerEmail,
+          ownerType: m.accessType === "VOUCHER" ? "voucher" : "team",
+          teamName: teamMap.get(m.teamId) || "Unknown",
+          teamId: m.teamId,
+          createdAt: key.createdAt,
+          lastUsed: key.lastUsedAt,
+          status: key.status,
+          membershipId: m.id,
+        });
+      }
+    }
+    return results;
   }
 
   async createPasswordResetToken(data: { userId: string; tokenHash: string; expiresAt: Date }): Promise<any> {

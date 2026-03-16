@@ -578,7 +578,7 @@ export async function registerRoutes(
       const plainKey = decryptProviderKey(conn.adminApiKeyEncrypted, conn.adminApiKeyIv, conn.adminApiKeyTag);
       const result = await adapter.validateAdminKey(plainKey);
 
-      const newStatus = result.valid ? "ACTIVE" : "INVALID_KEY";
+      const newStatus = result.valid ? "ACTIVE" : "INVALID";
       await storage.updateProviderConnection(conn.id, {
         status: newStatus as any,
         lastValidatedAt: new Date(),
@@ -597,6 +597,284 @@ export async function registerRoutes(
       res.json({ valid: result.valid, error: result.error, status: newStatus });
     } catch (e: any) {
       console.error("Provider validate error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/providers/:id/rotate-key", requireRole("ROOT_ADMIN"), async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const conn = await storage.getProviderConnection(req.params.id);
+      if (!conn || conn.orgId !== user.orgId) {
+        return res.status(404).json({ message: "Not found" });
+      }
+
+      const schema = z.object({ newApiKey: z.string().min(1) });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+
+      const { newApiKey } = parsed.data;
+      const adapter = getProviderAdapter(conn.provider);
+      if (!adapter) return res.status(400).json({ message: "Unsupported AI Provider" });
+
+      const validation = await adapter.validateAdminKey(newApiKey);
+      if (!validation.valid) {
+        return res.status(400).json({ message: `Key validation failed: ${validation.error}` });
+      }
+
+      const { encrypted, iv, tag } = encryptProviderKey(newApiKey);
+      await storage.updateProviderConnection(conn.id, {
+        adminApiKeyEncrypted: encrypted,
+        adminApiKeyIv: iv,
+        adminApiKeyTag: tag,
+        status: "ACTIVE",
+        lastValidatedAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "provider.key_rotated",
+        targetType: "provider_connection",
+        targetId: conn.id,
+        metadata: { provider: conn.provider },
+      });
+
+      res.json({ message: "Provider key rotated successfully", provider: conn.provider });
+    } catch (e: any) {
+      console.error("Provider rotate key error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/providers/:id/validate-now", requireRole("ROOT_ADMIN"), async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const conn = await storage.getProviderConnection(req.params.id);
+      if (!conn || conn.orgId !== user.orgId) {
+        return res.status(404).json({ message: "Not found" });
+      }
+
+      const adapter = getProviderAdapter(conn.provider);
+      if (!adapter) return res.status(400).json({ message: "Unsupported AI Provider" });
+
+      const plainKey = decryptProviderKey(conn.adminApiKeyEncrypted, conn.adminApiKeyIv, conn.adminApiKeyTag);
+      const result = await adapter.validateAdminKey(plainKey);
+
+      const newStatus = result.valid ? "ACTIVE" : "INVALID";
+      const now = new Date();
+      await storage.updateProviderConnection(conn.id, {
+        status: newStatus as any,
+        lastValidatedAt: now,
+        updatedAt: now,
+      });
+
+      res.json({ valid: result.valid, lastValidated: now.toISOString(), error: result.error });
+    } catch (e: any) {
+      console.error("Provider validate-now error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/providers/:id/test-connection", requireRole("ROOT_ADMIN"), async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const conn = await storage.getProviderConnection(req.params.id);
+      if (!conn || conn.orgId !== user.orgId) {
+        return res.status(404).json({ message: "Not found" });
+      }
+
+      const plainKey = decryptProviderKey(conn.adminApiKeyEncrypted, conn.adminApiKeyIv, conn.adminApiKeyTag);
+
+      const startTime = Date.now();
+      let success = false;
+      let model = "";
+      let responseText = "";
+      let error = "";
+
+      if (conn.provider === "OPENAI") {
+        model = "gpt-4o-mini";
+        try {
+          const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${plainKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ model, messages: [{ role: "user", content: "respond with OK" }], max_tokens: 5 }),
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            responseText = data.choices?.[0]?.message?.content || "";
+            success = true;
+          } else {
+            const body = await resp.text();
+            error = `HTTP ${resp.status}: ${body.slice(0, 200)}`;
+          }
+        } catch (e: any) { error = e.message; }
+      } else if (conn.provider === "ANTHROPIC") {
+        model = "claude-3-haiku-20240307";
+        try {
+          const resp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": plainKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model, max_tokens: 5, messages: [{ role: "user", content: "respond with OK" }] }),
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            responseText = data.content?.[0]?.text || "";
+            success = true;
+          } else {
+            const body = await resp.text();
+            error = `HTTP ${resp.status}: ${body.slice(0, 200)}`;
+          }
+        } catch (e: any) { error = e.message; }
+      } else if (conn.provider === "GOOGLE") {
+        model = "gemini-2.0-flash-lite";
+        try {
+          const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${plainKey}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ contents: [{ parts: [{ text: "respond with OK" }] }], generationConfig: { maxOutputTokens: 5 } }),
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            responseText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+            success = true;
+          } else {
+            const body = await resp.text();
+            error = `HTTP ${resp.status}: ${body.slice(0, 200)}`;
+          }
+        } catch (e: any) { error = e.message; }
+      } else {
+        return res.status(400).json({ message: "Unsupported provider" });
+      }
+
+      const latencyMs = Date.now() - startTime;
+      res.json({ success, latencyMs, model, response: responseText || undefined, error: error || undefined });
+    } catch (e: any) {
+      console.error("Provider test-connection error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/providers/:id/health", requireRole("ROOT_ADMIN"), async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const conn = await storage.getProviderConnection(req.params.id);
+      if (!conn || conn.orgId !== user.orgId) {
+        return res.status(404).json({ message: "Not found" });
+      }
+
+      const now = new Date();
+      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+      const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+      const logs24h = await storage.getProxyLogsByProvider(user.orgId, conn.provider, twentyFourHoursAgo);
+      const logs1h = logs24h.filter(l => new Date(l.createdAt) >= oneHourAgo);
+
+      const computeMetrics = (logs: typeof logs24h) => {
+        const requests = logs.length;
+        const errors = logs.filter(l => l.statusCode >= 400).length;
+        const errorRate = requests > 0 ? Math.round((errors / requests) * 10000) / 10000 : 0;
+        const avgLatencyMs = requests > 0 ? Math.round(logs.reduce((sum, l) => sum + l.durationMs, 0) / requests) : 0;
+        return { requests, errors, errorRate, avgLatencyMs };
+      };
+
+      const successfulLogs = logs24h.filter(l => l.statusCode < 400);
+      const errorLogs = logs24h.filter(l => l.statusCode >= 400);
+
+      const lastSuccessfulRequest = successfulLogs.length > 0
+        ? new Date(successfulLogs[0].createdAt).toISOString()
+        : null;
+
+      const lastError = errorLogs.length > 0 ? {
+        timestamp: new Date(errorLogs[0].createdAt).toISOString(),
+        statusCode: errorLogs[0].statusCode,
+        message: `HTTP ${errorLogs[0].statusCode} on model ${errorLogs[0].model}`,
+      } : null;
+
+      res.json({
+        lastValidated: conn.lastValidatedAt ? new Date(conn.lastValidatedAt).toISOString() : null,
+        validationStatus: conn.status === "ACTIVE" ? "valid" : "invalid",
+        last1h: computeMetrics(logs1h),
+        last24h: computeMetrics(logs24h),
+        lastSuccessfulRequest,
+        lastError,
+      });
+    } catch (e: any) {
+      console.error("Provider health error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/keys", requireRole("ROOT_ADMIN"), async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const filters = {
+        status: req.query.status as string | undefined,
+        teamId: req.query.teamId as string | undefined,
+        type: req.query.type as string | undefined,
+        search: req.query.search as string | undefined,
+      };
+      const keys = await storage.getAllApiKeysWithOwnerInfo(user.orgId, filters);
+      res.json(keys);
+    } catch (e: any) {
+      console.error("Key audit error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/keys/bulk-revoke", requireRole("ROOT_ADMIN"), async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const schema = z.object({ keyIds: z.array(z.string()).min(1) });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+
+      const { keyIds } = parsed.data;
+      const results: { keyId: string; success: boolean; error?: string }[] = [];
+      const revokedPrefixes: string[] = [];
+
+      const orgKeys = await storage.getAllApiKeysWithOwnerInfo(user.orgId);
+      const orgKeyMap = new Map(orgKeys.map(k => [k.id, k]));
+
+      const { redisDel, REDIS_KEYS } = await import("./lib/redis");
+
+      for (const keyId of keyIds) {
+        try {
+          const keyInfo = orgKeyMap.get(keyId);
+          if (!keyInfo) {
+            results.push({ keyId, success: false, error: "Key not found in org" });
+            continue;
+          }
+
+          const updatedKey = await storage.updateAllotlyApiKey(keyId, { status: "REVOKED", updatedAt: new Date() });
+
+          if (updatedKey) {
+            await redisDel(REDIS_KEYS.budget(keyInfo.membershipId));
+            await redisDel(REDIS_KEYS.concurrent(keyInfo.membershipId));
+            await redisDel(REDIS_KEYS.ratelimit(keyInfo.membershipId));
+            await redisDel(REDIS_KEYS.apiKeyCache(updatedKey.keyHash));
+          }
+
+          revokedPrefixes.push(keyInfo.keyPrefix);
+          results.push({ keyId, success: true });
+        } catch (e: any) {
+          results.push({ keyId, success: false, error: e.message });
+        }
+      }
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "keys.bulk_revoked",
+        targetType: "allotly_api_key",
+        targetId: "bulk",
+        metadata: { count: revokedPrefixes.length, keyPrefixes: revokedPrefixes },
+      });
+
+      res.json({ results });
+    } catch (e: any) {
+      console.error("Bulk key revoke error:", e);
       res.status(500).json({ message: "Internal server error" });
     }
   });
