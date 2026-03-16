@@ -18,7 +18,7 @@ import { runBundleExpiry } from "./lib/jobs/bundle-expiry";
 import { runRedisReconciliation } from "./lib/jobs/redis-reconciliation";
 import { runModelSync } from "./lib/jobs/model-sync";
 import { handleChatCompletion, handleListModels } from "./lib/proxy/handler";
-import { redisSet, redisGet, redisDel, redisIncr, REDIS_KEYS } from "./lib/redis";
+import { redisSet, redisGet, redisDel, redisIncr, redisIncrBy, REDIS_KEYS } from "./lib/redis";
 import { runProviderValidation } from "./lib/jobs/provider-validation";
 import { runSnapshotCleanup } from "./lib/jobs/snapshot-cleanup";
 import { runSpendAnomalyCheck } from "./lib/jobs/spend-anomaly";
@@ -1320,6 +1320,233 @@ export async function registerRoutes(
       res.json(updated);
     } catch (e: any) {
       console.error("Member budget update error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/members/:id/budget/reset", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
+
+      const membership = await storage.getMembership(req.params.id);
+      if (!membership) return res.status(404).json({ message: "Not found" });
+
+      const team = await storage.getTeam(membership.teamId);
+      if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
+      if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
+
+      if (membership.accessType !== "TEAM") {
+        return res.status(400).json({ message: "Budget reset only applies to TEAM members, not voucher members" });
+      }
+
+      const now = new Date();
+      const newPeriodEnd = new Date(now);
+      newPeriodEnd.setMonth(newPeriodEnd.getMonth() + 1);
+      const previousSpend = membership.currentPeriodSpendCents;
+
+      const updateData: Record<string, any> = {
+        currentPeriodSpendCents: 0,
+        periodStart: now,
+        periodEnd: newPeriodEnd,
+      };
+
+      if (membership.status === "BUDGET_EXHAUSTED") {
+        updateData.status = "ACTIVE";
+        const keys = await storage.getApiKeysByMembership(membership.id);
+        for (const key of keys) {
+          if (key.status === "REVOKED") {
+            await storage.updateAllotlyApiKey(key.id, { status: "ACTIVE", updatedAt: new Date() });
+          }
+          await redisDel(REDIS_KEYS.apiKeyCache(key.keyHash));
+        }
+      }
+
+      await redisSet(REDIS_KEYS.budget(membership.id), String(membership.monthlyBudgetCents));
+      await storage.deleteBudgetAlertsByMembership(membership.id);
+      await storage.updateMembership(membership.id, updateData);
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "budget.manual_reset",
+        targetType: "team_membership",
+        targetId: membership.id,
+        metadata: {
+          previousSpend,
+          budgetCents: membership.monthlyBudgetCents,
+          newPeriodStart: now.toISOString(),
+          newPeriodEnd: newPeriodEnd.toISOString(),
+          wasExhausted: membership.status === "BUDGET_EXHAUSTED",
+        },
+      });
+
+      res.json({
+        message: "Budget reset successfully",
+        newPeriodStart: now.toISOString(),
+        newPeriodEnd: newPeriodEnd.toISOString(),
+        budgetCents: membership.monthlyBudgetCents,
+      });
+    } catch (e: any) {
+      console.error("Budget reset error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/members/:id/budget/credit", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
+
+      const membership = await storage.getMembership(req.params.id);
+      if (!membership) return res.status(404).json({ message: "Not found" });
+
+      const team = await storage.getTeam(membership.teamId);
+      if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
+      if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
+
+      const schema = z.object({
+        amountCents: z.number().int().min(1),
+        reason: z.string().min(1).max(500),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+
+      const { amountCents, reason } = parsed.data;
+      const previousSpend = membership.currentPeriodSpendCents;
+      const newSpend = Math.max(0, previousSpend - amountCents);
+      const effectiveCreditCents = previousSpend - newSpend;
+
+      await storage.updateMembership(membership.id, { currentPeriodSpendCents: newSpend });
+      await redisIncrBy(REDIS_KEYS.budget(membership.id), effectiveCreditCents);
+
+      if (membership.status === "BUDGET_EXHAUSTED" && (membership.monthlyBudgetCents - newSpend) > 0) {
+        await storage.updateMembership(membership.id, { status: "ACTIVE" });
+        const keys = await storage.getApiKeysByMembership(membership.id);
+        for (const key of keys) {
+          if (key.status === "REVOKED") {
+            await storage.updateAllotlyApiKey(key.id, { status: "ACTIVE", updatedAt: new Date() });
+          }
+          await redisDel(REDIS_KEYS.apiKeyCache(key.keyHash));
+        }
+      }
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "budget.credit",
+        targetType: "team_membership",
+        targetId: membership.id,
+        metadata: {
+          requestedCreditCents: amountCents,
+          effectiveCreditCents,
+          reason,
+          previousSpendCents: previousSpend,
+          newSpendCents: newSpend,
+          wasExhausted: membership.status === "BUDGET_EXHAUSTED",
+        },
+      });
+
+      res.json({
+        message: "Budget credit applied",
+        amountCents: effectiveCreditCents,
+        requestedCents: amountCents,
+        previousSpendCents: previousSpend,
+        newSpendCents: newSpend,
+      });
+    } catch (e: any) {
+      console.error("Budget credit error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/members/:id/activity", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
+
+      const membership = await storage.getMembership(req.params.id);
+      if (!membership) return res.status(404).json({ message: "Not found" });
+
+      const team = await storage.getTeam(membership.teamId);
+      if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
+      if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
+
+      const [budgetAlerts, keys, proxyLogs, auditResult] = await Promise.all([
+        storage.getBudgetAlertsByMembership(membership.id),
+        storage.getApiKeysByMembership(membership.id),
+        storage.getProxyRequestLogsByMembership(membership.id, 100),
+        storage.getFilteredAuditLogs(user.orgId, {
+          targetType: "team_membership",
+          targetId: membership.id,
+          page: 1,
+          limit: 200,
+        }),
+      ]);
+
+      const budgetActions = ["budget.period_reset", "budget.manual_reset", "budget.credit", "budget.exhausted", "budget.reset_reactivated"];
+      const keyActions = ["key.provisioned", "key.revoked", "key.regenerated", "key.bulk_revoked"];
+
+      const alertEvents = budgetAlerts.map(a => ({
+        type: `alert_${a.thresholdPercent}`,
+        timestamp: new Date(a.triggeredAt).toISOString(),
+        actionTaken: a.actionTaken,
+      }));
+
+      const budgetAuditEvents = auditResult.logs
+        .filter(l => budgetActions.includes(l.action))
+        .map(l => ({
+          type: l.action,
+          timestamp: new Date(l.createdAt).toISOString(),
+          actorId: l.actorId,
+          metadata: l.metadata,
+        }));
+
+      const budgetEvents = [...alertEvents, ...budgetAuditEvents]
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+      const keyCurrentState = keys.map(k => ({
+        type: k.status === "REVOKED" ? "revoked" : "active",
+        keyPrefix: k.keyPrefix,
+        timestamp: new Date(k.createdAt).toISOString(),
+        lastUsed: k.lastUsedAt ? new Date(k.lastUsedAt).toISOString() : null,
+      }));
+
+      const keyAuditEvents = auditResult.logs
+        .filter(l => keyActions.includes(l.action))
+        .map(l => ({
+          type: l.action,
+          keyPrefix: (l.metadata as any)?.keyPrefix || null,
+          timestamp: new Date(l.createdAt).toISOString(),
+          lastUsed: null,
+        }));
+
+      const keyEvents = [...keyCurrentState, ...keyAuditEvents]
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+      const recentRequests = proxyLogs.map(l => ({
+        timestamp: new Date(l.createdAt).toISOString(),
+        model: l.model,
+        provider: l.provider,
+        inputTokens: l.inputTokens,
+        outputTokens: l.outputTokens,
+        costCents: l.costCents,
+        statusCode: l.statusCode,
+        durationMs: l.durationMs,
+      }));
+
+      const auditEntries = auditResult.logs
+        .filter(l => !budgetActions.includes(l.action) && !keyActions.includes(l.action))
+        .map(l => ({
+          action: l.action,
+          actorId: l.actorId,
+          metadata: l.metadata,
+          timestamp: new Date(l.createdAt).toISOString(),
+        }));
+
+      res.json({ budgetEvents, keyEvents, recentRequests, auditEntries });
+    } catch (e: any) {
+      console.error("Member activity error:", e);
       res.status(500).json({ message: "Internal server error" });
     }
   });

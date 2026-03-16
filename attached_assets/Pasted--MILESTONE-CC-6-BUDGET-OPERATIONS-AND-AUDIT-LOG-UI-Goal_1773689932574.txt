@@ -1,0 +1,93 @@
+
+MILESTONE CC-6: BUDGET OPERATIONS AND AUDIT LOG UI
+Goal: Add manual budget management tools and a searchable audit log interface.
+Requirements
+
+MUST implement POST /api/members/[membershipId]/budget/reset endpoint.
+
+Resets the member's budget period immediately (same logic as the monthly budget-reset job, but for one member on demand).
+Only applies to TEAM members (vouchers don't have periods).
+Logic: reset currentPeriodSpendCents to 0, update periodStart/periodEnd, clear BudgetAlerts, restore Redis budget to full monthly amount, re-enable key if BUDGET_EXHAUSTED.
+MUST require Root Admin or Team Admin (own team).
+MUST create AuditLog entry.
+VERIFY: Manually reset budget → member's spend shows $0 → Redis shows full budget → member can make requests again.
+
+
+MUST implement POST /api/members/[membershipId]/budget/credit endpoint.
+
+Request body: { amountCents: number, reason: string }.
+Adds budget back to a member without resetting the period.
+Logic: INCRBY allotly:budget:{membershipId} {amountCents}. Update DB spend down by amountCents (floor at 0). If member was BUDGET_EXHAUSTED and new remaining > 0, reactivate.
+reason field is stored in AuditLog (e.g., "Compensating for failed request charges").
+MUST validate: amountCents is positive.
+MUST require Root Admin or Team Admin.
+MUST create AuditLog entry with reason.
+VERIFY: Credit $5 to an exhausted member → member reactivated → Redis shows $5 → member can make requests.
+
+
+MUST implement GET /api/audit-log endpoint.
+
+Returns paginated audit log entries for the org.
+Query params: entityType, action, performedBy, entityId, startDate, endDate, page, limit (default 50).
+Response: { entries: AuditLog[], total: number, page: number, pages: number }.
+MUST require Root Admin.
+VERIFY: Filter by entityType=MEMBER → only member-related entries shown.
+VERIFY: Filter by date range → only entries within range returned.
+
+
+MUST add audit log UI page.
+
+New "Audit Log" page in Control Center nav (Root Admin only).
+Table with columns: Timestamp, Action, Entity Type, Entity (name/identifier), Changed By (user name), Details (expandable).
+Filter bar: entity type dropdown, action dropdown, date range picker, search by entity name.
+Each row expandable to show the full changes JSON (formatted nicely, not raw JSON).
+Pagination at bottom.
+VERIFY: All operations from CC-1 through CC-5 produce entries that appear in this log.
+
+
+MUST implement GET /api/members/[membershipId]/activity endpoint.
+
+Returns a unified activity timeline for one member:
+
+
+
+json     {
+       "budgetEvents": [{ "type": "alert_80", "timestamp": "..." }, { "type": "reset", "timestamp": "..." }],
+       "keyEvents": [{ "type": "created", "timestamp": "..." }, { "type": "regenerated", "timestamp": "..." }],
+       "recentRequests": [{ "timestamp": "...", "model": "gpt-4o-mini", "inputTokens": 50, "outputTokens": 120, "costCents": 0.3, "statusCode": 200 }],
+       "auditEntries": [{ "action": "EDIT", "changes": {...}, "timestamp": "..." }]
+     }
+
+recentRequests: last 100 requests from ProxyRequestLog.
+MUST require Root Admin or Team Admin (own team).
+VERIFY: View member activity → see their requests, budget events, key events, and admin changes.
+
+
+MUST add member activity UI.
+
+Clicking a member row opens a detail panel / page with tabbed activity view:
+
+"Requests" tab: table of recent API requests (timestamp, model, tokens, cost, status).
+"Budget" tab: budget events timeline (alerts, resets, credits, edits).
+"Key" tab: key lifecycle (created, regenerated, revoked).
+"Admin Actions" tab: audit log entries for this member.
+
+
+
+
+MUST add budget management buttons in member detail view.
+
+"Reset Budget" button (Team members only) → confirmation modal.
+"Add Credit" button → modal with amount input and required reason text field.
+Both buttons only visible to Root Admin and Team Admin of member's team.
+
+
+
+Tests
+
+Manual budget reset → verify period resets, spend zeroed, Redis restored.
+Budget credit on exhausted member → verify reactivation.
+Audit log pagination → verify correct page sizes and total counts.
+Audit log filtering → verify each filter works correctly.
+Member activity → verify all event types present and correctly formatted.
+All operations from previous milestones → verify audit log entries appear.

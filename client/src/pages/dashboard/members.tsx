@@ -22,10 +22,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Users, Plus, UserMinus, UserCheck,
   AlertTriangle, Trash2, Pencil,
   RefreshCw, ShieldOff, ArrowRightLeft, Shield, Send,
+  Activity, RotateCcw, CreditCard, Zap, Key, Bell, ClipboardList,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -187,6 +190,283 @@ function ChangeRoleDialog({ member, open, onOpenChange }: { member: any; open: b
   );
 }
 
+function MemberActivityPanel({ memberId }: { memberId: string }) {
+  const { data, isLoading } = useQuery<{
+    budgetEvents: any[];
+    keyEvents: any[];
+    recentRequests: any[];
+    auditEntries: any[];
+  }>({
+    queryKey: ["/api/members", memberId, "activity"],
+    queryFn: async () => {
+      const res = await fetch(`/api/members/${memberId}/activity`);
+      if (!res.ok) throw new Error("Failed to fetch activity");
+      return res.json();
+    },
+  });
+
+  if (isLoading) {
+    return <div className="space-y-2 p-2">{[1, 2, 3].map(i => <Skeleton key={i} className="h-8" />)}</div>;
+  }
+
+  const { budgetEvents = [], keyEvents = [], recentRequests = [], auditEntries = [] } = data || {};
+
+  return (
+    <Tabs defaultValue="requests" className="w-full">
+      <TabsList className="w-full grid grid-cols-4 h-8">
+        <TabsTrigger value="requests" className="text-xs gap-1" data-testid="tab-requests">
+          <Zap className="w-3 h-3" /> Requests ({recentRequests.length})
+        </TabsTrigger>
+        <TabsTrigger value="budget" className="text-xs gap-1" data-testid="tab-budget">
+          <Bell className="w-3 h-3" /> Budget ({budgetEvents.length})
+        </TabsTrigger>
+        <TabsTrigger value="keys" className="text-xs gap-1" data-testid="tab-keys">
+          <Key className="w-3 h-3" /> Keys ({keyEvents.length})
+        </TabsTrigger>
+        <TabsTrigger value="admin" className="text-xs gap-1" data-testid="tab-admin">
+          <ClipboardList className="w-3 h-3" /> Admin ({auditEntries.length})
+        </TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="requests" className="mt-2">
+        {recentRequests.length === 0 ? (
+          <p className="text-xs text-muted-foreground py-4 text-center">No recent API requests</p>
+        ) : (
+          <div className="max-h-60 overflow-y-auto space-y-1">
+            {recentRequests.map((r: any, i: number) => (
+              <div key={i} className="flex items-center justify-between text-xs py-1.5 px-2 rounded bg-muted/30" data-testid={`row-request-${i}`}>
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className={`text-[10px] px-1.5 py-0 no-default-hover-elevate no-default-active-elevate ${r.statusCode >= 400 ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"}`}>
+                    {r.statusCode || "200"}
+                  </Badge>
+                  <span className="font-mono">{r.model}</span>
+                  <span className="text-muted-foreground">{r.provider}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-muted-foreground">{r.inputTokens || 0}→{r.outputTokens || 0} tok</span>
+                  <span className="font-medium">${((r.costCents || 0) / 100).toFixed(4)}</span>
+                  <span className="text-muted-foreground">{new Date(r.timestamp).toLocaleTimeString()}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </TabsContent>
+
+      <TabsContent value="budget" className="mt-2">
+        {budgetEvents.length === 0 ? (
+          <p className="text-xs text-muted-foreground py-4 text-center">No budget alerts triggered</p>
+        ) : (
+          <div className="max-h-60 overflow-y-auto space-y-1">
+            {budgetEvents.map((e: any, i: number) => (
+              <div key={i} className="flex items-center justify-between text-xs py-1.5 px-2 rounded bg-muted/30" data-testid={`row-budget-event-${i}`}>
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 no-default-hover-elevate no-default-active-elevate">
+                    {e.type}
+                  </Badge>
+                  {e.actionTaken && <span className="text-muted-foreground">{e.actionTaken}</span>}
+                </div>
+                <span className="text-muted-foreground">{new Date(e.timestamp).toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </TabsContent>
+
+      <TabsContent value="keys" className="mt-2">
+        {keyEvents.length === 0 ? (
+          <p className="text-xs text-muted-foreground py-4 text-center">No API key events</p>
+        ) : (
+          <div className="max-h-60 overflow-y-auto space-y-1">
+            {keyEvents.map((e: any, i: number) => (
+              <div key={i} className="flex items-center justify-between text-xs py-1.5 px-2 rounded bg-muted/30" data-testid={`row-key-event-${i}`}>
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className={`text-[10px] px-1.5 py-0 no-default-hover-elevate no-default-active-elevate ${e.type === "revoked" ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"}`}>
+                    {e.type}
+                  </Badge>
+                  <span className="font-mono">{e.keyPrefix}...</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {e.lastUsed && <span className="text-muted-foreground">last used {new Date(e.lastUsed).toLocaleDateString()}</span>}
+                  <span className="text-muted-foreground">{new Date(e.timestamp).toLocaleString()}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </TabsContent>
+
+      <TabsContent value="admin" className="mt-2">
+        {auditEntries.length === 0 ? (
+          <p className="text-xs text-muted-foreground py-4 text-center">No admin actions recorded</p>
+        ) : (
+          <div className="max-h-60 overflow-y-auto space-y-1">
+            {auditEntries.map((e: any, i: number) => (
+              <div key={i} className="flex items-center justify-between text-xs py-1.5 px-2 rounded bg-muted/30" data-testid={`row-admin-event-${i}`}>
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 no-default-hover-elevate no-default-active-elevate">
+                    {e.action}
+                  </Badge>
+                  <span className="text-muted-foreground">by {e.actorId === "system" ? "System" : e.actorId.slice(0, 8)}</span>
+                </div>
+                <span className="text-muted-foreground">{new Date(e.timestamp).toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </TabsContent>
+    </Tabs>
+  );
+}
+
+function BudgetResetDialog({ member, open, onOpenChange }: { member: any; open: boolean; onOpenChange: (o: boolean) => void }) {
+  const { toast } = useToast();
+
+  const resetMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/members/${member.id}/budget/reset`);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/members"] });
+      onOpenChange(false);
+      toast({ title: "Budget reset", description: `Spend zeroed. New period ends ${new Date(data.newPeriodEnd).toLocaleDateString()}` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Reset failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Reset Budget Period?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This will zero out the current spend for <strong>{member.user?.name || member.user?.email}</strong>,
+            start a new billing period, and clear all budget alerts.
+            {member.status === "BUDGET_EXHAUSTED" && (
+              <span className="block mt-2 text-emerald-600 dark:text-emerald-400 font-medium">
+                This member is currently budget-exhausted and will be reactivated.
+              </span>
+            )}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => resetMutation.mutate()}
+            disabled={resetMutation.isPending}
+            data-testid="button-confirm-budget-reset"
+          >
+            {resetMutation.isPending ? "Resetting..." : "Reset Budget"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+function BudgetCreditDialog({ member, open, onOpenChange }: { member: any; open: boolean; onOpenChange: (o: boolean) => void }) {
+  const { toast } = useToast();
+  const [amountDollars, setAmountDollars] = useState("");
+  const [reason, setReason] = useState("");
+
+  const creditMutation = useMutation({
+    mutationFn: async () => {
+      const amountCents = Math.round(parseFloat(amountDollars) * 100);
+      const res = await apiRequest("POST", `/api/members/${member.id}/budget/credit`, {
+        amountCents,
+        reason,
+      });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/members"] });
+      onOpenChange(false);
+      setAmountDollars("");
+      setReason("");
+      toast({
+        title: "Credit applied",
+        description: `$${(data.amountCents / 100).toFixed(2)} credit applied. Spend: $${(data.previousSpendCents / 100).toFixed(2)} → $${(data.newSpendCents / 100).toFixed(2)}`,
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Credit failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const amountCents = Math.round(parseFloat(amountDollars || "0") * 100);
+  const isValid = amountCents >= 1 && reason.trim().length > 0;
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) { setAmountDollars(""); setReason(""); } }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add Budget Credit</DialogTitle>
+          <DialogDescription>
+            Apply a credit to reduce the current spend for {member.user?.name || member.user?.email}.
+            {member.status === "BUDGET_EXHAUSTED" && (
+              <span className="block mt-1 text-emerald-600 dark:text-emerald-400 font-medium">
+                If the credit brings spend below the budget limit, the member will be reactivated.
+              </span>
+            )}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 pt-2">
+          <div className="space-y-2">
+            <Label>Credit Amount ($)</Label>
+            <Input
+              type="number"
+              step="0.01"
+              min="0.01"
+              value={amountDollars}
+              onChange={e => setAmountDollars(e.target.value)}
+              placeholder="5.00"
+              data-testid="input-credit-amount"
+            />
+            {amountDollars && <p className="text-xs text-muted-foreground">{amountCents} cents</p>}
+          </div>
+          <div className="space-y-2">
+            <Label>Reason (required)</Label>
+            <Textarea
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              placeholder="e.g. Courtesy credit for service disruption"
+              rows={2}
+              data-testid="input-credit-reason"
+            />
+          </div>
+          <div className="rounded-md bg-muted/50 p-3 text-xs space-y-1">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Current spend</span>
+              <span className="font-medium">${(member.currentPeriodSpendCents / 100).toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Credit</span>
+              <span className="font-medium text-emerald-600">-${(amountCents / 100).toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between border-t pt-1">
+              <span className="text-muted-foreground">New spend</span>
+              <span className="font-medium">${(Math.max(0, member.currentPeriodSpendCents - amountCents) / 100).toFixed(2)}</span>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button
+              onClick={() => creditMutation.mutate()}
+              disabled={!isValid || creditMutation.isPending}
+              data-testid="button-confirm-credit"
+            >
+              {creditMutation.isPending ? "Applying..." : "Apply Credit"}
+            </Button>
+          </DialogFooter>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function MemberCard({
   member,
   onRemove,
@@ -212,6 +492,9 @@ function MemberCard({
   const [regenKeyValue, setRegenKeyValue] = useState<string | null>(null);
   const [transferOpen, setTransferOpen] = useState(false);
   const [changeRoleOpen, setChangeRoleOpen] = useState(false);
+  const [budgetResetOpen, setBudgetResetOpen] = useState(false);
+  const [budgetCreditOpen, setBudgetCreditOpen] = useState(false);
+  const [showActivity, setShowActivity] = useState(false);
 
   const suspendMutation = useMutation({
     mutationFn: async () => {
@@ -399,6 +682,28 @@ function MemberCard({
                       </DialogContent>
                     </Dialog>
 
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs"
+                      onClick={() => setBudgetResetOpen(true)}
+                      data-testid={`button-budget-reset-${member.id}`}
+                    >
+                      <RotateCcw className="w-3 h-3 mr-1" />
+                      Reset Budget
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs"
+                      onClick={() => setBudgetCreditOpen(true)}
+                      data-testid={`button-budget-credit-${member.id}`}
+                    >
+                      <CreditCard className="w-3 h-3 mr-1" />
+                      Add Credit
+                    </Button>
+
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button
@@ -576,12 +881,33 @@ function MemberCard({
                 </AlertDialogContent>
               </AlertDialog>
             </div>
+
+            <div className="pt-2 border-t">
+              <Button
+                size="sm"
+                variant={showActivity ? "default" : "outline"}
+                className="h-7 text-xs gap-1"
+                onClick={() => setShowActivity(!showActivity)}
+                data-testid={`button-activity-${member.id}`}
+              >
+                <Activity className="w-3 h-3" />
+                {showActivity ? "Hide Activity" : "View Activity"}
+              </Button>
+            </div>
+
+            {showActivity && (
+              <div className="pt-2 border-t">
+                <MemberActivityPanel memberId={member.id} />
+              </div>
+            )}
           </div>
         )}
       </Card>
 
       <TransferDialog member={member} teams={teams} open={transferOpen} onOpenChange={setTransferOpen} />
       <ChangeRoleDialog member={member} open={changeRoleOpen} onOpenChange={setChangeRoleOpen} />
+      <BudgetResetDialog member={member} open={budgetResetOpen} onOpenChange={setBudgetResetOpen} />
+      <BudgetCreditDialog member={member} open={budgetCreditOpen} onOpenChange={setBudgetCreditOpen} />
     </>
   );
 }

@@ -77,7 +77,7 @@ export interface IStorage {
   createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
   getAuditLogsByOrg(orgId: string, limit?: number, offset?: number): Promise<AuditLog[]>;
   getFilteredAuditLogs(orgId: string, filters: {
-    action?: string; targetType?: string; actorId?: string;
+    action?: string; targetType?: string; targetId?: string; actorId?: string;
     startDate?: string; endDate?: string; page?: number; limit?: number;
   }): Promise<{ logs: AuditLog[]; total: number }>;
 
@@ -392,12 +392,13 @@ export class DrizzleStorage implements IStorage {
   }
 
   async getFilteredAuditLogs(orgId: string, filters: {
-    action?: string; targetType?: string; actorId?: string;
+    action?: string; targetType?: string; targetId?: string; actorId?: string;
     startDate?: string; endDate?: string; page?: number; limit?: number;
   }): Promise<{ logs: AuditLog[]; total: number }> {
     const conditions = [eq(auditLogs.orgId, orgId)];
     if (filters.action) conditions.push(eq(auditLogs.action, filters.action));
     if (filters.targetType) conditions.push(eq(auditLogs.targetType, filters.targetType));
+    if (filters.targetId) conditions.push(eq(auditLogs.targetId, filters.targetId));
     if (filters.actorId) conditions.push(eq(auditLogs.actorId, filters.actorId));
     if (filters.startDate) conditions.push(gte(auditLogs.createdAt, new Date(filters.startDate)));
     if (filters.endDate) conditions.push(lte(auditLogs.createdAt, new Date(filters.endDate)));
