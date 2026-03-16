@@ -38,6 +38,7 @@ Allotly employs a robust architecture with a focus on real-time budget enforceme
 - **Data Exports**: `GET /api/export/usage` and `GET /api/export/members` return CSV files with formula-injection-safe escaping. Available to ROOT_ADMIN and TEAM_ADMIN (scoped to their teams).
 - **Bulk Add Members**: `POST /api/teams/:teamId/bulk-add-members` accepts up to 200 members with email, optional name, optional budgetCents. Creates user, membership, API key, and sends invite email per member.
 - **Cleanup Utilities**: `POST /api/admin/cleanup/:type` supports `expired-vouchers`, `revoked-keys`, `orphans`, `redis-reconcile`. ROOT_ADMIN only.
+- **Admin Control Center**: Expanded with 8 tabs (Overview, Organizations, Users, API Keys, Proxy Stats, Providers, Vouchers, Audit Logs). Backend routes include: hard/soft delete user (frees email via tombstone prefix), reactivate, transfer between orgs (moveHistory updates membership in-place to preserve FK integrity), delete org (cascade), org drill-down, platform-wide keys/revoke, audit logs, proxy stats, providers, vouchers/void. Hard-delete guards against users who are team admins and nullifies voucher ownership. Transfer with `moveHistory=true` updates the existing membership row (preserving the same ID) rather than delete+create, to avoid FK constraint violations on `proxyRequestLogs`/`usageSnapshots`/`budgetAlerts`.
 
 ## External Dependencies
 - **Frontend**: React 18, Vite, wouter (routing), TanStack Query v5, Shadcn/ui, Tailwind CSS, Recharts.

@@ -3,8 +3,8 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, requireAuth, requireRole, requireAdmin } from "./auth";
 import { hashPassword, comparePasswords } from "./lib/password";
-import { signupSchema, loginSchema, voucherBundles, users as usersTable, allotlyApiKeys as allotlyApiKeysTable } from "@shared/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { signupSchema, loginSchema, voucherBundles, users as usersTable, allotlyApiKeys as allotlyApiKeysTable, teams, teamMemberships, proxyRequestLogs, usageSnapshots, budgetAlerts, vouchers, voucherRedemptions, providerConnections, auditLogs, platformAuditLogs, passwordResetTokens } from "@shared/schema";
+import { eq, and, sql, inArray, desc, gte, lte, like, count } from "drizzle-orm";
 import { db } from "./db";
 import { encryptProviderKey, decryptProviderKey } from "./lib/encryption";
 import { generateVoucherCode } from "./lib/voucher-codes";
@@ -4750,6 +4750,614 @@ export async function registerRoutes(
     } catch (e: any) {
       console.error("Admin model sync error:", e);
       res.status(500).json({ message: "Model sync failed: " + e.message });
+    }
+  });
+
+  // ── Admin: User Hard Delete ──
+  app.delete("/api/admin/users/:id/hard", requireAdmin, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.params.id);
+      if (!user) return res.status(404).json({ message: "User not found" });
+
+      const counts: Record<string, number> = {};
+
+      await db.transaction(async (tx) => {
+        await tx.insert(platformAuditLogs).values({
+          action: "HARD_DELETE_USER",
+          entityType: "USER",
+          entityId: user.id,
+          metadata: { email: user.email, orgId: user.orgId },
+          performedBy: "admin",
+        });
+
+        const membership = await tx.select().from(teamMemberships)
+          .where(eq(teamMemberships.userId, user.id)).then(r => r[0]);
+
+        if (membership) {
+          const keys = await tx.select().from(allotlyApiKeysTable)
+            .where(eq(allotlyApiKeysTable.membershipId, membership.id));
+
+          for (const k of keys) {
+            await redisDel(REDIS_KEYS.apiKeyCache(k.keyHash));
+          }
+          await redisDel(REDIS_KEYS.budget(membership.id));
+          await redisDel(REDIS_KEYS.concurrent(membership.id));
+          await redisDel(REDIS_KEYS.ratelimit(membership.id));
+
+          const proxyResult = await tx.delete(proxyRequestLogs)
+            .where(eq(proxyRequestLogs.membershipId, membership.id)).returning();
+          counts.proxyLogs = proxyResult.length;
+
+          const usageResult = await tx.delete(usageSnapshots)
+            .where(eq(usageSnapshots.membershipId, membership.id)).returning();
+          counts.usageSnapshots = usageResult.length;
+
+          const alertResult = await tx.delete(budgetAlerts)
+            .where(eq(budgetAlerts.membershipId, membership.id)).returning();
+          counts.budgetAlerts = alertResult.length;
+
+          const keyResult = await tx.delete(allotlyApiKeysTable)
+            .where(eq(allotlyApiKeysTable.membershipId, membership.id)).returning();
+          counts.apiKeys = keyResult.length;
+
+          await tx.delete(teamMemberships).where(eq(teamMemberships.id, membership.id));
+          counts.memberships = 1;
+        }
+
+        await tx.delete(voucherRedemptions).where(eq(voucherRedemptions.userId, user.id));
+        await tx.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, user.id));
+
+        const ownedTeams = await tx.select().from(teams).where(eq(teams.adminId, user.id));
+        if (ownedTeams.length > 0) {
+          return res.status(400).json({
+            message: `Cannot hard-delete: user is admin of ${ownedTeams.length} team(s). Reassign or delete those teams first.`,
+            teamIds: ownedTeams.map(t => t.id),
+          });
+        }
+
+        const createdVouchers = await tx.select({ id: vouchers.id }).from(vouchers)
+          .where(eq(vouchers.createdById, user.id));
+        if (createdVouchers.length > 0) {
+          await tx.update(vouchers)
+            .set({ createdById: "deleted" } as any)
+            .where(eq(vouchers.createdById, user.id));
+        }
+
+        await tx.delete(auditLogs).where(eq(auditLogs.actorId, user.id));
+
+        await tx.delete(usersTable).where(eq(usersTable.id, user.id));
+        counts.users = 1;
+      });
+
+      res.json({ message: "User permanently deleted", email: user.email, deletedCounts: counts });
+    } catch (e: any) {
+      console.error("Admin hard delete user error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Admin: User Soft Delete (suspend + free email) ──
+  app.delete("/api/admin/users/:id/soft", requireAdmin, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.params.id);
+      if (!user) return res.status(404).json({ message: "User not found" });
+
+      const freedEmail = user.email;
+      const tombstoneEmail = `deleted_${Date.now()}_${user.email}`;
+
+      await db.transaction(async (tx) => {
+        await tx.insert(platformAuditLogs).values({
+          action: "SOFT_DELETE_USER",
+          entityType: "USER",
+          entityId: user.id,
+          metadata: { originalEmail: freedEmail, tombstoneEmail, orgId: user.orgId },
+          performedBy: "admin",
+        });
+
+        const membership = await tx.select().from(teamMemberships)
+          .where(eq(teamMemberships.userId, user.id)).then(r => r[0]);
+
+        if (membership) {
+          const keys = await tx.select().from(allotlyApiKeysTable)
+            .where(and(
+              eq(allotlyApiKeysTable.membershipId, membership.id),
+              eq(allotlyApiKeysTable.status, "ACTIVE")
+            ));
+          for (const k of keys) {
+            await tx.update(allotlyApiKeysTable)
+              .set({ status: "REVOKED", updatedAt: new Date() })
+              .where(eq(allotlyApiKeysTable.id, k.id));
+            await redisDel(REDIS_KEYS.apiKeyCache(k.keyHash));
+          }
+          await redisDel(REDIS_KEYS.budget(membership.id));
+          await redisDel(REDIS_KEYS.concurrent(membership.id));
+          await redisDel(REDIS_KEYS.ratelimit(membership.id));
+
+          await tx.update(teamMemberships)
+            .set({ status: "SUSPENDED" })
+            .where(eq(teamMemberships.id, membership.id));
+        }
+
+        await tx.update(usersTable)
+          .set({ email: tombstoneEmail, status: "SUSPENDED" } as any)
+          .where(eq(usersTable.id, user.id));
+      });
+
+      res.json({ message: "User soft-deleted", freedEmail, note: "Email is now available for reuse" });
+    } catch (e: any) {
+      console.error("Admin soft delete user error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Admin: Reactivate User ──
+  app.post("/api/admin/users/:id/reactivate", requireAdmin, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.params.id);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      if (user.status === "ACTIVE") return res.status(400).json({ message: "User is already active" });
+
+      await storage.updateUser(user.id, { status: "ACTIVE" } as any);
+
+      const membership = await storage.getMembershipByUser(user.id);
+      if (membership && membership.status === "SUSPENDED") {
+        await storage.updateMembership(membership.id, { status: "ACTIVE" });
+      }
+
+      await db.insert(platformAuditLogs).values({
+        action: "REACTIVATE_USER",
+        entityType: "USER",
+        entityId: user.id,
+        metadata: { email: user.email },
+        performedBy: "admin",
+      });
+
+      res.json({ message: "User reactivated", email: user.email });
+    } catch (e: any) {
+      console.error("Admin reactivate user error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Admin: Transfer User to another org ──
+  app.post("/api/admin/users/:id/transfer", requireAdmin, async (req, res) => {
+    try {
+      const transferSchema = z.object({
+        targetOrgId: z.string().min(1),
+        targetTeamId: z.string().min(1),
+        moveHistory: z.boolean().default(false),
+        monthlyBudgetCents: z.number().int().min(0).default(500),
+      });
+      const parsed = transferSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+
+      const user = await storage.getUser(req.params.id);
+      if (!user) return res.status(404).json({ message: "User not found" });
+
+      const targetOrg = await storage.getOrganization(parsed.data.targetOrgId);
+      if (!targetOrg) return res.status(404).json({ message: "Target organization not found" });
+
+      const targetTeam = await storage.getTeam(parsed.data.targetTeamId);
+      if (!targetTeam || targetTeam.orgId !== targetOrg.id)
+        return res.status(400).json({ message: "Target team not found or doesn't belong to target org" });
+
+      const sourceOrgId = user.orgId;
+
+      await db.transaction(async (tx) => {
+        const oldMembership = await tx.select().from(teamMemberships)
+          .where(eq(teamMemberships.userId, user.id)).then(r => r[0]);
+
+        const now = new Date();
+        const periodEnd = new Date(now);
+        periodEnd.setMonth(periodEnd.getMonth() + 1);
+        let activeMembershipId: string;
+
+        if (oldMembership) {
+          const keys = await tx.select().from(allotlyApiKeysTable)
+            .where(eq(allotlyApiKeysTable.membershipId, oldMembership.id));
+          for (const k of keys) {
+            await redisDel(REDIS_KEYS.apiKeyCache(k.keyHash));
+          }
+          await tx.delete(allotlyApiKeysTable)
+            .where(eq(allotlyApiKeysTable.membershipId, oldMembership.id));
+
+          await redisDel(REDIS_KEYS.budget(oldMembership.id));
+          await redisDel(REDIS_KEYS.concurrent(oldMembership.id));
+          await redisDel(REDIS_KEYS.ratelimit(oldMembership.id));
+
+          if (parsed.data.moveHistory) {
+            await tx.update(teamMemberships)
+              .set({
+                teamId: targetTeam.id,
+                monthlyBudgetCents: parsed.data.monthlyBudgetCents,
+                currentPeriodSpendCents: 0,
+                periodStart: now,
+                periodEnd,
+                status: "ACTIVE",
+              })
+              .where(eq(teamMemberships.id, oldMembership.id));
+            activeMembershipId = oldMembership.id;
+          } else {
+            await tx.delete(proxyRequestLogs)
+              .where(eq(proxyRequestLogs.membershipId, oldMembership.id));
+            await tx.delete(usageSnapshots)
+              .where(eq(usageSnapshots.membershipId, oldMembership.id));
+            await tx.delete(budgetAlerts)
+              .where(eq(budgetAlerts.membershipId, oldMembership.id));
+            await tx.delete(teamMemberships).where(eq(teamMemberships.id, oldMembership.id));
+
+            activeMembershipId = crypto.randomUUID();
+            await tx.insert(teamMemberships).values({
+              id: activeMembershipId,
+              teamId: targetTeam.id,
+              userId: user.id,
+              accessType: "TEAM",
+              monthlyBudgetCents: parsed.data.monthlyBudgetCents,
+              currentPeriodSpendCents: 0,
+              periodStart: now,
+              periodEnd,
+              maxTokensPerRequest: 4096,
+              rpmLimit: 30,
+              concurrencyLimit: 3,
+              status: "ACTIVE",
+            });
+          }
+        } else {
+          activeMembershipId = crypto.randomUUID();
+          await tx.insert(teamMemberships).values({
+            id: activeMembershipId,
+            teamId: targetTeam.id,
+            userId: user.id,
+            accessType: "TEAM",
+            monthlyBudgetCents: parsed.data.monthlyBudgetCents,
+            currentPeriodSpendCents: 0,
+            periodStart: now,
+            periodEnd,
+            maxTokensPerRequest: 4096,
+            rpmLimit: 30,
+            concurrencyLimit: 3,
+            status: "ACTIVE",
+          });
+        }
+
+        await tx.update(usersTable)
+          .set({ orgId: targetOrg.id, orgRole: "MEMBER" } as any)
+          .where(eq(usersTable.id, user.id));
+
+        await redisSet(REDIS_KEYS.budget(activeMembershipId), String(parsed.data.monthlyBudgetCents));
+
+        const rawKey = generateAllotlyKey();
+        const keyHash = hashKey(rawKey);
+        await tx.insert(allotlyApiKeysTable).values({
+          id: crypto.randomUUID(),
+          userId: user.id,
+          membershipId: activeMembershipId,
+          keyHash,
+          keyPrefix: rawKey.slice(0, 12),
+          status: "ACTIVE",
+        });
+
+        await tx.insert(platformAuditLogs).values({
+          action: "TRANSFER_USER",
+          entityType: "USER",
+          entityId: user.id,
+          metadata: {
+            email: user.email,
+            sourceOrgId,
+            targetOrgId: targetOrg.id,
+            targetTeamId: targetTeam.id,
+            moveHistory: parsed.data.moveHistory,
+          },
+          performedBy: "admin",
+        });
+      });
+
+      res.json({
+        message: "User transferred successfully",
+        email: user.email,
+        from: sourceOrgId,
+        to: targetOrg.id,
+        team: targetTeam.name,
+        historyMoved: parsed.data.moveHistory,
+      });
+    } catch (e: any) {
+      console.error("Admin transfer user error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Admin: Delete Organization ──
+  app.delete("/api/admin/organizations/:id", requireAdmin, async (req, res) => {
+    try {
+      const org = await storage.getOrganization(req.params.id);
+      if (!org) return res.status(404).json({ message: "Organization not found" });
+
+      const result = await cascadeDeleteOrganization(org.id, org.name, "admin", false);
+      if (!result.success) return res.status(400).json({ message: result.error });
+
+      res.json({ message: "Organization deleted", orgName: org.name, deletedCounts: result.deletedCounts });
+    } catch (e: any) {
+      console.error("Admin delete org error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Admin: Organization Drill-Down Details ──
+  app.get("/api/admin/organizations/:id/details", requireAdmin, async (req, res) => {
+    try {
+      const org = await storage.getOrganization(req.params.id);
+      if (!org) return res.status(404).json({ message: "Organization not found" });
+
+      const orgTeams = await storage.getTeamsByOrg(org.id);
+      const orgUsers = await storage.getUsersByOrg(org.id);
+      const connections = await storage.getProviderConnectionsByOrg(org.id);
+      const spendByTeam = await storage.getSpendByTeam(org.id);
+      const spendByProvider = await storage.getSpendByProvider(org.id);
+
+      const teamsWithMembers = await Promise.all(
+        orgTeams.map(async (team) => {
+          const members = await storage.getMemberDetailsForTeam(team.id);
+          const memberCount = await storage.getMemberCountByTeam(team.id);
+          return {
+            ...team,
+            memberCount,
+            members: members.map((m: any) => ({
+              membershipId: m.id || m.membershipId,
+              userId: m.userId,
+              email: m.email,
+              name: m.name,
+              status: m.status,
+              monthlyBudgetCents: m.monthlyBudgetCents,
+              currentPeriodSpendCents: m.currentPeriodSpendCents,
+              accessType: m.accessType,
+            })),
+          };
+        })
+      );
+
+      const allKeys = await storage.getAllApiKeysWithOwnerInfo(org.id);
+
+      const orgVouchers = await storage.getVouchersByOrg(org.id);
+      const orgBundles = await storage.getVoucherBundlesByOrg(org.id);
+
+      res.json({
+        ...org,
+        users: orgUsers.map(u => ({
+          id: u.id, email: u.email, name: u.name, orgRole: u.orgRole,
+          status: u.status, isVoucherUser: u.isVoucherUser, createdAt: u.createdAt, lastLoginAt: u.lastLoginAt,
+        })),
+        teams: teamsWithMembers,
+        providerConnections: connections.map(c => ({
+          id: c.id, provider: c.provider, status: c.status, createdAt: c.createdAt,
+        })),
+        keys: allKeys,
+        vouchers: orgVouchers.length,
+        bundles: orgBundles.length,
+        spendByTeam,
+        spendByProvider,
+      });
+    } catch (e: any) {
+      console.error("Admin org details error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Admin: Platform-wide API Keys ──
+  app.get("/api/admin/keys", requireAdmin, async (_req, res) => {
+    try {
+      const allOrgs = await storage.getAllOrganizations();
+      const allKeys: any[] = [];
+
+      for (const org of allOrgs) {
+        const orgKeys = await storage.getAllApiKeysWithOwnerInfo(org.id);
+        for (const k of orgKeys) {
+          allKeys.push({ ...k, orgId: org.id, orgName: org.name });
+        }
+      }
+
+      res.json(allKeys);
+    } catch (e: any) {
+      console.error("Admin keys error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Admin: Revoke specific key ──
+  app.delete("/api/admin/keys/:id", requireAdmin, async (req, res) => {
+    try {
+      const key = await db.select().from(allotlyApiKeysTable)
+        .where(eq(allotlyApiKeysTable.id, req.params.id)).then(r => r[0]);
+      if (!key) return res.status(404).json({ message: "Key not found" });
+
+      await db.update(allotlyApiKeysTable)
+        .set({ status: "REVOKED", updatedAt: new Date() })
+        .where(eq(allotlyApiKeysTable.id, key.id));
+      await redisDel(REDIS_KEYS.apiKeyCache(key.keyHash));
+
+      await db.insert(platformAuditLogs).values({
+        action: "REVOKE_KEY",
+        entityType: "API_KEY",
+        entityId: key.id,
+        metadata: { keyPrefix: key.keyPrefix, userId: key.userId },
+        performedBy: "admin",
+      });
+
+      res.json({ message: "Key revoked", keyPrefix: key.keyPrefix });
+    } catch (e: any) {
+      console.error("Admin revoke key error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Admin: Platform-wide Audit Logs ──
+  app.get("/api/admin/audit-logs", requireAdmin, async (req, res) => {
+    try {
+      const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
+      const offset = parseInt(req.query.offset as string) || 0;
+
+      const conditions: any[] = [];
+
+      if (req.query.orgId) {
+        conditions.push(eq(auditLogs.orgId, req.query.orgId as string));
+      }
+      if (req.query.action) {
+        conditions.push(like(auditLogs.action, `%${req.query.action}%`));
+      }
+
+      const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+      const logs = await db.select().from(auditLogs)
+        .where(where)
+        .orderBy(desc(auditLogs.createdAt))
+        .limit(limit)
+        .offset(offset);
+
+      const totalResult = await db.select({ total: count() }).from(auditLogs).where(where);
+
+      const platformLogs = await db.select().from(platformAuditLogs)
+        .orderBy(desc(platformAuditLogs.timestamp))
+        .limit(limit);
+
+      res.json({
+        orgLogs: logs,
+        platformLogs,
+        total: totalResult[0]?.total ?? 0,
+        limit,
+        offset,
+      });
+    } catch (e: any) {
+      console.error("Admin audit logs error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Admin: Proxy Stats ──
+  app.get("/api/admin/proxy-stats", requireAdmin, async (_req, res) => {
+    try {
+      const totalRequests = await db.select({ count: count() }).from(proxyRequestLogs);
+
+      const byProvider = await db.select({
+        provider: proxyRequestLogs.provider,
+        requests: count(),
+        totalCostCents: sql<number>`COALESCE(SUM(${proxyRequestLogs.costCents}), 0)`,
+        avgDurationMs: sql<number>`COALESCE(AVG(${proxyRequestLogs.durationMs}), 0)`,
+      }).from(proxyRequestLogs)
+        .groupBy(proxyRequestLogs.provider);
+
+      const byModel = await db.select({
+        model: proxyRequestLogs.model,
+        provider: proxyRequestLogs.provider,
+        requests: count(),
+        totalCostCents: sql<number>`COALESCE(SUM(${proxyRequestLogs.costCents}), 0)`,
+      }).from(proxyRequestLogs)
+        .groupBy(proxyRequestLogs.model, proxyRequestLogs.provider)
+        .orderBy(desc(sql`count(*)`))
+        .limit(20);
+
+      const errors = await db.select({ count: count() }).from(proxyRequestLogs)
+        .where(sql`${proxyRequestLogs.statusCode} >= 400`);
+
+      const last24h = await db.select({ count: count() }).from(proxyRequestLogs)
+        .where(gte(proxyRequestLogs.createdAt, new Date(Date.now() - 86400000)));
+
+      res.json({
+        totalRequests: totalRequests[0]?.count ?? 0,
+        totalErrors: errors[0]?.count ?? 0,
+        last24hRequests: last24h[0]?.count ?? 0,
+        byProvider,
+        byModel,
+      });
+    } catch (e: any) {
+      console.error("Admin proxy stats error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Admin: Platform-wide Provider Connections ──
+  app.get("/api/admin/providers", requireAdmin, async (_req, res) => {
+    try {
+      const allOrgs = await storage.getAllOrganizations();
+      const allProviders: any[] = [];
+
+      for (const org of allOrgs) {
+        const connections = await storage.getProviderConnectionsByOrg(org.id);
+        for (const c of connections) {
+          allProviders.push({
+            id: c.id,
+            provider: c.provider,
+            status: c.status,
+            orgId: org.id,
+            orgName: org.name,
+            createdAt: c.createdAt,
+          });
+        }
+      }
+
+      res.json(allProviders);
+    } catch (e: any) {
+      console.error("Admin providers error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Admin: Platform-wide Vouchers ──
+  app.get("/api/admin/vouchers", requireAdmin, async (_req, res) => {
+    try {
+      const allOrgs = await storage.getAllOrganizations();
+      const allVouchers: any[] = [];
+
+      for (const org of allOrgs) {
+        const orgVouchers = await storage.getVouchersByOrg(org.id);
+        for (const v of orgVouchers) {
+          allVouchers.push({
+            id: v.id,
+            code: v.code,
+            status: v.status,
+            maxRedemptions: v.maxRedemptions,
+            currentRedemptions: v.currentRedemptions,
+            budgetCents: v.budgetCents,
+            expiresAt: v.expiresAt,
+            orgId: org.id,
+            orgName: org.name,
+            teamId: v.teamId,
+            createdAt: v.createdAt,
+          });
+        }
+      }
+
+      res.json(allVouchers);
+    } catch (e: any) {
+      console.error("Admin vouchers error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── Admin: Void/Expire a Voucher ──
+  app.patch("/api/admin/vouchers/:id", requireAdmin, async (req, res) => {
+    try {
+      const voucherPatchSchema = z.object({
+        status: z.enum(["EXPIRED", "REVOKED"]),
+      });
+      const parsed = voucherPatchSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Validation error" });
+
+      const voucher = await storage.getVoucherById(req.params.id);
+      if (!voucher) return res.status(404).json({ message: "Voucher not found" });
+
+      await storage.updateVoucher(voucher.id, { status: parsed.data.status });
+
+      await db.insert(platformAuditLogs).values({
+        action: "VOID_VOUCHER",
+        entityType: "VOUCHER",
+        entityId: voucher.id,
+        metadata: { code: voucher.code, newStatus: parsed.data.status },
+        performedBy: "admin",
+      });
+
+      res.json({ message: `Voucher ${parsed.data.status.toLowerCase()}`, code: voucher.code });
+    } catch (e: any) {
+      console.error("Admin void voucher error:", e);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
