@@ -1941,17 +1941,47 @@ export async function registerRoutes(
     try {
       const user = await storage.getUser(req.session.userId!);
       if (!user || !user.orgId) return res.status(403).json({ message: "Not authorized" });
+      if (user.orgRole !== "ROOT_ADMIN" && user.orgRole !== "TEAM_ADMIN") {
+        return res.status(403).json({ message: "Only admins can revoke vouchers" });
+      }
 
       const voucher = await storage.getVoucherById(req.params.id);
       if (!voucher || voucher.orgId !== user.orgId) {
         return res.status(404).json({ message: "Voucher not found" });
       }
 
-      if (voucher.status !== "ACTIVE") {
-        return res.status(400).json({ message: `Voucher is already ${voucher.status.toLowerCase()}` });
+      if (user.orgRole === "TEAM_ADMIN") {
+        const orgTeams = await storage.getTeamsByOrg(user.orgId);
+        const adminTeam = orgTeams.find(t => t.adminId === user.id);
+        if (!adminTeam || voucher.teamId !== adminTeam.id) {
+          return res.status(403).json({ message: "You can only revoke vouchers for your own team" });
+        }
+      }
+
+      if (voucher.status === "REVOKED") {
+        return res.status(400).json({ message: "Voucher is already revoked" });
+      }
+
+      if (voucher.status === "EXPIRED") {
+        return res.status(400).json({ message: "Voucher is already expired" });
       }
 
       const updated = await storage.updateVoucher(voucher.id, { status: "REVOKED" });
+
+      const memberships = await storage.getMembershipsByVoucherId(voucher.id);
+      for (const membership of memberships) {
+        await storage.updateMembership(membership.id, { status: "SUSPENDED" });
+        const keys = await storage.getApiKeysByMembership(membership.id);
+        for (const key of keys) {
+          if (key.status === "ACTIVE") {
+            await storage.updateAllotlyApiKey(key.id, { status: "REVOKED" });
+            await redisDel(REDIS_KEYS.apiKeyCache(key.keyHash));
+          }
+        }
+        await redisDel(REDIS_KEYS.budget(membership.id));
+        await redisDel(REDIS_KEYS.concurrent(membership.id));
+        await redisDel(REDIS_KEYS.ratelimit(membership.id));
+      }
 
       await storage.createAuditLog({
         orgId: user.orgId,
@@ -1959,7 +1989,7 @@ export async function registerRoutes(
         action: "voucher.revoked",
         targetType: "voucher",
         targetId: voucher.id,
-        metadata: { code: voucher.code },
+        metadata: { code: voucher.code, membershipsRevoked: memberships.length },
       });
 
       res.json(updated);
@@ -2148,6 +2178,468 @@ export async function registerRoutes(
       res.json({ success: true });
     } catch (e: any) {
       console.error("Voucher send email error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/vouchers/bulk-create", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || !user.orgId) return res.status(403).json({ message: "Not authorized" });
+      if (user.orgRole !== "ROOT_ADMIN" && user.orgRole !== "TEAM_ADMIN") {
+        return res.status(403).json({ message: "Only admins can create vouchers" });
+      }
+
+      const bulkSchema = z.object({
+        count: z.number().int().min(1).max(500),
+        budgetCents: z.number().int().min(1),
+        expiresAt: z.string(),
+        allowedModels: z.array(z.string()).nullable().optional(),
+        allowedProviders: z.array(z.string()).optional(),
+        bundleId: z.string().optional(),
+        teamId: z.string().optional(),
+        label: z.string().max(200).optional(),
+      });
+      const parsed = bulkSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+
+      const { count, budgetCents, expiresAt, allowedModels, allowedProviders, bundleId, teamId, label } = parsed.data;
+
+      const expiryDate = new Date(expiresAt);
+      if (expiryDate <= new Date()) {
+        return res.status(400).json({ message: "Expiry date must be in the future" });
+      }
+
+      const orgTeams = await storage.getTeamsByOrg(user.orgId);
+      let targetTeamId = teamId;
+      if (!targetTeamId) {
+        if (user.orgRole === "TEAM_ADMIN") {
+          const adminTeam = orgTeams.find(t => t.adminId === user.id);
+          if (!adminTeam) return res.status(403).json({ message: "You don't administer any team" });
+          targetTeamId = adminTeam.id;
+        } else {
+          if (orgTeams.length === 0) return res.status(400).json({ message: "No teams in this organization" });
+          targetTeamId = orgTeams[0].id;
+        }
+      }
+
+      if (user.orgRole === "TEAM_ADMIN") {
+        const adminTeam = orgTeams.find(t => t.adminId === user.id);
+        if (!adminTeam || targetTeamId !== adminTeam.id) {
+          return res.status(403).json({ message: "You can only create vouchers for your own team" });
+        }
+      }
+
+      const codes = new Set<string>();
+      while (codes.size < count) {
+        codes.add(generateVoucherCode());
+      }
+
+      const voucherData = Array.from(codes).map(code => ({
+        code,
+        orgId: user.orgId!,
+        teamId: targetTeamId!,
+        createdById: user.id,
+        budgetCents,
+        allowedProviders: allowedProviders || ["OPENAI", "ANTHROPIC", "GOOGLE"],
+        allowedModels: allowedModels || null,
+        expiresAt: expiryDate,
+        maxRedemptions: 1,
+        label: label || null,
+        bundleId: bundleId || null,
+      }));
+
+      const created = await storage.bulkCreateVouchers(voucherData);
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "voucher.bulk_created",
+        targetType: "voucher",
+        targetId: created[0]?.id || "bulk",
+        metadata: { count: created.length, budgetCents, expiresAt, label: label || null, bundleId: bundleId || null },
+      });
+
+      res.json({
+        vouchers: created.map(v => ({ id: v.id, code: v.code, budgetCents: v.budgetCents, expiresAt: v.expiresAt })),
+      });
+    } catch (e: any) {
+      console.error("Voucher bulk create error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/vouchers/:id/extend", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || !user.orgId) return res.status(403).json({ message: "Not authorized" });
+      if (user.orgRole !== "ROOT_ADMIN" && user.orgRole !== "TEAM_ADMIN") {
+        return res.status(403).json({ message: "Only admins can extend vouchers" });
+      }
+
+      const voucher = await storage.getVoucherById(req.params.id);
+      if (!voucher || voucher.orgId !== user.orgId) {
+        return res.status(404).json({ message: "Voucher not found" });
+      }
+
+      if (user.orgRole === "TEAM_ADMIN") {
+        const orgTeams = await storage.getTeamsByOrg(user.orgId);
+        const adminTeam = orgTeams.find(t => t.adminId === user.id);
+        if (!adminTeam || voucher.teamId !== adminTeam.id) {
+          return res.status(403).json({ message: "You can only extend vouchers for your own team" });
+        }
+      }
+
+      if (voucher.status === "EXPIRED") {
+        return res.status(400).json({ message: "Cannot extend an expired voucher" });
+      }
+      if (voucher.status === "REVOKED") {
+        return res.status(400).json({ message: "Cannot extend a revoked voucher" });
+      }
+
+      const extendSchema = z.object({
+        newExpiresAt: z.string(),
+      });
+      const parsed = extendSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+
+      const newExpiry = new Date(parsed.data.newExpiresAt);
+      if (newExpiry <= new Date()) {
+        return res.status(400).json({ message: "New expiry date must be in the future" });
+      }
+      if (newExpiry <= new Date(voucher.expiresAt)) {
+        return res.status(400).json({ message: "New expiry date must be after the current expiry date" });
+      }
+
+      const oldExpiresAt = voucher.expiresAt;
+      const updated = await storage.updateVoucher(voucher.id, { expiresAt: newExpiry });
+
+      const memberships = await storage.getMembershipsByVoucherId(voucher.id);
+      for (const membership of memberships) {
+        await storage.updateMembership(membership.id, {
+          voucherExpiresAt: newExpiry,
+          periodEnd: newExpiry,
+        });
+      }
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "voucher.extended",
+        targetType: "voucher",
+        targetId: voucher.id,
+        metadata: { code: voucher.code, from: oldExpiresAt, to: newExpiry.toISOString() },
+      });
+
+      res.json(updated);
+    } catch (e: any) {
+      console.error("Voucher extend error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/vouchers/:id/top-up", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || !user.orgId) return res.status(403).json({ message: "Not authorized" });
+      if (user.orgRole !== "ROOT_ADMIN" && user.orgRole !== "TEAM_ADMIN") {
+        return res.status(403).json({ message: "Only admins can top up vouchers" });
+      }
+
+      const voucher = await storage.getVoucherById(req.params.id);
+      if (!voucher || voucher.orgId !== user.orgId) {
+        return res.status(404).json({ message: "Voucher not found" });
+      }
+
+      if (user.orgRole === "TEAM_ADMIN") {
+        const orgTeams = await storage.getTeamsByOrg(user.orgId);
+        const adminTeam = orgTeams.find(t => t.adminId === user.id);
+        if (!adminTeam || voucher.teamId !== adminTeam.id) {
+          return res.status(403).json({ message: "You can only top up vouchers for your own team" });
+        }
+      }
+
+      if (voucher.status === "EXPIRED") {
+        return res.status(400).json({ message: "Cannot top up an expired voucher" });
+      }
+      if (voucher.status === "REVOKED") {
+        return res.status(400).json({ message: "Cannot top up a revoked voucher" });
+      }
+
+      const topUpSchema = z.object({
+        additionalBudgetCents: z.number().int().min(1),
+      });
+      const parsed = topUpSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+
+      const { additionalBudgetCents } = parsed.data;
+      const oldBudget = voucher.budgetCents;
+      const newBudget = oldBudget + additionalBudgetCents;
+
+      const updated = await storage.updateVoucher(voucher.id, { budgetCents: newBudget });
+
+      const memberships = await storage.getMembershipsByVoucherId(voucher.id);
+      for (const membership of memberships) {
+        const newMemberBudget = (membership.monthlyBudgetCents || 0) + additionalBudgetCents;
+        await storage.updateMembership(membership.id, {
+          monthlyBudgetCents: newMemberBudget,
+        });
+
+        const budgetKey = REDIS_KEYS.budget(membership.id);
+        const currentBudget = await redisGet(budgetKey);
+        if (currentBudget !== null) {
+          await redisSet(budgetKey, String(parseInt(currentBudget) + additionalBudgetCents));
+        } else {
+          const remaining = newMemberBudget - (membership.currentPeriodSpendCents || 0);
+          await redisSet(budgetKey, String(remaining));
+        }
+
+        if (membership.status === "BUDGET_EXHAUSTED") {
+          await storage.updateMembership(membership.id, { status: "ACTIVE" });
+          const keys = await storage.getApiKeysByMembership(membership.id);
+          for (const key of keys) {
+            if (key.status === "REVOKED") {
+              await storage.updateAllotlyApiKey(key.id, { status: "ACTIVE" });
+              await redisDel(REDIS_KEYS.apiKeyCache(key.keyHash));
+            }
+          }
+        }
+      }
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "voucher.topped_up",
+        targetType: "voucher",
+        targetId: voucher.id,
+        metadata: { code: voucher.code, from: oldBudget, to: newBudget, added: additionalBudgetCents },
+      });
+
+      res.json(updated);
+    } catch (e: any) {
+      console.error("Voucher top-up error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/vouchers/export", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || !user.orgId) return res.status(403).json({ message: "Not authorized" });
+      if (user.orgRole !== "ROOT_ADMIN" && user.orgRole !== "TEAM_ADMIN") {
+        return res.status(403).json({ message: "Only admins can export vouchers" });
+      }
+
+      const { status, bundleId, createdAfter, createdBefore } = req.query as Record<string, string>;
+      const validStatuses = ["all", "ACTIVE", "FULLY_REDEEMED", "EXPIRED", "REVOKED"];
+      if (status && !validStatuses.includes(status)) {
+        return res.status(400).json({ message: "Invalid status filter" });
+      }
+      let voucherList = await storage.getVouchersFiltered(user.orgId, {
+        status, bundleId, createdAfter, createdBefore,
+      });
+
+      if (user.orgRole === "TEAM_ADMIN") {
+        const orgTeams = await storage.getTeamsByOrg(user.orgId);
+        const adminTeam = orgTeams.find(t => t.adminId === user.id);
+        if (adminTeam) {
+          voucherList = voucherList.filter(v => v.teamId === adminTeam.id);
+        } else {
+          voucherList = [];
+        }
+      }
+
+      const allRedemptions: Record<string, any[]> = {};
+      const allMemberships: Record<string, any[]> = {};
+      for (const v of voucherList) {
+        const redemptions = await storage.getVoucherRedemptionsByVoucherId(v.id);
+        allRedemptions[v.id] = redemptions;
+        const memberships = await storage.getMembershipsByVoucherId(v.id);
+        allMemberships[v.id] = memberships;
+      }
+
+      const csvHeader = "code,status,budgetCents,spentCents,remainingCents,expiresAt,redeemedBy,redeemedAt,createdAt,bundleId";
+      const csvRows = voucherList.map(v => {
+        const redemptions = allRedemptions[v.id] || [];
+        const memberships = allMemberships[v.id] || [];
+        const totalSpent = memberships.reduce((sum: number, m: any) => sum + (m.currentPeriodSpendCents || 0), 0);
+        const remaining = Math.max(0, v.budgetCents - totalSpent);
+        const redeemedBy = redemptions.map((r: any) => r.user?.email || "anonymous").join("; ") || "";
+        const redeemedAt = redemptions.length > 0 ? new Date(redemptions[0].redeemedAt).toISOString() : "";
+        const escapeCsv = (val: string) => val.includes(",") || val.includes('"') ? `"${val.replace(/"/g, '""')}"` : val;
+        return [
+          v.code,
+          v.status,
+          v.budgetCents,
+          totalSpent,
+          remaining,
+          new Date(v.expiresAt).toISOString(),
+          escapeCsv(redeemedBy),
+          redeemedAt,
+          new Date(v.createdAt).toISOString(),
+          v.bundleId || "",
+        ].join(",");
+      });
+
+      const csv = [csvHeader, ...csvRows].join("\n");
+      const dateStr = new Date().toISOString().split("T")[0];
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="allotly-vouchers-${dateStr}.csv"`);
+      res.send(csv);
+    } catch (e: any) {
+      console.error("Voucher export error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/vouchers/bulk/revoke", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || !user.orgId) return res.status(403).json({ message: "Not authorized" });
+      if (user.orgRole !== "ROOT_ADMIN" && user.orgRole !== "TEAM_ADMIN") {
+        return res.status(403).json({ message: "Only admins can revoke vouchers" });
+      }
+
+      const bulkRevokeSchema = z.object({
+        voucherIds: z.array(z.string()).min(1).max(500),
+      });
+      const parsed = bulkRevokeSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+
+      let adminTeamId: string | null = null;
+      if (user.orgRole === "TEAM_ADMIN") {
+        const orgTeams = await storage.getTeamsByOrg(user.orgId);
+        const adminTeam = orgTeams.find(t => t.adminId === user.id);
+        adminTeamId = adminTeam?.id || null;
+      }
+
+      const results: { id: string; success: boolean; error?: string }[] = [];
+
+      for (const voucherId of parsed.data.voucherIds) {
+        try {
+          const voucher = await storage.getVoucherById(voucherId);
+          if (!voucher || voucher.orgId !== user.orgId) {
+            results.push({ id: voucherId, success: false, error: "Not found" });
+            continue;
+          }
+
+          if (user.orgRole === "TEAM_ADMIN" && voucher.teamId !== adminTeamId) {
+            results.push({ id: voucherId, success: false, error: "Not authorized" });
+            continue;
+          }
+
+          if (voucher.status === "REVOKED") {
+            results.push({ id: voucherId, success: false, error: "Already revoked" });
+            continue;
+          }
+
+          if (voucher.status === "EXPIRED") {
+            results.push({ id: voucherId, success: false, error: "Already expired" });
+            continue;
+          }
+
+          await storage.updateVoucher(voucher.id, { status: "REVOKED" });
+
+          const memberships = await storage.getMembershipsByVoucherId(voucher.id);
+          for (const membership of memberships) {
+            await storage.updateMembership(membership.id, { status: "SUSPENDED" });
+            const keys = await storage.getApiKeysByMembership(membership.id);
+            for (const key of keys) {
+              if (key.status === "ACTIVE") {
+                await storage.updateAllotlyApiKey(key.id, { status: "REVOKED" });
+                await redisDel(REDIS_KEYS.apiKeyCache(key.keyHash));
+              }
+            }
+            await redisDel(REDIS_KEYS.budget(membership.id));
+            await redisDel(REDIS_KEYS.concurrent(membership.id));
+            await redisDel(REDIS_KEYS.ratelimit(membership.id));
+          }
+
+          results.push({ id: voucherId, success: true });
+        } catch (err: any) {
+          results.push({ id: voucherId, success: false, error: err.message });
+        }
+      }
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "voucher.bulk_revoked",
+        targetType: "voucher",
+        targetId: "bulk",
+        metadata: {
+          total: parsed.data.voucherIds.length,
+          succeeded: results.filter(r => r.success).length,
+          failed: results.filter(r => !r.success).length,
+        },
+      });
+
+      res.json({ results });
+    } catch (e: any) {
+      console.error("Voucher bulk revoke error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/vouchers/:id/details", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || !user.orgId) return res.status(403).json({ message: "Not authorized" });
+      if (user.orgRole !== "ROOT_ADMIN" && user.orgRole !== "TEAM_ADMIN") {
+        return res.status(403).json({ message: "Only admins can view voucher details" });
+      }
+
+      const voucher = await storage.getVoucherById(req.params.id);
+      if (!voucher || voucher.orgId !== user.orgId) {
+        return res.status(404).json({ message: "Voucher not found" });
+      }
+
+      if (user.orgRole === "TEAM_ADMIN") {
+        const orgTeams = await storage.getTeamsByOrg(user.orgId);
+        const adminTeam = orgTeams.find(t => t.adminId === user.id);
+        if (!adminTeam || voucher.teamId !== adminTeam.id) {
+          return res.status(403).json({ message: "You can only view details for your own team's vouchers" });
+        }
+      }
+
+      const redemptions = await storage.getVoucherRedemptionsByVoucherId(voucher.id);
+      const memberships = await storage.getMembershipsByVoucherId(voucher.id);
+
+      const details = [];
+      for (const redemption of redemptions) {
+        const membership = memberships.find(m => m.userId === redemption.userId);
+        let keyPrefix = "";
+        let requestsMade = 0;
+        let lastRequestAt: string | null = null;
+        let currentSpend = 0;
+
+        if (membership) {
+          const keys = await storage.getApiKeysByMembership(membership.id);
+          const activeKey = keys.find(k => k.status === "ACTIVE") || keys[0];
+          keyPrefix = activeKey?.keyPrefix || "";
+          currentSpend = membership.currentPeriodSpendCents || 0;
+
+          const allLogs = await storage.getProxyRequestLogsByMembership(membership.id, 10000);
+          requestsMade = allLogs.length;
+          if (allLogs.length > 0) {
+            lastRequestAt = new Date(allLogs[0].createdAt).toISOString();
+          }
+        }
+
+        details.push({
+          redeemedBy: redemption.user?.email || "anonymous",
+          redeemedAt: new Date(redemption.redeemedAt).toISOString(),
+          keyPrefix,
+          currentSpendCents: currentSpend,
+          requestsMade,
+          lastRequestAt,
+          membershipStatus: membership?.status || "unknown",
+        });
+      }
+
+      res.json({ voucher, details });
+    } catch (e: any) {
+      console.error("Voucher details error:", e);
       res.status(500).json({ message: "Internal server error" });
     }
   });

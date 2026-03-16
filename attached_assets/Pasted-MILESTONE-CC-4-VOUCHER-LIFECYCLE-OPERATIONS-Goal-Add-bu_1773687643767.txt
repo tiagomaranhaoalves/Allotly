@@ -1,0 +1,101 @@
+MILESTONE CC-4: VOUCHER LIFECYCLE OPERATIONS
+Goal: Add bulk creation, post-redemption management (extend/top-up), and export capabilities for vouchers. This milestone directly enables the "50 people, 60 seconds" value proposition.
+Context: The current voucher system can create one voucher at a time. For hackathons and workshops (the primary use case), admins need to create 50-200 vouchers at once, then export the codes for distribution.
+Requirements
+
+MUST implement POST /api/vouchers/bulk-create endpoint.
+
+Request body: { count: number, budgetCents: number, expiresAt: string, allowedModels?: string[], allowedProviders?: string[], bundleId?: string }.
+MUST validate: count is 1-500, budget is positive, expiresAt is in the future.
+MUST generate count vouchers, each with a unique code (format: ALLOT-XXXX-XXXX-XXXX).
+MUST return all generated voucher codes in the response: { vouchers: [{ id, code, budgetCents, expiresAt }] }.
+MUST be efficient: batch insert, not N individual inserts.
+If bundleId is provided, associate all vouchers with that bundle.
+MUST require Root Admin or Team Admin.
+MUST create one AuditLog entry for the bulk operation (not N entries).
+VERIFY: Bulk create 50 vouchers → 50 records in DB → 50 unique codes returned → each code is redeemable.
+VERIFY: Bulk create 501 vouchers → returns 400 validation error.
+
+
+MUST implement POST /api/vouchers/[voucherId]/extend endpoint.
+
+Request body: { newExpiresAt: string }.
+MUST work on redeemed, active vouchers (not expired/revoked).
+MUST validate: newExpiresAt is in the future and is after the current expiresAt.
+Updates the voucher and the associated TeamMembership's voucherExpiresAt.
+MUST create AuditLog entry.
+VERIFY: Extend voucher expiry by 7 days → DB updated → voucher continues working past original expiry.
+
+
+MUST implement POST /api/vouchers/[voucherId]/top-up endpoint.
+
+Request body: { additionalBudgetCents: number }.
+MUST work on redeemed, active vouchers (not expired/revoked).
+MUST validate: additionalBudgetCents is positive.
+Logic:
+a. Increase voucher.budgetCents by additionalBudgetCents.
+b. Increase Redis budget: INCRBY allotly:budget:{membershipId} {additionalBudgetCents}.
+c. If member was BUDGET_EXHAUSTED: reactivate → set status ACTIVE → re-enable key.
+MUST create AuditLog entry with: { from: oldBudget, to: newBudget, added: additionalBudgetCents }.
+VERIFY: Top up $5 on a voucher with $0 remaining → Redis shows $5 → member can make requests again.
+VERIFY: Top up on an exhausted voucher → member reactivated → key re-enabled.
+
+
+MUST implement POST /api/vouchers/[voucherId]/revoke endpoint.
+
+Works on any redeemed voucher (active or exhausted).
+Logic:
+a. Set voucher status = REVOKED.
+b. Revoke associated allotly_sk_ key.
+c. Delete Redis budget and concurrency keys.
+d. Set associated TeamMembership status = REVOKED.
+MUST create AuditLog entry.
+VERIFY: Revoke redeemed voucher → key returns 401 on next request → Redis cleaned.
+
+
+MUST implement GET /api/vouchers/export endpoint.
+
+Query params: status (active/redeemed/expired/revoked/all), bundleId, createdAfter, createdBefore.
+Returns CSV with columns: code, status, budgetCents, spentCents, remainingCents, expiresAt, redeemedBy, redeemedAt, createdAt, bundleId.
+MUST set response headers: Content-Type: text/csv, Content-Disposition: attachment; filename="allotly-vouchers-{date}.csv".
+MUST require Root Admin or Team Admin.
+VERIFY: Export all vouchers → CSV downloads → data matches DB.
+VERIFY: Export filtered by status=active → only active vouchers in CSV.
+
+
+MUST implement bulk revoke: POST /api/vouchers/bulk/revoke.
+
+Request body: { voucherIds: string[] }.
+Uses same revoke logic as #4 for each voucher.
+Returns results array.
+MUST require Root Admin or Team Admin.
+VERIFY: Bulk revoke 10 vouchers → all 10 revoked → all keys dead → all Redis cleaned.
+
+
+MUST add UI for all voucher operations.
+
+Bulk create: "Create Vouchers" button → form with count, budget, expiry, models. On success, show a modal with all generated codes and a "Copy All" / "Download CSV" button.
+Extend: "Extend" action in voucher row (only for active redeemed vouchers) → date picker modal.
+Top up: "Top Up" action in voucher row (only for active redeemed vouchers) → amount input modal.
+Revoke: "Revoke" action in voucher row (for redeemed vouchers) → confirmation modal.
+Export: "Export CSV" button above voucher table with status filter dropdown.
+Bulk revoke: Checkboxes in voucher table + "Revoke Selected" toolbar button.
+
+
+MUST add voucher redemption details view.
+
+Clicking a redeemed voucher row expands to show: redeemed by (email if known, "anonymous" otherwise), redeemed at, key prefix, current spend, requests made, last request timestamp.
+VERIFY: View redeemed voucher details → all fields populated correctly.
+
+
+
+Tests
+
+Bulk create 50 → verify 50 unique codes, all redeemable.
+Extend active voucher → verify new expiry respected.
+Top up exhausted voucher → verify reactivation.
+Revoke active voucher → verify key immediately dead.
+Export CSV → verify file downloads with correct data.
+Bulk revoke → verify all targets revoked.
+Attempt extend on expired voucher → verify 400.
+Attempt top up on revoked voucher → verify 400.

@@ -52,8 +52,12 @@ export interface IStorage {
   getActiveVoucherCountByOrg(orgId: string): Promise<number>;
   getActiveVoucherCountByCreator(createdById: string): Promise<number>;
   updateVoucher(id: string, data: Partial<Voucher>): Promise<Voucher | undefined>;
+  bulkCreateVouchers(voucherData: InsertVoucher[]): Promise<Voucher[]>;
+  getMembershipsByVoucherId(voucherId: string): Promise<TeamMembership[]>;
+  getVouchersFiltered(orgId: string, filters: { status?: string; bundleId?: string; createdAfter?: string; createdBefore?: string }): Promise<Voucher[]>;
 
   createVoucherRedemption(data: { voucherId: string; userId: string }): Promise<VoucherRedemption>;
+  getVoucherRedemptionsByVoucherId(voucherId: string): Promise<(VoucherRedemption & { user?: User })[]>;
 
   createVoucherBundle(data: any): Promise<VoucherBundle>;
   getVoucherBundle(id: string): Promise<VoucherBundle | undefined>;
@@ -269,6 +273,42 @@ export class DrizzleStorage implements IStorage {
   async updateVoucher(id: string, data: Partial<Voucher>): Promise<Voucher | undefined> {
     const [result] = await db.update(vouchers).set({ ...data, updatedAt: new Date() }).where(eq(vouchers.id, id)).returning();
     return result;
+  }
+
+  async bulkCreateVouchers(voucherData: InsertVoucher[]): Promise<Voucher[]> {
+    if (voucherData.length === 0) return [];
+    return db.insert(vouchers).values(voucherData).returning();
+  }
+
+  async getMembershipsByVoucherId(voucherId: string): Promise<TeamMembership[]> {
+    return db.select().from(teamMemberships).where(eq(teamMemberships.voucherRedemptionId, voucherId));
+  }
+
+  async getVouchersFiltered(orgId: string, filters: { status?: string; bundleId?: string; createdAfter?: string; createdBefore?: string }): Promise<Voucher[]> {
+    const conditions = [eq(vouchers.orgId, orgId)];
+    if (filters.status && filters.status !== "all") {
+      conditions.push(eq(vouchers.status, filters.status as any));
+    }
+    if (filters.bundleId) {
+      conditions.push(eq(vouchers.bundleId, filters.bundleId));
+    }
+    if (filters.createdAfter) {
+      conditions.push(gte(vouchers.createdAt, new Date(filters.createdAfter)));
+    }
+    if (filters.createdBefore) {
+      conditions.push(lte(vouchers.createdAt, new Date(filters.createdBefore)));
+    }
+    return db.select().from(vouchers).where(and(...conditions)).orderBy(desc(vouchers.createdAt));
+  }
+
+  async getVoucherRedemptionsByVoucherId(voucherId: string): Promise<(VoucherRedemption & { user?: User })[]> {
+    const redemptions = await db.select().from(voucherRedemptions).where(eq(voucherRedemptions.voucherId, voucherId));
+    const results = [];
+    for (const r of redemptions) {
+      const [user] = await db.select().from(users).where(eq(users.id, r.userId));
+      results.push({ ...r, user: user || undefined });
+    }
+    return results;
   }
 
   async createVoucherRedemption(data: { voucherId: string; userId: string }): Promise<VoucherRedemption> {
