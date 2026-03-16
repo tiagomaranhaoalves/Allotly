@@ -38,11 +38,17 @@ export default function SettingsPage() {
   const { data: billing } = useQuery<any>({ queryKey: ["/api/billing/subscription"] });
 
   const [orgName, setOrgName] = useState("");
+  const [billingEmail, setBillingEmail] = useState("");
+  const [description, setDescription] = useState("");
   const [seatCount, setSeatCount] = useState("1");
   const [addSeatsCount, setAddSeatsCount] = useState("1");
 
   useEffect(() => {
-    if (orgData) setOrgName(orgData.name);
+    if (orgData) {
+      setOrgName(orgData.name);
+      setBillingEmail(orgData.billingEmail || "");
+      setDescription(orgData.description || "");
+    }
   }, [orgData]);
 
   useEffect(() => {
@@ -67,7 +73,11 @@ export default function SettingsPage() {
 
   const updateMutation = useMutation({
     mutationFn: async () => {
-      await apiRequest("PATCH", "/api/org/settings", { name: orgName });
+      await apiRequest("PATCH", "/api/org/settings", {
+        name: orgName,
+        billingEmail: billingEmail || null,
+        description: description || null,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/org/settings"] });
@@ -176,6 +186,16 @@ export default function SettingsPage() {
               <div className="space-y-2">
                 <Label>Organization Name</Label>
                 <Input value={orgName} onChange={e => setOrgName(e.target.value)} data-testid="input-org-name-settings" />
+              </div>
+              <div className="space-y-2">
+                <Label>Billing Email</Label>
+                <Input type="email" placeholder="billing@company.com" value={billingEmail} onChange={e => setBillingEmail(e.target.value)} data-testid="input-billing-email" />
+                <p className="text-xs text-muted-foreground">Optional. Used for invoices and billing notifications.</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Description</Label>
+                <Input placeholder="Brief description of your organization" value={description} onChange={e => setDescription(e.target.value)} data-testid="input-org-description" maxLength={500} />
+                <p className="text-xs text-muted-foreground">{description.length}/500 characters</p>
               </div>
               <div className="space-y-2">
                 <Label>Plan</Label>

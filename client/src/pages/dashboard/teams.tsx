@@ -14,12 +14,14 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Users, Plus, Shield, DollarSign, Trash2, User, ChevronRight, CreditCard } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Users, Plus, Shield, DollarSign, Trash2, User, ChevronRight, CreditCard, Pencil } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 
 function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string) => void }) {
   const [, navigate] = useLocation();
+  const { toast } = useToast();
   const { data: stats } = useQuery<any>({
     queryKey: ["/api/teams", team.id, "stats"],
     queryFn: async () => {
@@ -30,6 +32,26 @@ function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string) => voi
   });
 
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editName, setEditName] = useState(team.name);
+  const [editDescription, setEditDescription] = useState(team.description || "");
+
+  const editMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("PATCH", `/api/teams/${team.id}`, {
+        name: editName,
+        description: editDescription || null,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
+      toast({ title: "Team updated" });
+      setEditOpen(false);
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to update team", description: err.message, variant: "destructive" });
+    },
+  });
 
   const budgetUsedPct = stats?.totalBudgetCents
     ? Math.min(100, Math.round((stats.totalSpendCents / stats.totalBudgetCents) * 100))
@@ -52,6 +74,9 @@ function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string) => voi
                   {stats.adminEmail && <span className="opacity-60"> ({stats.adminEmail})</span>}
                 </span>
               </div>
+            )}
+            {team.description && (
+              <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1" data-testid={`text-team-description-${team.id}`}>{team.description}</p>
             )}
             <p className="text-xs text-muted-foreground mt-0.5">Created {new Date(team.createdAt).toLocaleDateString()}</p>
           </div>
@@ -80,6 +105,38 @@ function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string) => voi
           </div>
 
           <div className="flex items-center gap-1">
+            <Dialog open={editOpen} onOpenChange={(o) => { setEditOpen(o); if (o) { setEditName(team.name); setEditDescription(team.description || ""); } }}>
+              <DialogTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-muted-foreground hover:text-foreground"
+                  data-testid={`button-edit-team-${team.id}`}
+                >
+                  <Pencil className="w-4 h-4" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Edit Team</DialogTitle>
+                  <DialogDescription>Update the team name and description.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 pt-2">
+                  <div className="space-y-2">
+                    <Label>Team Name</Label>
+                    <Input value={editName} onChange={e => setEditName(e.target.value)} data-testid="input-edit-team-name" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Description</Label>
+                    <Textarea placeholder="Optional team description" value={editDescription} onChange={e => setEditDescription(e.target.value)} data-testid="input-edit-team-description" maxLength={500} rows={3} />
+                    <p className="text-xs text-muted-foreground">{editDescription.length}/500 characters</p>
+                  </div>
+                  <Button className="w-full" onClick={() => editMutation.mutate()} disabled={!editName || editMutation.isPending} data-testid="button-save-team-edit">
+                    {editMutation.isPending ? "Saving..." : "Save Changes"}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
             <Button
               size="sm"
               variant="ghost"

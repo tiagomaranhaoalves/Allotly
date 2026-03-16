@@ -35,6 +35,8 @@ export const bundleStatusEnum = pgEnum("bundle_status", ["ACTIVE", "EXHAUSTED", 
 export const organizations = pgTable("organizations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
+  billingEmail: text("billing_email"),
+  description: text("description"),
   plan: planEnum("plan").default("FREE").notNull(),
   stripeCustomerId: text("stripe_customer_id").unique(),
   stripeSubId: text("stripe_subscription_id"),
@@ -64,6 +66,7 @@ export const users = pgTable("users", {
 export const teams = pgTable("teams", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
+  description: text("description"),
   orgId: varchar("org_id").notNull().references(() => organizations.id),
   adminId: varchar("admin_id").notNull().unique().references(() => users.id),
   monthlyBudgetCeilingCents: integer("monthly_budget_ceiling_cents"),

@@ -1,0 +1,92 @@
+These milestones extend the existing build. They assume the current system already has: org creation, team creation, member invite/suspend/reactivate, voucher CRUD, provider connections, key generation/revoke/regenerate, budget enforcement via Redis, and the unified proxy architecture (v4).
+Each milestone is self-contained but they MUST be executed in order — later milestones depend on infrastructure built in earlier ones.
+
+MILESTONE CC-1: EDIT OPERATIONS FOR ALL ENTITIES
+Goal: Add Update (edit) capability to every core entity. Currently the system has Create and Read but almost no Update. This milestone closes that gap.
+Context: Right now, if an admin typos an org name, a team name, or a member's budget, the only fix is to delete and recreate. This is the single most common admin frustration.
+Requirements
+
+MUST add PATCH /api/organizations/[orgId] endpoint.
+
+Editable fields: name, billingEmail, description.
+MUST validate: name is non-empty, billingEmail is valid email format.
+MUST enforce: only Root Admin can edit org details.
+MUST return the updated organization object.
+VERIFY: Change org name → name updates in DB → name displays correctly in dashboard header and all views that show org name.
+
+
+MUST add PATCH /api/teams/[teamId] endpoint.
+
+Editable fields: name, description.
+MUST validate: name is non-empty, name is unique within the org.
+MUST enforce: Root Admin can edit any team; Team Admin can edit only their own team.
+VERIFY: Change team name → name updates in DB → name displays correctly in team list, member table headers, and anywhere team name appears.
+
+
+MUST add PATCH /api/members/[membershipId] endpoint.
+
+Editable fields: name, email, monthlyBudgetCents (Teams), allowedModels, allowedProviders.
+MUST validate: email is valid format, email is not already taken by another user in the same org (unless it's the same user), budget is positive integer.
+If monthlyBudgetCents changes for a TEAM member:
+a. Update DB record.
+b. Recalculate remaining budget: newRemaining = newBudget - currentPeriodSpend.
+c. Update Redis: SET allotly:budget:{membershipId} {newRemaining}.
+d. If new budget is less than current spend, set status to BUDGET_EXHAUSTED and revoke key.
+If allowedModels or allowedProviders changes, the proxy MUST respect the new values on the very next request (no cache staleness).
+MUST enforce: Root Admin can edit any member; Team Admin can edit members in own team only.
+VERIFY: Edit member budget from $50 to $100 → Redis budget updates → member can now spend up to $100.
+VERIFY: Edit member budget from $50 to $20 when member has already spent $30 → member is marked BUDGET_EXHAUSTED → key is revoked → member cannot make requests.
+VERIFY: Edit allowed models → remove gpt-4o-mini → member's next request to gpt-4o-mini returns 403.
+
+
+MUST add PATCH /api/vouchers/[voucherId] endpoint (pre-redemption only).
+
+Editable fields: budgetCents, expiresAt, allowedModels, allowedProviders.
+MUST reject edits if voucher status is REDEEMED, EXPIRED, or REVOKED. Only ACTIVE (unredeemed) vouchers can be edited via this endpoint.
+MUST validate: budget is positive integer, expiresAt is in the future.
+VERIFY: Edit unredeemed voucher budget → DB updates → when redeemed, new budget is used.
+VERIFY: Attempt to edit a redeemed voucher → returns 400 with clear error message.
+
+
+MUST add UI edit forms for each entity.
+
+Organization: Settings icon or "Edit" button on org dashboard → modal or inline form.
+Team: "Edit" action in team row → modal with name/description fields.
+Member: "Edit" action in member row → modal with all editable fields. Budget field MUST show current spend and clearly indicate the impact of changes (e.g., "Member has spent $30. Changing budget to $20 will exhaust their budget and revoke their key.").
+Voucher: "Edit" action in voucher row (only shown for unredeemed vouchers) → modal with editable fields.
+
+
+MUST add audit log entries for every edit operation.
+
+Log format: { action: "EDIT", entityType: "MEMBER"|"TEAM"|"ORG"|"VOUCHER", entityId, changes: { field: { from, to } }, performedBy: userId, performedAt: timestamp }.
+Store in a new AuditLog table (this table will be used by all subsequent milestones).
+VERIFY: Edit a member's budget → AuditLog row created with correct before/after values.
+
+
+MUST create the AuditLog Prisma model:
+
+   model AuditLog {
+     id          String   @id @default(cuid())
+     orgId       String   @map("org_id")
+     action      String   // CREATE, EDIT, DELETE, SUSPEND, REACTIVATE, REVOKE, TRANSFER, etc.
+     entityType  String   // ORG, TEAM, MEMBER, VOUCHER, KEY, PROVIDER, BUDGET
+     entityId    String   @map("entity_id")
+     changes     Json?    // { field: { from, to } } for edits
+     performedBy String   @map("performed_by") // userId
+     ipAddress   String?  @map("ip_address")
+     timestamp   DateTime @default(now())
+     
+     organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+     @@map("audit_logs")
+   }
+Tests
+
+Edit org name → verify DB updated, UI reflects change.
+Edit member budget up → verify Redis updated, member can spend more.
+Edit member budget down below current spend → verify member exhausted + key revoked.
+Edit member allowed models → verify proxy enforces immediately.
+Edit unredeemed voucher → verify changes persist.
+Edit redeemed voucher → verify 400 rejection.
+All edits → verify AuditLog entries created.
+Non-Root Admin attempts org edit → verify 403.
+Team Admin attempts to edit member in another team → verify 403.

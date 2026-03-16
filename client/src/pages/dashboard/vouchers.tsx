@@ -17,7 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Ticket, Plus, Copy, Check, Info, AlertTriangle, Link2, Mail, Send, Ban, ExternalLink } from "lucide-react";
+import { Ticket, Plus, Copy, Check, Info, AlertTriangle, Link2, Mail, Send, Ban, ExternalLink, Pencil } from "lucide-react";
 import { useState } from "react";
 
 export default function VouchersPage() {
@@ -109,6 +109,47 @@ export default function VouchersPage() {
     } finally {
       setSendingEmail(false);
     }
+  };
+
+  const [editVoucherId, setEditVoucherId] = useState<string | null>(null);
+  const [editVoucherLabel, setEditVoucherLabel] = useState("");
+  const [editVoucherBudget, setEditVoucherBudget] = useState("");
+  const [editVoucherMaxRedemptions, setEditVoucherMaxRedemptions] = useState("");
+  const [editVoucherExpiry, setEditVoucherExpiry] = useState("");
+  const [editVoucherProviders, setEditVoucherProviders] = useState<string[]>([]);
+
+  const openEditVoucher = (v: any) => {
+    setEditVoucherId(v.id);
+    setEditVoucherLabel(v.label || "");
+    setEditVoucherBudget(String(v.budgetCents / 100));
+    setEditVoucherMaxRedemptions(String(v.maxRedemptions));
+    setEditVoucherExpiry(new Date(v.expiresAt).toISOString().slice(0, 16));
+    setEditVoucherProviders(v.allowedProviders || []);
+  };
+
+  const editVoucherMutation = useMutation({
+    mutationFn: async () => {
+      if (!editVoucherId) return;
+      await apiRequest("PATCH", `/api/vouchers/${editVoucherId}`, {
+        label: editVoucherLabel || null,
+        budgetCents: Math.round(parseFloat(editVoucherBudget) * 100),
+        maxRedemptions: parseInt(editVoucherMaxRedemptions),
+        expiresAt: new Date(editVoucherExpiry).toISOString(),
+        allowedProviders: editVoucherProviders,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vouchers"] });
+      toast({ title: "Voucher updated" });
+      setEditVoucherId(null);
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to update voucher", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const toggleEditProvider = (p: string) => {
+    setEditVoucherProviders(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]);
   };
 
   const revokeMutation = useMutation({
@@ -348,6 +389,58 @@ export default function VouchersPage() {
         </Card>
       )}
 
+      <Dialog open={!!editVoucherId} onOpenChange={(o) => { if (!o) setEditVoucherId(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Voucher</DialogTitle>
+            <DialogDescription>Update this voucher's settings. Only unredeemed vouchers can be edited.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label>Label</Label>
+              <Input placeholder="Optional label" value={editVoucherLabel} onChange={e => setEditVoucherLabel(e.target.value)} data-testid="input-edit-voucher-label" />
+            </div>
+            <div className="space-y-2">
+              <Label>Budget per Recipient ($)</Label>
+              <Input type="number" min="1" value={editVoucherBudget} onChange={e => setEditVoucherBudget(e.target.value)} data-testid="input-edit-voucher-budget" />
+            </div>
+            <div className="space-y-2">
+              <Label>Max Redemptions</Label>
+              <Input type="number" min="1" value={editVoucherMaxRedemptions} onChange={e => setEditVoucherMaxRedemptions(e.target.value)} data-testid="input-edit-voucher-redemptions" />
+            </div>
+            <div className="space-y-2">
+              <Label>Expires At</Label>
+              <Input type="datetime-local" value={editVoucherExpiry} onChange={e => setEditVoucherExpiry(e.target.value)} data-testid="input-edit-voucher-expiry" />
+            </div>
+            <div className="space-y-2">
+              <Label>Allowed AI Providers</Label>
+              <div className="flex flex-wrap gap-3">
+                {[
+                  { id: "OPENAI", label: "OpenAI", color: "#10A37F" },
+                  { id: "ANTHROPIC", label: "Anthropic", color: "#D4A574" },
+                  { id: "GOOGLE", label: "Google", color: "#4285F4" },
+                ].map(p => (
+                  <label key={p.id} className="flex items-center gap-2 cursor-pointer">
+                    <Checkbox
+                      checked={editVoucherProviders.includes(p.id)}
+                      onCheckedChange={() => toggleEditProvider(p.id)}
+                      data-testid={`checkbox-edit-provider-${p.id.toLowerCase()}`}
+                    />
+                    <span className="flex items-center gap-1.5 text-sm">
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }} />
+                      {p.label}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <Button className="w-full" onClick={() => editVoucherMutation.mutate()} disabled={editVoucherProviders.length === 0 || editVoucherMutation.isPending} data-testid="button-save-voucher-edit">
+              {editVoucherMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {isLoading ? (
         <div className="grid sm:grid-cols-2 gap-4">{[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-40" />)}</div>
       ) : vouchers && vouchers.length > 0 ? (
@@ -363,38 +456,52 @@ export default function VouchersPage() {
               redemptions={v.currentRedemptions}
               maxRedemptions={v.maxRedemptions}
               actions={v.status === "ACTIVE" ? (
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
+                <div className="flex items-center gap-1">
+                  {v.currentRedemptions === 0 && (
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-7 px-2 text-xs text-destructive hover:text-destructive"
-                      disabled={revokeMutation.isPending}
-                      data-testid={`button-revoke-voucher-${v.id}`}
+                      className="h-7 px-2 text-xs"
+                      onClick={() => openEditVoucher(v)}
+                      data-testid={`button-edit-voucher-${v.id}`}
                     >
-                      <Ban className="w-3.5 h-3.5 mr-1" />
-                      Revoke
+                      <Pencil className="w-3.5 h-3.5 mr-1" />
+                      Edit
                     </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Revoke Voucher?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        Are you sure you want to revoke voucher <strong>{v.code}</strong>? This will prevent any new redemptions. Existing members who already redeemed this voucher will not be affected. This action cannot be undone.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel data-testid="button-cancel-revoke-voucher">Cancel</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={() => revokeMutation.mutate(v.id)}
-                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                        data-testid="button-confirm-revoke-voucher"
+                  )}
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                        disabled={revokeMutation.isPending}
+                        data-testid={`button-revoke-voucher-${v.id}`}
                       >
-                        Revoke Voucher
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                        <Ban className="w-3.5 h-3.5 mr-1" />
+                        Revoke
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Revoke Voucher?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Are you sure you want to revoke voucher <strong>{v.code}</strong>? This will prevent any new redemptions. Existing members who already redeemed this voucher will not be affected. This action cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel data-testid="button-cancel-revoke-voucher">Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => revokeMutation.mutate(v.id)}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          data-testid="button-confirm-revoke-voucher"
+                        >
+                          Revoke Voucher
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
               ) : undefined}
             />
           ))}

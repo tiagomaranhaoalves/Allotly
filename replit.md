@@ -150,5 +150,13 @@ Domain fallback: If `allotly.ai` domain fails verification, automatically retrie
 - **Production URL**: `https://asset-manager-d1ctl.replit.app` (Replit deployment)
 - **All source code references**: Updated to `@allotly.ai` email addresses
 
+## Entity Edit Operations (CC-1)
+All core entities support full CRUD with audit logging:
+- **Organization**: PATCH `/api/org/settings` — name, billingEmail, description, orgBudgetCeilingCents, defaultMemberBudgetCents. Before/after audit trail.
+- **Team**: PATCH `/api/teams/:id` — name, description. Unique name validation within org. ROOT_ADMIN edits any, TEAM_ADMIN edits own. Audit log.
+- **Member**: PATCH `/api/members/:id/budget` — monthlyBudgetCents, allowedModels, allowedProviders, userName, userEmail. Redis budget sync on change. Auto-revokes keys on budget exhaustion, auto-reactivates if budget restored. Audit log with before/after.
+- **Voucher**: PATCH `/api/vouchers/:id` — label, budgetCents, expiresAt, allowedProviders, allowedModels, maxRedemptions. Only ACTIVE unredeemed vouchers. Audit log.
+- Schema additions: `billingEmail` and `description` on organizations, `description` on teams.
+
 ## Completed Milestones
-All milestones (1-13) complete including: v4 proxy migration, Admin Control Center, Stripe integration, email system, background jobs, analytics dashboard, dark mode, security review, 191 passing tests, E2E tests.
+All milestones (1-13) complete including: v4 proxy migration, Admin Control Center, Stripe integration, email system, background jobs, analytics dashboard, dark mode, security review, 191 passing tests, E2E tests. CC-1 entity edit operations milestone complete.

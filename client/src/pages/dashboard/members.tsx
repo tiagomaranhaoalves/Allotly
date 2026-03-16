@@ -41,6 +41,8 @@ function MemberCard({ member, onRemove }: { member: any; onRemove: (id: string) 
   const [expanded, setExpanded] = useState(false);
   const [budgetOpen, setBudgetOpen] = useState(false);
   const [newBudget, setNewBudget] = useState(String(member.monthlyBudgetCents));
+  const [editName, setEditName] = useState(member.user?.name || "");
+  const [editEmail, setEditEmail] = useState(member.user?.email || "");
   const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
   const [regenKeyValue, setRegenKeyValue] = useState<string | null>(null);
 
@@ -66,14 +68,20 @@ function MemberCard({ member, onRemove }: { member: any; onRemove: (id: string) 
 
   const budgetMutation = useMutation({
     mutationFn: async () => {
-      await apiRequest("PATCH", `/api/members/${member.id}/budget`, {
+      const payload: Record<string, any> = {
         monthlyBudgetCents: parseInt(newBudget),
-      });
+      };
+      if (editName && editName !== member.user?.name) payload.userName = editName;
+      if (editEmail && editEmail !== member.user?.email) payload.userEmail = editEmail;
+      await apiRequest("PATCH", `/api/members/${member.id}/budget`, payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/members"] });
       setBudgetOpen(false);
-      toast({ title: "Budget updated" });
+      toast({ title: "Member updated" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Update failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -163,26 +171,34 @@ function MemberCard({ member, onRemove }: { member: any; onRemove: (id: string) 
             <div className="flex items-center gap-2 flex-wrap">
               {member.accessType === "TEAM" && (
                 <>
-                  <Dialog open={budgetOpen} onOpenChange={setBudgetOpen}>
+                  <Dialog open={budgetOpen} onOpenChange={(o) => { setBudgetOpen(o); if (o) { setNewBudget(String(member.monthlyBudgetCents)); setEditName(member.user?.name || ""); setEditEmail(member.user?.email || ""); } }}>
                     <DialogTrigger asChild>
                       <Button size="sm" variant="outline" className="h-7 text-xs" data-testid={`button-edit-budget-${member.id}`}>
                         <Pencil className="w-3 h-3 mr-1" />
-                        Edit Budget
+                        Edit Member
                       </Button>
                     </DialogTrigger>
                     <DialogContent>
                       <DialogHeader>
-                        <DialogTitle>Edit Monthly Budget</DialogTitle>
-                        <DialogDescription>Update the monthly spending limit for {member.user?.name || member.user?.email}.</DialogDescription>
+                        <DialogTitle>Edit Member</DialogTitle>
+                        <DialogDescription>Update details for {member.user?.name || member.user?.email}.</DialogDescription>
                       </DialogHeader>
                       <div className="space-y-4 pt-2">
+                        <div className="space-y-2">
+                          <Label>Name</Label>
+                          <Input value={editName} onChange={e => setEditName(e.target.value)} data-testid="input-edit-member-name" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Email</Label>
+                          <Input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} data-testid="input-edit-member-email" />
+                        </div>
                         <div className="space-y-2">
                           <Label>Monthly Budget (cents)</Label>
                           <Input type="number" value={newBudget} onChange={e => setNewBudget(e.target.value)} data-testid="input-edit-budget" />
                           <p className="text-xs text-muted-foreground">${(parseInt(newBudget || "0") / 100).toFixed(2)} per month</p>
                         </div>
                         <Button className="w-full" onClick={() => budgetMutation.mutate()} disabled={budgetMutation.isPending} data-testid="button-save-budget">
-                          {budgetMutation.isPending ? "Saving..." : "Save Budget"}
+                          {budgetMutation.isPending ? "Saving..." : "Save Changes"}
                         </Button>
                       </div>
                     </DialogContent>

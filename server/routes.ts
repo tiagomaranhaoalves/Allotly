@@ -950,11 +950,94 @@ export async function registerRoutes(
         allowedModels: z.array(z.string()).nullable().optional(),
         allowedProviders: z.array(z.string()).nullable().optional(),
         accessType: z.enum(["TEAM", "VOUCHER"]).optional(),
+        userName: z.string().min(1).max(100).optional(),
+        userEmail: z.string().email().optional(),
       });
       const parsed = schema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
 
-      const updated = await storage.updateMembership(membership.id, parsed.data);
+      const memberUser = await storage.getUser(membership.userId);
+      const beforeMembership = {
+        monthlyBudgetCents: membership.monthlyBudgetCents,
+        allowedModels: membership.allowedModels,
+        allowedProviders: membership.allowedProviders,
+        accessType: membership.accessType,
+      };
+      const beforeUser = { name: memberUser?.name, email: memberUser?.email };
+
+      const { userName, userEmail, ...membershipData } = parsed.data;
+
+      if (userEmail && memberUser && userEmail !== memberUser.email) {
+        const existing = await storage.getUserByEmail(userEmail);
+        if (existing && existing.id !== memberUser.id) {
+          return res.status(409).json({ message: "A user with that email already exists" });
+        }
+      }
+
+      if (userName || userEmail) {
+        const userUpdate: Record<string, any> = {};
+        if (userName) userUpdate.name = userName;
+        if (userEmail) userUpdate.email = userEmail;
+        await storage.updateUser(membership.userId, userUpdate);
+      }
+
+      const updated = await storage.updateMembership(membership.id, membershipData);
+
+      if (membershipData.monthlyBudgetCents && membershipData.monthlyBudgetCents !== membership.monthlyBudgetCents) {
+        const budgetKey = REDIS_KEYS.budget(membership.id);
+        const newRemaining = membershipData.monthlyBudgetCents - membership.currentPeriodSpendCents;
+        const oldRemaining = membership.monthlyBudgetCents - membership.currentPeriodSpendCents;
+        await redisSet(budgetKey, String(newRemaining));
+
+        if (newRemaining <= 0 && oldRemaining > 0) {
+          await storage.updateMembership(membership.id, { status: "BUDGET_EXHAUSTED" });
+          const keys = await storage.getApiKeysByMembership(membership.id);
+          for (const key of keys) {
+            if (key.status === "ACTIVE") {
+              await storage.updateAllotlyApiKey(key.id, { status: "REVOKED" });
+              await redisDel(REDIS_KEYS.apiKeyCache(key.keyHash));
+            }
+          }
+        } else if (newRemaining > 0 && membership.status === "BUDGET_EXHAUSTED") {
+          await storage.updateMembership(membership.id, { status: "ACTIVE" });
+        }
+      }
+
+      if (membershipData.allowedModels !== undefined || membershipData.allowedProviders !== undefined) {
+        const keys = await storage.getApiKeysByMembership(membership.id);
+        for (const key of keys) {
+          if (key.status === "ACTIVE") {
+            await redisDel(REDIS_KEYS.apiKeyCache(key.keyHash));
+          }
+        }
+      }
+
+      const changes: Record<string, { from: any; to: any }> = {};
+      if (membershipData.monthlyBudgetCents !== undefined && membershipData.monthlyBudgetCents !== beforeMembership.monthlyBudgetCents) {
+        changes.monthlyBudgetCents = { from: beforeMembership.monthlyBudgetCents, to: membershipData.monthlyBudgetCents };
+      }
+      if (membershipData.allowedModels !== undefined) {
+        changes.allowedModels = { from: beforeMembership.allowedModels, to: membershipData.allowedModels };
+      }
+      if (membershipData.allowedProviders !== undefined) {
+        changes.allowedProviders = { from: beforeMembership.allowedProviders, to: membershipData.allowedProviders };
+      }
+      if (userName && userName !== beforeUser.name) {
+        changes.userName = { from: beforeUser.name, to: userName };
+      }
+      if (userEmail && userEmail !== beforeUser.email) {
+        changes.userEmail = { from: beforeUser.email, to: userEmail };
+      }
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "member.updated",
+        targetType: "team_membership",
+        targetId: membership.id,
+        metadata: { changes, userId: membership.userId },
+      });
+
       res.json(updated);
     } catch (e: any) {
       console.error("Member budget update error:", e);
@@ -1074,6 +1157,55 @@ export async function registerRoutes(
       res.json({ message: "Key revoked" });
     } catch (e: any) {
       console.error("Key revoke error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/teams/:id", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
+
+      const team = await storage.getTeam(req.params.id);
+      if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
+      if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
+
+      const editSchema = z.object({
+        name: z.string().min(1).max(100).optional(),
+        description: z.string().max(500).nullable().optional(),
+      });
+      const parsed = editSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+
+      if (parsed.data.name && parsed.data.name !== team.name) {
+        const orgTeams = await storage.getTeamsByOrg(user.orgId);
+        const duplicate = orgTeams.find(t => t.name.toLowerCase() === parsed.data.name!.toLowerCase() && t.id !== team.id);
+        if (duplicate) return res.status(409).json({ message: "A team with that name already exists" });
+      }
+
+      const before = { name: team.name, description: team.description };
+      const updated = await storage.updateTeam(team.id, parsed.data);
+      const after = { name: updated?.name, description: updated?.description };
+
+      const changes: Record<string, { from: any; to: any }> = {};
+      for (const key of Object.keys(parsed.data) as Array<keyof typeof before>) {
+        if (before[key] !== after[key]) {
+          changes[key] = { from: before[key], to: after[key] };
+        }
+      }
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "team.updated",
+        targetType: "team",
+        targetId: team.id,
+        metadata: { changes },
+      });
+
+      res.json(updated);
+    } catch (e: any) {
+      console.error("Team update error:", e);
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -1458,6 +1590,98 @@ export async function registerRoutes(
       res.json(updated);
     } catch (e: any) {
       console.error("Voucher revoke error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/vouchers/:id", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || !user.orgId) return res.status(403).json({ message: "Not authorized" });
+      if (user.orgRole !== "ROOT_ADMIN" && user.orgRole !== "TEAM_ADMIN") {
+        return res.status(403).json({ message: "Only admins can edit vouchers" });
+      }
+
+      const voucher = await storage.getVoucherById(req.params.id);
+      if (!voucher || voucher.orgId !== user.orgId) {
+        return res.status(404).json({ message: "Voucher not found" });
+      }
+
+      if (user.orgRole === "TEAM_ADMIN") {
+        const orgTeams = await storage.getTeamsByOrg(user.orgId);
+        const adminTeam = orgTeams.find(t => t.adminId === user.id);
+        if (!adminTeam || voucher.teamId !== adminTeam.id) {
+          return res.status(403).json({ message: "You can only edit vouchers for your own team" });
+        }
+      }
+
+      if (voucher.status !== "ACTIVE") {
+        return res.status(400).json({ message: `Cannot edit a ${voucher.status.toLowerCase()} voucher` });
+      }
+
+      if (voucher.currentRedemptions > 0) {
+        return res.status(400).json({ message: "Cannot edit a voucher that has already been redeemed" });
+      }
+
+      const editSchema = z.object({
+        label: z.string().max(200).nullable().optional(),
+        budgetCents: z.number().int().min(100).optional(),
+        expiresAt: z.string().datetime().optional(),
+        allowedProviders: z.array(z.string()).optional(),
+        allowedModels: z.array(z.string()).nullable().optional(),
+        maxRedemptions: z.number().int().min(1).optional(),
+      });
+      const parsed = editSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+
+      const before = {
+        label: voucher.label,
+        budgetCents: voucher.budgetCents,
+        expiresAt: voucher.expiresAt,
+        allowedProviders: voucher.allowedProviders,
+        allowedModels: voucher.allowedModels,
+        maxRedemptions: voucher.maxRedemptions,
+      };
+
+      if (parsed.data.expiresAt) {
+        const expiryDate = new Date(parsed.data.expiresAt);
+        if (expiryDate <= new Date()) {
+          return res.status(400).json({ message: "Expiry date must be in the future" });
+        }
+      }
+
+      const updateData: Record<string, any> = {};
+      if (parsed.data.label !== undefined) updateData.label = parsed.data.label;
+      if (parsed.data.budgetCents !== undefined) updateData.budgetCents = parsed.data.budgetCents;
+      if (parsed.data.expiresAt !== undefined) updateData.expiresAt = new Date(parsed.data.expiresAt);
+      if (parsed.data.allowedProviders !== undefined) updateData.allowedProviders = parsed.data.allowedProviders;
+      if (parsed.data.allowedModels !== undefined) updateData.allowedModels = parsed.data.allowedModels;
+      if (parsed.data.maxRedemptions !== undefined) updateData.maxRedemptions = parsed.data.maxRedemptions;
+
+      const updated = await storage.updateVoucher(voucher.id, updateData);
+
+      const changes: Record<string, { from: any; to: any }> = {};
+      for (const key of Object.keys(parsed.data)) {
+        const bKey = key as keyof typeof before;
+        const fromVal = before[bKey];
+        const toVal = (updated as any)?.[bKey];
+        if (JSON.stringify(fromVal) !== JSON.stringify(toVal)) {
+          changes[key] = { from: fromVal, to: toVal };
+        }
+      }
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "voucher.updated",
+        targetType: "voucher",
+        targetId: voucher.id,
+        metadata: { changes, code: voucher.code },
+      });
+
+      res.json(updated);
+    } catch (e: any) {
+      console.error("Voucher update error:", e);
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -2323,13 +2547,33 @@ export async function registerRoutes(
     const user = (req as any).user;
     const settingsSchema = z.object({
       name: z.string().min(1).optional(),
+      billingEmail: z.string().email().nullable().optional(),
+      description: z.string().max(500).nullable().optional(),
       orgBudgetCeilingCents: z.number().int().min(0).nullable().optional(),
       defaultMemberBudgetCents: z.number().int().min(0).nullable().optional(),
     });
     const parsed = settingsSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
-    const { name, orgBudgetCeilingCents, defaultMemberBudgetCents } = parsed.data;
-    const updated = await storage.updateOrganization(user.orgId, { name, orgBudgetCeilingCents, defaultMemberBudgetCents });
+
+    const before = await storage.getOrganization(user.orgId);
+    const { name, billingEmail, description, orgBudgetCeilingCents, defaultMemberBudgetCents } = parsed.data;
+    const updateData: Record<string, any> = {};
+    if (name !== undefined) updateData.name = name;
+    if (billingEmail !== undefined) updateData.billingEmail = billingEmail;
+    if (description !== undefined) updateData.description = description;
+    if (orgBudgetCeilingCents !== undefined) updateData.orgBudgetCeilingCents = orgBudgetCeilingCents;
+    if (defaultMemberBudgetCents !== undefined) updateData.defaultMemberBudgetCents = defaultMemberBudgetCents;
+
+    const updated = await storage.updateOrganization(user.orgId, updateData);
+
+    const changes: Record<string, { from: any; to: any }> = {};
+    if (before) {
+      for (const key of Object.keys(updateData)) {
+        if ((before as any)[key] !== (updated as any)?.[key]) {
+          changes[key] = { from: (before as any)[key], to: (updated as any)?.[key] };
+        }
+      }
+    }
 
     await storage.createAuditLog({
       orgId: user.orgId,
@@ -2337,7 +2581,7 @@ export async function registerRoutes(
       action: "settings.updated",
       targetType: "organization",
       targetId: user.orgId,
-      metadata: { changes: { name, orgBudgetCeilingCents, defaultMemberBudgetCents } },
+      metadata: { changes },
     });
 
     res.json(updated);
