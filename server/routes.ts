@@ -4759,6 +4759,14 @@ export async function registerRoutes(
       const user = await storage.getUser(req.params.id);
       if (!user) return res.status(404).json({ message: "User not found" });
 
+      const ownedTeams = await db.select().from(teams).where(eq(teams.adminId, user.id));
+      if (ownedTeams.length > 0) {
+        return res.status(400).json({
+          message: `Cannot hard-delete: user is admin of ${ownedTeams.length} team(s). Reassign or delete those teams first.`,
+          teamIds: ownedTeams.map(t => t.id),
+        });
+      }
+
       const counts: Record<string, number> = {};
 
       await db.transaction(async (tx) => {
@@ -4806,14 +4814,6 @@ export async function registerRoutes(
 
         await tx.delete(voucherRedemptions).where(eq(voucherRedemptions.userId, user.id));
         await tx.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, user.id));
-
-        const ownedTeams = await tx.select().from(teams).where(eq(teams.adminId, user.id));
-        if (ownedTeams.length > 0) {
-          return res.status(400).json({
-            message: `Cannot hard-delete: user is admin of ${ownedTeams.length} team(s). Reassign or delete those teams first.`,
-            teamIds: ownedTeams.map(t => t.id),
-          });
-        }
 
         const createdVouchers = await tx.select({ id: vouchers.id }).from(vouchers)
           .where(eq(vouchers.createdById, user.id));
