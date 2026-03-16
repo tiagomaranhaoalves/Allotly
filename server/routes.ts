@@ -4256,7 +4256,7 @@ export async function registerRoutes(
             continue;
           }
 
-          const tempPassword = await hashPassword(generateAllotlyKey().slice(0, 32));
+          const tempPassword = await hashPassword(generateAllotlyKey().key.slice(0, 32));
           memberUser = await storage.createUser({
             email: memberReq.email,
             name: memberReq.name || memberReq.email.split("@")[0],
@@ -4284,9 +4284,7 @@ export async function registerRoutes(
             status: "ACTIVE",
           });
 
-          const rawKey = generateAllotlyKey();
-          const keyHash = hashKey(rawKey);
-          const keyPrefix = rawKey.slice(0, 12);
+          const { key: rawKey, hash: keyHash, prefix: keyPrefix } = generateAllotlyKey();
           await storage.createAllotlyApiKey({
             userId: memberUser.id,
             membershipId: membership.id,
@@ -5026,14 +5024,13 @@ export async function registerRoutes(
 
         await redisSet(REDIS_KEYS.budget(activeMembershipId), String(parsed.data.monthlyBudgetCents));
 
-        const rawKey = generateAllotlyKey();
-        const keyHash = hashKey(rawKey);
+        const { key: newRawKey, hash: newKeyHash, prefix: newKeyPrefix } = generateAllotlyKey();
         await tx.insert(allotlyApiKeysTable).values({
           id: crypto.randomUUID(),
           userId: user.id,
           membershipId: activeMembershipId,
-          keyHash,
-          keyPrefix: rawKey.slice(0, 12),
+          keyHash: newKeyHash,
+          keyPrefix: newKeyPrefix,
           status: "ACTIVE",
         });
 
