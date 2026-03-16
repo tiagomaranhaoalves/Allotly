@@ -169,5 +169,16 @@ All entities support cascade delete with full cleanup:
 - Frontend: Settings page has Danger Zone with org delete (type-to-confirm). Teams page requires typing team name. Vouchers page has delete button with redeemed-warning variant.
 - Key file: `server/lib/cascade-delete.ts` — centralized cascade logic.
 
+## User Transfers & Bulk Operations (CC-3)
+Member management extended with transfers, role changes, bulk ops, and invite resend:
+- **Transfer**: POST `/api/members/:id/transfer` — { targetTeamId, targetOrgId?, newBudgetCents, newAllowedModels?, newAllowedProviders? }. Intra-org: Root Admin or Team Admin of both teams. Cross-org: Root Admin of both orgs or platform super-admin (ADMIN_EMAIL). Revokes old key → clears Redis → deletes old membership → creates new membership + key → sends notification email → audit log in both orgs for cross-org.
+- **Change Role**: POST `/api/members/:id/change-role` — { newRole: "TEAM_ADMIN" | "MEMBER" }. ROOT_ADMIN only. Updates user.orgRole, does NOT affect API key or budget.
+- **Bulk Suspend**: POST `/api/members/bulk/suspend` — { membershipIds[] }. Suspends each member, revokes keys, zeros Redis budget. Non-atomic across batch, returns results array.
+- **Bulk Reactivate**: POST `/api/members/bulk/reactivate` — { membershipIds[] }. Reactivates each member, generates new key, restores Redis budget. Returns results array with apiKey per member.
+- **Bulk Delete**: POST `/api/members/bulk/delete` — { membershipIds[], confirm: true }. ROOT_ADMIN only. Uses cascadeDeleteMember per member.
+- **Resend Invite**: POST `/api/members/:id/resend-invite` — Only for INVITED status users. Creates fresh password reset token, re-sends invite email. Does NOT regenerate key.
+- Frontend: Member cards have checkboxes for multi-select. Bulk action bar appears when 1+ selected (Suspend/Reactivate/Delete Selected). Transfer dialog with team selector. Change Role dialog. Resend Invite button (INVITED members only).
+- Email template: `memberTransferred` added to `server/lib/email.ts`.
+
 ## Completed Milestones
-All milestones (1-13) complete including: v4 proxy migration, Admin Control Center, Stripe integration, email system, background jobs, analytics dashboard, dark mode, security review, 191 passing tests, E2E tests. CC-1 entity edit operations milestone complete. CC-2 delete operations with cascade logic complete.
+All milestones (1-13) complete including: v4 proxy migration, Admin Control Center, Stripe integration, email system, background jobs, analytics dashboard, dark mode, security review, 191 passing tests, E2E tests. CC-1 entity edit operations milestone complete. CC-2 delete operations with cascade logic complete. CC-3 user transfers and bulk member operations complete.

@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, requireAuth, requireRole, requireAdmin } from "./auth";
 import { hashPassword, comparePasswords } from "./lib/password";
-import { signupSchema, loginSchema, voucherBundles } from "@shared/schema";
+import { signupSchema, loginSchema, voucherBundles, users as usersTable } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { db } from "./db";
 import { encryptProviderKey, decryptProviderKey } from "./lib/encryption";
@@ -1064,6 +1064,403 @@ export async function registerRoutes(
       res.json({ message: "Member removed", deletedCounts: result.deletedCounts });
     } catch (e: any) {
       console.error("Member remove error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/members/:id/transfer", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
+
+      const membership = await storage.getMembership(req.params.id);
+      if (!membership) return res.status(404).json({ message: "Not found" });
+
+      const sourceTeam = await storage.getTeam(membership.teamId);
+      if (!sourceTeam || sourceTeam.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
+
+      const schema = z.object({
+        targetTeamId: z.string().min(1),
+        targetOrgId: z.string().min(1).optional(),
+        newBudgetCents: z.number().int().min(100),
+        newAllowedModels: z.array(z.string()).nullable().optional(),
+        newAllowedProviders: z.array(z.string()).nullable().optional(),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+
+      const { targetTeamId, targetOrgId, newBudgetCents, newAllowedModels, newAllowedProviders } = parsed.data;
+      const isCrossOrg = targetOrgId && targetOrgId !== user.orgId;
+
+      if (isCrossOrg) {
+        const adminEmail = process.env.ADMIN_EMAIL;
+        const isplatformAdmin = adminEmail && user.email === adminEmail;
+        if (user.orgRole !== "ROOT_ADMIN" && !isplatformAdmin) return res.status(403).json({ message: "Cross-org transfers require Root Admin of source org" });
+        const targetOrg = await storage.getOrganization(targetOrgId);
+        if (!targetOrg) return res.status(404).json({ message: "Target organization not found" });
+        const targetOrgRootAdmins = await db.select().from(usersTable)
+          .where(and(eq(usersTable.orgId, targetOrgId), eq(usersTable.orgRole, "ROOT_ADMIN")));
+        const isTargetOrgAdmin = targetOrgRootAdmins.some(a => a.id === user.id);
+        if (!isTargetOrgAdmin && !isplatformAdmin) {
+          return res.status(403).json({ message: "Cross-org transfers require Root Admin of both orgs or platform super-admin" });
+        }
+      }
+
+      const targetTeam = await storage.getTeam(targetTeamId);
+      if (!targetTeam) return res.status(404).json({ message: "Target team not found" });
+
+      const expectedTargetOrgId = isCrossOrg ? targetOrgId : user.orgId;
+      if (targetTeam.orgId !== expectedTargetOrgId) return res.status(400).json({ message: "Target team does not belong to the specified organization" });
+
+      if (targetTeamId === membership.teamId) return res.status(400).json({ message: "Member is already in this team" });
+
+      if (!isCrossOrg && user.orgRole === "TEAM_ADMIN") {
+        if (sourceTeam.adminId !== user.id) return res.status(403).json({ message: "You must be admin of the source team" });
+        if (targetTeam.adminId !== user.id) return res.status(403).json({ message: "You must be admin of the target team" });
+      }
+
+      const memberUser = await storage.getUser(membership.userId);
+      if (!memberUser) return res.status(404).json({ message: "Member user not found" });
+
+      const existingKeys = await storage.getApiKeysByMembership(membership.id);
+      for (const key of existingKeys) {
+        if (key.status === "ACTIVE") {
+          await storage.updateAllotlyApiKey(key.id, { status: "REVOKED" });
+          await redisDel(REDIS_KEYS.apiKeyCache(key.keyHash));
+        }
+      }
+
+      await redisDel(REDIS_KEYS.budget(membership.id));
+      await redisDel(REDIS_KEYS.concurrent(membership.id));
+      await redisDel(REDIS_KEYS.ratelimit(membership.id));
+
+      await storage.deleteMembership(membership.id);
+
+      if (isCrossOrg) {
+        await storage.updateUser(memberUser.id, { orgId: targetOrgId } as any);
+      }
+
+      const now = new Date();
+      const periodEnd = new Date(now);
+      periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+      const newMembership = await storage.createMembership({
+        teamId: targetTeamId,
+        userId: memberUser.id,
+        accessType: "TEAM",
+        monthlyBudgetCents: newBudgetCents,
+        allowedModels: newAllowedModels || null,
+        allowedProviders: newAllowedProviders || null,
+        currentPeriodSpendCents: 0,
+        periodStart: now,
+        periodEnd,
+        status: "ACTIVE",
+      });
+
+      const { key: rawKey, hash, prefix } = generateAllotlyKey();
+      await storage.createAllotlyApiKey({
+        userId: memberUser.id,
+        membershipId: newMembership.id,
+        keyHash: hash,
+        keyPrefix: prefix,
+      });
+
+      await redisSet(REDIS_KEYS.budget(newMembership.id), String(newBudgetCents));
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "member.transferred",
+        targetType: "team_membership",
+        targetId: newMembership.id,
+        metadata: {
+          userId: memberUser.id,
+          fromTeamId: membership.teamId,
+          fromTeamName: sourceTeam.name,
+          toTeamId: targetTeamId,
+          toTeamName: targetTeam.name,
+          crossOrg: !!isCrossOrg,
+          targetOrgId: isCrossOrg ? targetOrgId : undefined,
+          newBudgetCents,
+          newKeyPrefix: prefix,
+        },
+      });
+
+      if (isCrossOrg) {
+        await storage.createAuditLog({
+          orgId: targetOrgId!,
+          actorId: user.id,
+          action: "member.transferred_in",
+          targetType: "team_membership",
+          targetId: newMembership.id,
+          metadata: {
+            userId: memberUser.id,
+            fromOrgId: user.orgId,
+            toTeamId: targetTeamId,
+            toTeamName: targetTeam.name,
+            newBudgetCents,
+          },
+        });
+      }
+
+      const targetOrg = isCrossOrg ? await storage.getOrganization(targetOrgId!) : null;
+      const emailContent = emailTemplates.memberTransferred(
+        memberUser.name || memberUser.email,
+        targetTeam.name,
+        targetOrg?.name || null,
+        !!isCrossOrg
+      );
+      sendEmail(memberUser.email, emailContent.subject, emailContent.html);
+
+      res.json({
+        membership: newMembership,
+        apiKey: rawKey,
+        keyPrefix: prefix,
+        message: `Member transferred to ${targetTeam.name}`,
+      });
+    } catch (e: any) {
+      if (e.code === "23505") {
+        return res.status(400).json({ message: "User already has a membership — cannot transfer" });
+      }
+      console.error("Member transfer error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/members/:id/change-role", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || user.orgRole !== "ROOT_ADMIN") return res.status(403).json({ message: "Only Root Admin can change roles" });
+
+      const membership = await storage.getMembership(req.params.id);
+      if (!membership) return res.status(404).json({ message: "Not found" });
+
+      const team = await storage.getTeam(membership.teamId);
+      if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
+
+      const schema = z.object({
+        newRole: z.enum(["TEAM_ADMIN", "MEMBER"]),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+
+      const { newRole } = parsed.data;
+      const memberUser = await storage.getUser(membership.userId);
+      if (!memberUser) return res.status(404).json({ message: "User not found" });
+
+      if (memberUser.orgRole === newRole) return res.status(400).json({ message: `User is already a ${newRole}` });
+      if (memberUser.orgRole === "ROOT_ADMIN") return res.status(400).json({ message: "Cannot change Root Admin role" });
+
+      const oldRole = memberUser.orgRole;
+      await storage.updateUser(memberUser.id, { orgRole: newRole } as any);
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "member.role_changed",
+        targetType: "user",
+        targetId: memberUser.id,
+        metadata: { fromRole: oldRole, toRole: newRole, membershipId: membership.id },
+      });
+
+      res.json({ message: `Role changed from ${oldRole} to ${newRole}` });
+    } catch (e: any) {
+      console.error("Change role error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/members/bulk/suspend", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
+
+      const schema = z.object({ membershipIds: z.array(z.string().min(1)).min(1) });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+
+      const results: { membershipId: string; status: string; error?: string }[] = [];
+
+      for (const mid of parsed.data.membershipIds) {
+        try {
+          const membership = await storage.getMembership(mid);
+          if (!membership) { results.push({ membershipId: mid, status: "error", error: "Not found" }); continue; }
+
+          const team = await storage.getTeam(membership.teamId);
+          if (!team || team.orgId !== user.orgId) { results.push({ membershipId: mid, status: "error", error: "Not found" }); continue; }
+          if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) { results.push({ membershipId: mid, status: "error", error: "Forbidden" }); continue; }
+
+          await storage.updateMembership(mid, { status: "SUSPENDED" });
+
+          const keys = await storage.getApiKeysByMembership(mid);
+          for (const key of keys) {
+            if (key.status === "ACTIVE") {
+              await storage.updateAllotlyApiKey(key.id, { status: "REVOKED" });
+              await redisDel(REDIS_KEYS.apiKeyCache(key.keyHash));
+            }
+          }
+          await redisDel(REDIS_KEYS.budget(mid));
+
+          await storage.createAuditLog({
+            orgId: user.orgId,
+            actorId: user.id,
+            action: "member.suspended",
+            targetType: "team_membership",
+            targetId: mid,
+            metadata: { bulk: true },
+          });
+
+          results.push({ membershipId: mid, status: "suspended" });
+        } catch (e: any) {
+          results.push({ membershipId: mid, status: "error", error: e.message });
+        }
+      }
+
+      res.json({ results });
+    } catch (e: any) {
+      console.error("Bulk suspend error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/members/bulk/reactivate", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
+
+      const schema = z.object({ membershipIds: z.array(z.string().min(1)).min(1) });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+
+      const results: { membershipId: string; status: string; error?: string; apiKey?: string; keyPrefix?: string }[] = [];
+
+      for (const mid of parsed.data.membershipIds) {
+        try {
+          const membership = await storage.getMembership(mid);
+          if (!membership) { results.push({ membershipId: mid, status: "error", error: "Not found" }); continue; }
+
+          const team = await storage.getTeam(membership.teamId);
+          if (!team || team.orgId !== user.orgId) { results.push({ membershipId: mid, status: "error", error: "Not found" }); continue; }
+          if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) { results.push({ membershipId: mid, status: "error", error: "Forbidden" }); continue; }
+
+          await storage.updateMembership(mid, { status: "ACTIVE" });
+
+          const { key: rawKey, hash, prefix } = generateAllotlyKey();
+          await storage.createAllotlyApiKey({
+            userId: membership.userId,
+            membershipId: mid,
+            keyHash: hash,
+            keyPrefix: prefix,
+          });
+
+          await redisSet(REDIS_KEYS.budget(mid), String(membership.monthlyBudgetCents - membership.currentPeriodSpendCents));
+
+          await storage.createAuditLog({
+            orgId: user.orgId,
+            actorId: user.id,
+            action: "member.reactivated",
+            targetType: "team_membership",
+            targetId: mid,
+            metadata: { bulk: true, newKeyPrefix: prefix },
+          });
+
+          results.push({ membershipId: mid, status: "reactivated", apiKey: rawKey, keyPrefix: prefix });
+        } catch (e: any) {
+          results.push({ membershipId: mid, status: "error", error: e.message });
+        }
+      }
+
+      res.json({ results });
+    } catch (e: any) {
+      console.error("Bulk reactivate error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/members/bulk/delete", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || user.orgRole !== "ROOT_ADMIN") return res.status(403).json({ message: "Only Root Admin can bulk delete" });
+
+      const schema = z.object({
+        membershipIds: z.array(z.string().min(1)).min(1),
+        confirm: z.literal(true),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Validation error — confirm: true is required", errors: parsed.error.errors });
+
+      const results: { membershipId: string; status: string; error?: string }[] = [];
+
+      for (const mid of parsed.data.membershipIds) {
+        try {
+          const membership = await storage.getMembership(mid);
+          if (!membership) { results.push({ membershipId: mid, status: "error", error: "Not found" }); continue; }
+
+          const team = await storage.getTeam(membership.teamId);
+          if (!team || team.orgId !== user.orgId) { results.push({ membershipId: mid, status: "error", error: "Not found" }); continue; }
+
+          const result = await cascadeDeleteMember(mid, user.id, user.orgId);
+          if (!result.success) {
+            results.push({ membershipId: mid, status: "error", error: result.error });
+          } else {
+            results.push({ membershipId: mid, status: "deleted" });
+          }
+        } catch (e: any) {
+          results.push({ membershipId: mid, status: "error", error: e.message });
+        }
+      }
+
+      res.json({ results });
+    } catch (e: any) {
+      console.error("Bulk delete error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/members/:id/resend-invite", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
+
+      const membership = await storage.getMembership(req.params.id);
+      if (!membership) return res.status(404).json({ message: "Not found" });
+
+      const team = await storage.getTeam(membership.teamId);
+      if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
+      if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
+
+      const memberUser = await storage.getUser(membership.userId);
+      if (!memberUser) return res.status(404).json({ message: "User not found" });
+      if (memberUser.status !== "INVITED") return res.status(400).json({ message: "Member has already accepted their invite" });
+
+      const crypto = await import("crypto");
+      const rawToken = crypto.randomBytes(32).toString("hex");
+      const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      await storage.createPasswordResetToken({ userId: memberUser.id, tokenHash, expiresAt });
+
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      const setupUrl = `${baseUrl}/invite/${rawToken}`;
+      const inviteEmail = emailTemplates.memberInvite(
+        memberUser.name || memberUser.email,
+        team.name,
+        user.name || user.email,
+        setupUrl
+      );
+      sendEmail(memberUser.email, inviteEmail.subject, inviteEmail.html);
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "member.invite_resent",
+        targetType: "team_membership",
+        targetId: membership.id,
+        metadata: { userId: memberUser.id, email: memberUser.email },
+      });
+
+      res.json({ message: "Invite re-sent" });
+    } catch (e: any) {
+      console.error("Resend invite error:", e);
       res.status(500).json({ message: "Internal server error" });
     }
   });

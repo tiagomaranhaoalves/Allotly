@@ -1,0 +1,95 @@
+MILESTONE CC-3: USER TRANSFERS AND BULK MEMBER OPERATIONS
+Goal: Enable moving users between orgs/teams and performing bulk actions on multiple members at once.
+Context: Without transfers, the only way to move a user is delete + re-invite, which loses history and requires the user to re-onboard. Without bulk actions, managing events with 50+ participants is painfully slow.
+Requirements
+
+MUST implement POST /api/members/[membershipId]/transfer endpoint.
+
+Request body: { targetOrgId?, targetTeamId, newBudgetCents, newAllowedModels?, newAllowedProviders? }.
+If targetOrgId is provided and different from current org: this is a cross-org transfer. MUST require Root Admin of BOTH orgs (or platform super-admin).
+If targetTeamId is within the same org: this is an intra-org team transfer. Root Admin or Team Admin of BOTH source and target teams.
+Transfer logic:
+a. Revoke old key.
+b. Delete old Redis budget state.
+c. Delete old TeamMembership.
+d. Create new TeamMembership in target team with new budget/config.
+e. Generate new allotly_sk_ key.
+f. Initialize new Redis budget.
+g. Send notification email to member: "You've been moved to [team/org]. Here's your new key."
+h. Create AuditLog entries in both source and target orgs (for cross-org transfers).
+MUST NOT delete the User record — the user is preserved across the transfer.
+MUST preserve the user's account (email, password, login) — only the membership changes.
+VERIFY: Transfer user from Team A to Team B (same org) → old key revoked → new key generated → new budget active → user can authenticate with new key → old key returns 401.
+VERIFY: Transfer user from Org A to Org B → old membership gone → new membership created → email still works for login → old key dead, new key works.
+
+
+MUST implement POST /api/members/[membershipId]/change-role endpoint.
+
+Request body: { newRole: "TEAM_ADMIN" | "MEMBER" }.
+MUST require Root Admin.
+Promote MEMBER → TEAM_ADMIN: update User.role, grant team admin permissions.
+Demote TEAM_ADMIN → MEMBER: update User.role, remove team admin permissions.
+MUST NOT affect their API key or budget — role change is permissions only.
+MUST create AuditLog entry.
+VERIFY: Promote member to Team Admin → member can now see team management UI → can create new members in their team.
+VERIFY: Demote Team Admin to Member → loses team management access → existing key and budget unaffected.
+
+
+MUST implement POST /api/members/bulk/suspend endpoint.
+
+Request body: { membershipIds: string[] }.
+MUST require Root Admin or Team Admin (only for members in own team).
+For each membership: suspend member, revoke key, zero Redis budget.
+MUST be atomic per member but NOT atomic across the batch (if one fails, others still proceed). Return results array: { membershipId, status: "suspended" | "error", error? }.
+MUST create AuditLog entry per member.
+VERIFY: Bulk suspend 5 members → all 5 suspended → all 5 keys revoked → all 5 Redis budgets zeroed.
+
+
+MUST implement POST /api/members/bulk/reactivate endpoint.
+
+Same structure as bulk suspend. For each: reactivate member, generate new key, restore Redis budget.
+VERIFY: Bulk reactivate 5 members → all 5 active → all 5 have new keys → all 5 Redis budgets restored.
+
+
+MUST implement POST /api/members/bulk/delete endpoint.
+
+Request body: { membershipIds: string[] }.
+MUST require Root Admin.
+Uses the same cascade delete logic from CC-2 for each member.
+Return results array with per-member status.
+MUST require confirmation: { confirm: true }.
+MUST create AuditLog entries.
+VERIFY: Bulk delete 5 members → all 5 deleted → emails freed → Redis cleaned.
+
+
+MUST implement POST /api/members/[membershipId]/resend-invite endpoint.
+
+Only works for members with status = INVITED (haven't accepted yet).
+Re-sends the invite email with a fresh invite link.
+MUST NOT generate a new key — the original key is still valid.
+MUST require Root Admin or Team Admin (own team).
+VERIFY: Resend invite → new email sent → original invite link still works → key unchanged.
+
+
+MUST add UI for all bulk operations.
+
+Member table MUST have checkboxes for multi-select.
+When 1+ members selected, a toolbar appears above the table with: "Suspend Selected", "Reactivate Selected", "Delete Selected" buttons.
+Each bulk action shows a confirmation dialog listing the affected members.
+Transfer: "Transfer" action in member row dropdown → modal with target team selector (and target org selector if Root Admin).
+Role change: "Change Role" action in member row dropdown → modal with role selector.
+Resend invite: "Resend Invite" action (only visible for INVITED status members).
+
+
+
+Tests
+
+Transfer within same org → verify membership moves, key rotates, budget resets.
+Transfer across orgs → verify clean move, audit logs in both orgs.
+Transfer attempt by non-Root Admin across orgs → verify 403.
+Change role Member → Team Admin → verify permissions updated.
+Change role Team Admin → Member → verify permissions downgraded.
+Bulk suspend 10 members → verify all suspended.
+Bulk delete with one invalid ID → verify others still deleted, error reported for invalid one.
+Resend invite for already-accepted member → verify 400 rejection.
+

@@ -171,6 +171,19 @@ export const emailTemplates = {
     };
   },
 
+  memberTransferred(memberName: string, newTeamName: string, newOrgName: string | null, isNewOrg: boolean) {
+    const orgLine = isNewOrg ? ` in <strong>${newOrgName}</strong>` : "";
+    return {
+      subject: `You've been transferred to ${newTeamName} on Allotly`,
+      html: layout("Team Transfer", [
+        p(`Hi ${memberName},`),
+        p(`You've been transferred to the <strong>${newTeamName}</strong> team${orgLine} on Allotly.`),
+        p("Your previous API key has been revoked and a new one has been generated. You can find your new key by signing in to your Allotly dashboard."),
+        p("Your login credentials (email and password) remain the same."),
+      ].join("")),
+    };
+  },
+
   voucherNotification(recipientName: string, code: string, budgetDollars: string, expiresAt: string, redeemUrl: string) {
     return {
       subject: `Your Allotly AI Access Voucher`,

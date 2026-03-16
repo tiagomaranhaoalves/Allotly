@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
-  DialogDescription,
+  DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -25,7 +25,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Users, Plus, UserMinus, UserCheck,
   AlertTriangle, Trash2, Pencil,
-  RefreshCw, ShieldOff,
+  RefreshCw, ShieldOff, ArrowRightLeft, Shield, Send,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -36,7 +36,172 @@ const STATUS_STYLES: Record<string, string> = {
   EXPIRED: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
 };
 
-function MemberCard({ member, onRemove }: { member: any; onRemove: (id: string) => void }) {
+function TransferDialog({ member, teams, open, onOpenChange }: { member: any; teams: any[]; open: boolean; onOpenChange: (o: boolean) => void }) {
+  const { toast } = useToast();
+  const [targetTeamId, setTargetTeamId] = useState("");
+  const [newBudgetCents, setNewBudgetCents] = useState(String(member.monthlyBudgetCents));
+  const [transferKeyValue, setTransferKeyValue] = useState<string | null>(null);
+
+  const transferMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/members/${member.id}/transfer`, {
+        targetTeamId,
+        newBudgetCents: parseInt(newBudgetCents),
+      });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/members"] });
+      if (data.apiKey) {
+        setTransferKeyValue(data.apiKey);
+      }
+      toast({ title: "Member transferred", description: data.message });
+    },
+    onError: (err: any) => {
+      toast({ title: "Transfer failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const availableTeams = teams.filter(t => t.id !== member.teamId);
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) { setTransferKeyValue(null); setTargetTeamId(""); } }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{transferKeyValue ? "Transfer Complete — New API Key" : "Transfer Member"}</DialogTitle>
+          <DialogDescription>
+            {transferKeyValue
+              ? "The member's new API key is shown below. Their old key has been revoked."
+              : `Move ${member.user?.name || member.user?.email} to a different team.`}
+          </DialogDescription>
+        </DialogHeader>
+        {transferKeyValue ? (
+          <div className="space-y-4 pt-2">
+            <KeyRevealCard keyValue={transferKeyValue} masked={false} />
+            <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+              Copy this key and share it securely. It will NOT be shown again.
+            </p>
+            <Button className="w-full" onClick={() => { onOpenChange(false); setTransferKeyValue(null); }} data-testid="button-done-transfer">
+              Done
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label>Target Team</Label>
+              {availableTeams.length > 0 ? (
+                <Select value={targetTeamId} onValueChange={setTargetTeamId}>
+                  <SelectTrigger data-testid="select-transfer-team">
+                    <SelectValue placeholder="Select a team" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableTeams.map(t => (
+                      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <p className="text-sm text-muted-foreground">No other teams available.</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>New Monthly Budget (cents)</Label>
+              <Input type="number" value={newBudgetCents} onChange={e => setNewBudgetCents(e.target.value)} data-testid="input-transfer-budget" />
+              <p className="text-xs text-muted-foreground">${(parseInt(newBudgetCents || "0") / 100).toFixed(2)} per month</p>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+              <Button
+                onClick={() => transferMutation.mutate()}
+                disabled={!targetTeamId || transferMutation.isPending}
+                data-testid="button-confirm-transfer"
+              >
+                {transferMutation.isPending ? "Transferring..." : "Transfer Member"}
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ChangeRoleDialog({ member, open, onOpenChange }: { member: any; open: boolean; onOpenChange: (o: boolean) => void }) {
+  const { toast } = useToast();
+  const currentRole = member.user?.orgRole || "MEMBER";
+  const [newRole, setNewRole] = useState(currentRole === "MEMBER" ? "TEAM_ADMIN" : "MEMBER");
+
+  const changeRoleMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", `/api/members/${member.id}/change-role`, { newRole });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/members"] });
+      onOpenChange(false);
+      toast({ title: "Role updated", description: `Changed to ${newRole}` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Role change failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Change Role</DialogTitle>
+          <DialogDescription>
+            Change the role of {member.user?.name || member.user?.email}. This only affects permissions — their API key and budget are unchanged.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 pt-2">
+          <div className="space-y-2">
+            <Label>Current Role</Label>
+            <Badge variant="secondary" className="no-default-hover-elevate no-default-active-elevate">{currentRole}</Badge>
+          </div>
+          <div className="space-y-2">
+            <Label>New Role</Label>
+            <Select value={newRole} onValueChange={setNewRole}>
+              <SelectTrigger data-testid="select-new-role">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="TEAM_ADMIN">Team Admin</SelectItem>
+                <SelectItem value="MEMBER">Member</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button
+              onClick={() => changeRoleMutation.mutate()}
+              disabled={newRole === currentRole || changeRoleMutation.isPending}
+              data-testid="button-confirm-change-role"
+            >
+              {changeRoleMutation.isPending ? "Changing..." : "Change Role"}
+            </Button>
+          </DialogFooter>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function MemberCard({
+  member,
+  onRemove,
+  isSelected,
+  onSelectToggle,
+  teams,
+  isRootAdmin,
+}: {
+  member: any;
+  onRemove: (id: string) => void;
+  isSelected: boolean;
+  onSelectToggle: (id: string) => void;
+  teams: any[];
+  isRootAdmin: boolean;
+}) {
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
   const [budgetOpen, setBudgetOpen] = useState(false);
@@ -45,6 +210,8 @@ function MemberCard({ member, onRemove }: { member: any; onRemove: (id: string) 
   const [editEmail, setEditEmail] = useState(member.user?.email || "");
   const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
   const [regenKeyValue, setRegenKeyValue] = useState<string | null>(null);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [changeRoleOpen, setChangeRoleOpen] = useState(false);
 
   const suspendMutation = useMutation({
     mutationFn: async () => {
@@ -113,236 +280,498 @@ function MemberCard({ member, onRemove }: { member: any; onRemove: (id: string) 
     },
   });
 
+  const resendInviteMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", `/api/members/${member.id}/resend-invite`);
+    },
+    onSuccess: () => {
+      toast({ title: "Invite re-sent", description: `A new invite email has been sent to ${member.user?.email}` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to resend invite", description: err.message, variant: "destructive" });
+    },
+  });
+
   const budgetDisplay = member.accessType === "TEAM"
     ? `$${(member.monthlyBudgetCents / 100).toFixed(2)}/mo`
     : `$${(member.monthlyBudgetCents / 100).toFixed(2)} (fixed)`;
 
+  const isInvited = member.user?.status === "INVITED";
+
   return (
-    <Card className="overflow-hidden" data-testid={`member-card-${member.id}`}>
-      <div
-        className="p-4 cursor-pointer hover:bg-muted/30 transition-colors"
-        onClick={() => setExpanded(!expanded)}
-        data-testid={`button-expand-${member.id}`}
-      >
-        <div className="flex items-center justify-between gap-4 mb-3">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary shrink-0">
-              {member.user?.name?.[0] || member.user?.email?.[0] || "?"}
+    <>
+      <Card className="overflow-hidden" data-testid={`member-card-${member.id}`}>
+        <div
+          className="p-4 cursor-pointer hover:bg-muted/30 transition-colors"
+          onClick={() => setExpanded(!expanded)}
+          data-testid={`button-expand-${member.id}`}
+        >
+          <div className="flex items-center justify-between gap-4 mb-3">
+            <div className="flex items-center gap-3">
+              <div
+                className="flex items-center justify-center shrink-0"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Checkbox
+                  checked={isSelected}
+                  onCheckedChange={() => onSelectToggle(member.id)}
+                  data-testid={`checkbox-select-${member.id}`}
+                />
+              </div>
+              <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary shrink-0">
+                {member.user?.name?.[0] || member.user?.email?.[0] || "?"}
+              </div>
+              <div>
+                <p className="font-medium text-sm" data-testid={`text-member-name-${member.id}`}>{member.user?.name || "Unknown"}</p>
+                <p className="text-xs text-muted-foreground" data-testid={`text-member-email-${member.id}`}>{member.user?.email}</p>
+              </div>
             </div>
-            <div>
-              <p className="font-medium text-sm" data-testid={`text-member-name-${member.id}`}>{member.user?.name || "Unknown"}</p>
-              <p className="text-xs text-muted-foreground" data-testid={`text-member-email-${member.id}`}>{member.user?.email}</p>
+            <div className="flex items-center gap-2">
+              <FeatureBadge type={member.accessType === "TEAM" ? "TEAMS" : "VOUCHERS"} />
+              <Badge variant="secondary" className={`${STATUS_STYLES[member.status] || ""} no-default-hover-elevate no-default-active-elevate`} data-testid={`badge-status-${member.id}`}>
+                {member.status}
+              </Badge>
+              {isInvited && (
+                <Badge variant="outline" className="text-xs no-default-hover-elevate no-default-active-elevate">INVITED</Badge>
+              )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <FeatureBadge type={member.accessType === "TEAM" ? "TEAMS" : "VOUCHERS"} />
-            <Badge variant="secondary" className={`${STATUS_STYLES[member.status] || ""} no-default-hover-elevate no-default-active-elevate`} data-testid={`badge-status-${member.id}`}>
-              {member.status}
-            </Badge>
+          <div className="flex items-center gap-3 mb-1">
+            <span className="text-xs font-medium text-muted-foreground" data-testid={`text-budget-display-${member.id}`}>
+              {budgetDisplay}
+              {member.accessType === "TEAM" && member.periodEnd && (
+                <span className="ml-1">· resets {new Date(member.periodEnd).toLocaleDateString()}</span>
+              )}
+              {member.accessType === "VOUCHER" && member.voucherExpiresAt && (
+                <span className="ml-1">· expires {new Date(member.voucherExpiresAt).toLocaleDateString()}</span>
+              )}
+            </span>
           </div>
+          <BudgetBar spent={member.currentPeriodSpendCents} budget={member.monthlyBudgetCents} />
         </div>
-        <div className="flex items-center gap-3 mb-1">
-          <span className="text-xs font-medium text-muted-foreground" data-testid={`text-budget-display-${member.id}`}>
-            {budgetDisplay}
-            {member.accessType === "TEAM" && member.periodEnd && (
-              <span className="ml-1">· resets {new Date(member.periodEnd).toLocaleDateString()}</span>
-            )}
-            {member.accessType === "VOUCHER" && member.voucherExpiresAt && (
-              <span className="ml-1">· expires {new Date(member.voucherExpiresAt).toLocaleDateString()}</span>
-            )}
-          </span>
-        </div>
-        <BudgetBar spent={member.currentPeriodSpendCents} budget={member.monthlyBudgetCents} />
-      </div>
 
-      {expanded && (
-        <div className="border-t px-4 py-3 space-y-3 bg-muted/20">
-          {regenKeyValue && (
-            <div className="space-y-2">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">New API Key</h4>
-              <KeyRevealCard keyValue={regenKeyValue} masked={false} />
-              <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
-                Copy this key now. It will not be shown again.
-              </p>
-            </div>
-          )}
+        {expanded && (
+          <div className="border-t px-4 py-3 space-y-3 bg-muted/20">
+            {regenKeyValue && (
+              <div className="space-y-2">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">New API Key</h4>
+                <KeyRevealCard keyValue={regenKeyValue} masked={false} />
+                <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                  Copy this key now. It will not be shown again.
+                </p>
+              </div>
+            )}
 
-          <div className="flex items-center justify-between gap-2 pt-1 border-t">
-            <div className="flex items-center gap-2 flex-wrap">
-              {member.accessType === "TEAM" && (
-                <>
-                  <Dialog open={budgetOpen} onOpenChange={(o) => { setBudgetOpen(o); if (o) { setNewBudget(String(member.monthlyBudgetCents)); setEditName(member.user?.name || ""); setEditEmail(member.user?.email || ""); } }}>
-                    <DialogTrigger asChild>
-                      <Button size="sm" variant="outline" className="h-7 text-xs" data-testid={`button-edit-budget-${member.id}`}>
-                        <Pencil className="w-3 h-3 mr-1" />
-                        Edit Member
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Edit Member</DialogTitle>
-                        <DialogDescription>Update details for {member.user?.name || member.user?.email}.</DialogDescription>
-                      </DialogHeader>
-                      <div className="space-y-4 pt-2">
-                        <div className="space-y-2">
-                          <Label>Name</Label>
-                          <Input value={editName} onChange={e => setEditName(e.target.value)} data-testid="input-edit-member-name" />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Email</Label>
-                          <Input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} data-testid="input-edit-member-email" />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Monthly Budget (cents)</Label>
-                          <Input type="number" value={newBudget} onChange={e => setNewBudget(e.target.value)} data-testid="input-edit-budget" />
-                          <p className="text-xs text-muted-foreground">${(parseInt(newBudget || "0") / 100).toFixed(2)} per month</p>
-                        </div>
-                        <Button className="w-full" onClick={() => budgetMutation.mutate()} disabled={budgetMutation.isPending} data-testid="button-save-budget">
-                          {budgetMutation.isPending ? "Saving..." : "Save Changes"}
+            <div className="flex items-center justify-between gap-2 pt-1 border-t">
+              <div className="flex items-center gap-2 flex-wrap">
+                {member.accessType === "TEAM" && (
+                  <>
+                    <Dialog open={budgetOpen} onOpenChange={(o) => { setBudgetOpen(o); if (o) { setNewBudget(String(member.monthlyBudgetCents)); setEditName(member.user?.name || ""); setEditEmail(member.user?.email || ""); } }}>
+                      <DialogTrigger asChild>
+                        <Button size="sm" variant="outline" className="h-7 text-xs" data-testid={`button-edit-budget-${member.id}`}>
+                          <Pencil className="w-3 h-3 mr-1" />
+                          Edit Member
                         </Button>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Edit Member</DialogTitle>
+                          <DialogDescription>Update details for {member.user?.name || member.user?.email}.</DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4 pt-2">
+                          <div className="space-y-2">
+                            <Label>Name</Label>
+                            <Input value={editName} onChange={e => setEditName(e.target.value)} data-testid="input-edit-member-name" />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Email</Label>
+                            <Input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} data-testid="input-edit-member-email" />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Monthly Budget (cents)</Label>
+                            <Input type="number" value={newBudget} onChange={e => setNewBudget(e.target.value)} data-testid="input-edit-budget" />
+                            <p className="text-xs text-muted-foreground">${(parseInt(newBudget || "0") / 100).toFixed(2)} per month</p>
+                          </div>
+                          <Button className="w-full" onClick={() => budgetMutation.mutate()} disabled={budgetMutation.isPending} data-testid="button-save-budget">
+                            {budgetMutation.isPending ? "Saving..." : "Save Changes"}
+                          </Button>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
 
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          disabled={regenerateKeyMutation.isPending}
+                          data-testid={`button-regenerate-key-${member.id}`}
+                        >
+                          <RefreshCw className="w-3 h-3 mr-1" />
+                          Regenerate Key
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Regenerate API Key?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will revoke the current key and generate a new one for <strong>{member.user?.name || member.user?.email}</strong>.
+                            The old key will immediately stop working.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => regenerateKeyMutation.mutate()} className="bg-destructive text-destructive-foreground hover:bg-destructive/90" data-testid="button-confirm-regenerate">
+                            Regenerate Key
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </>
+                )}
+
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs text-amber-600 hover:text-amber-700"
+                      disabled={revokeKeyMutation.isPending}
+                      data-testid={`button-revoke-key-${member.id}`}
+                    >
+                      <ShieldOff className="w-3 h-3 mr-1" />
+                      Revoke Key
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Revoke API Key?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will revoke all active API keys for <strong>{member.user?.name || member.user?.email}</strong>.
+                        They will not be able to make any API requests until a new key is generated.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => revokeKeyMutation.mutate()} className="bg-destructive text-destructive-foreground hover:bg-destructive/90" data-testid="button-confirm-revoke">
+                        Revoke Key
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+
+                {member.status === "ACTIVE" ? (
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button
                         size="sm"
                         variant="outline"
                         className="h-7 text-xs"
-                        disabled={regenerateKeyMutation.isPending}
-                        data-testid={`button-regenerate-key-${member.id}`}
+                        disabled={suspendMutation.isPending}
+                        data-testid={`button-suspend-${member.id}`}
                       >
-                        <RefreshCw className="w-3 h-3 mr-1" />
-                        Regenerate Key
+                        <UserMinus className="w-3 h-3 mr-1" />
+                        Suspend
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
-                        <AlertDialogTitle>Regenerate API Key?</AlertDialogTitle>
+                        <AlertDialogTitle>Suspend Member?</AlertDialogTitle>
                         <AlertDialogDescription>
-                          This will revoke the current key and generate a new one for <strong>{member.user?.name || member.user?.email}</strong>.
-                          The old key will immediately stop working.
+                          Are you sure you want to suspend <strong>{member.user?.name || member.user?.email}</strong>? They will lose access to all AI providers until reactivated.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => regenerateKeyMutation.mutate()} className="bg-destructive text-destructive-foreground hover:bg-destructive/90" data-testid="button-confirm-regenerate">
-                          Regenerate Key
+                        <AlertDialogCancel data-testid="button-cancel-suspend">Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => suspendMutation.mutate()}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          data-testid="button-confirm-suspend"
+                        >
+                          Suspend Member
                         </AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
                   </AlertDialog>
-                </>
-              )}
-
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
+                ) : member.status === "SUSPENDED" ? (
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-7 text-xs text-amber-600 hover:text-amber-700"
-                    disabled={revokeKeyMutation.isPending}
-                    data-testid={`button-revoke-key-${member.id}`}
+                    className="h-7 text-xs"
+                    onClick={() => reactivateMutation.mutate()}
+                    disabled={reactivateMutation.isPending}
+                    data-testid={`button-reactivate-${member.id}`}
                   >
-                    <ShieldOff className="w-3 h-3 mr-1" />
-                    Revoke Key
+                    <UserCheck className="w-3 h-3 mr-1" />
+                    Reactivate
+                  </Button>
+                ) : null}
+
+                {teams.length > 1 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    onClick={() => setTransferOpen(true)}
+                    data-testid={`button-transfer-${member.id}`}
+                  >
+                    <ArrowRightLeft className="w-3 h-3 mr-1" />
+                    Transfer
+                  </Button>
+                )}
+
+                {isRootAdmin && member.user?.orgRole !== "ROOT_ADMIN" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    onClick={() => setChangeRoleOpen(true)}
+                    data-testid={`button-change-role-${member.id}`}
+                  >
+                    <Shield className="w-3 h-3 mr-1" />
+                    Change Role
+                  </Button>
+                )}
+
+                {isInvited && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    onClick={() => resendInviteMutation.mutate()}
+                    disabled={resendInviteMutation.isPending}
+                    data-testid={`button-resend-invite-${member.id}`}
+                  >
+                    <Send className="w-3 h-3 mr-1" />
+                    {resendInviteMutation.isPending ? "Sending..." : "Resend Invite"}
+                  </Button>
+                )}
+              </div>
+
+              <AlertDialog open={confirmRemoveOpen} onOpenChange={setConfirmRemoveOpen}>
+                <AlertDialogTrigger asChild>
+                  <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:text-destructive" data-testid={`button-remove-${member.id}`}>
+                    <Trash2 className="w-3 h-3 mr-1" />
+                    Remove
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Revoke API Key?</AlertDialogTitle>
+                    <AlertDialogTitle>Delete Member</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This will revoke all active API keys for <strong>{member.user?.name || member.user?.email}</strong>.
-                      They will not be able to make any API requests until a new key is generated.
+                      This will permanently remove <strong>{member.user?.name || member.user?.email}</strong> and free their email address for reuse. All API keys, usage data, and budget history will be deleted. This cannot be undone.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => revokeKeyMutation.mutate()} className="bg-destructive text-destructive-foreground hover:bg-destructive/90" data-testid="button-confirm-revoke">
-                      Revoke Key
+                    <AlertDialogCancel data-testid="button-cancel-remove">Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => { onRemove(member.id); setConfirmRemoveOpen(false); }}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      data-testid="button-confirm-remove"
+                    >
+                      Delete Member
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
-
-              {member.status === "ACTIVE" ? (
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 text-xs"
-                      disabled={suspendMutation.isPending}
-                      data-testid={`button-suspend-${member.id}`}
-                    >
-                      <UserMinus className="w-3 h-3 mr-1" />
-                      Suspend
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Suspend Member?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        Are you sure you want to suspend <strong>{member.user?.name || member.user?.email}</strong>? They will lose access to all AI providers until reactivated.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel data-testid="button-cancel-suspend">Cancel</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={() => suspendMutation.mutate()}
-                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                        data-testid="button-confirm-suspend"
-                      >
-                        Suspend Member
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              ) : member.status === "SUSPENDED" ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs"
-                  onClick={() => reactivateMutation.mutate()}
-                  disabled={reactivateMutation.isPending}
-                  data-testid={`button-reactivate-${member.id}`}
-                >
-                  <UserCheck className="w-3 h-3 mr-1" />
-                  Reactivate
-                </Button>
-              ) : null}
             </div>
-
-            <AlertDialog open={confirmRemoveOpen} onOpenChange={setConfirmRemoveOpen}>
-              <AlertDialogTrigger asChild>
-                <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:text-destructive" data-testid={`button-remove-${member.id}`}>
-                  <Trash2 className="w-3 h-3 mr-1" />
-                  Remove
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Delete Member</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will permanently remove <strong>{member.user?.name || member.user?.email}</strong> and free their email address for reuse. All API keys, usage data, and budget history will be deleted. This cannot be undone.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel data-testid="button-cancel-remove">Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={() => { onRemove(member.id); setConfirmRemoveOpen(false); }}
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                    data-testid="button-confirm-remove"
-                  >
-                    Delete Member
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
           </div>
+        )}
+      </Card>
+
+      <TransferDialog member={member} teams={teams} open={transferOpen} onOpenChange={setTransferOpen} />
+      <ChangeRoleDialog member={member} open={changeRoleOpen} onOpenChange={setChangeRoleOpen} />
+    </>
+  );
+}
+
+function BulkActionBar({
+  selectedIds,
+  members,
+  onClearSelection,
+}: {
+  selectedIds: Set<string>;
+  members: any[];
+  onClearSelection: () => void;
+}) {
+  const { toast } = useToast();
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkSuspendOpen, setBulkSuspendOpen] = useState(false);
+  const [bulkReactivateOpen, setBulkReactivateOpen] = useState(false);
+
+  const selectedMembers = members.filter(m => selectedIds.has(m.id));
+  const selectedNames = selectedMembers.map(m => m.user?.name || m.user?.email || "Unknown");
+
+  const bulkSuspendMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/members/bulk/suspend", {
+        membershipIds: Array.from(selectedIds),
+      });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/members"] });
+      const suspended = data.results.filter((r: any) => r.status === "suspended").length;
+      const errors = data.results.filter((r: any) => r.status === "error").length;
+      toast({
+        title: `${suspended} member${suspended !== 1 ? "s" : ""} suspended`,
+        description: errors > 0 ? `${errors} failed` : undefined,
+      });
+      onClearSelection();
+      setBulkSuspendOpen(false);
+    },
+    onError: (err: any) => {
+      toast({ title: "Bulk suspend failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const bulkReactivateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/members/bulk/reactivate", {
+        membershipIds: Array.from(selectedIds),
+      });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/members"] });
+      const reactivated = data.results.filter((r: any) => r.status === "reactivated").length;
+      const errors = data.results.filter((r: any) => r.status === "error").length;
+      toast({
+        title: `${reactivated} member${reactivated !== 1 ? "s" : ""} reactivated`,
+        description: errors > 0 ? `${errors} failed` : undefined,
+      });
+      onClearSelection();
+      setBulkReactivateOpen(false);
+    },
+    onError: (err: any) => {
+      toast({ title: "Bulk reactivate failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/members/bulk/delete", {
+        membershipIds: Array.from(selectedIds),
+        confirm: true,
+      });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/members"] });
+      const deleted = data.results.filter((r: any) => r.status === "deleted").length;
+      const errors = data.results.filter((r: any) => r.status === "error").length;
+      toast({
+        title: `${deleted} member${deleted !== 1 ? "s" : ""} deleted`,
+        description: errors > 0 ? `${errors} failed` : undefined,
+      });
+      onClearSelection();
+      setBulkDeleteOpen(false);
+    },
+    onError: (err: any) => {
+      toast({ title: "Bulk delete failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <Card className="p-3 border-primary/30 bg-primary/5" data-testid="bulk-action-bar">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <Badge variant="secondary" className="no-default-hover-elevate no-default-active-elevate">
+            {selectedIds.size} selected
+          </Badge>
+          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={onClearSelection} data-testid="button-clear-selection">
+            Clear
+          </Button>
         </div>
-      )}
+        <div className="flex items-center gap-2">
+          <AlertDialog open={bulkSuspendOpen} onOpenChange={setBulkSuspendOpen}>
+            <AlertDialogTrigger asChild>
+              <Button size="sm" variant="outline" className="h-7 text-xs" data-testid="button-bulk-suspend">
+                <UserMinus className="w-3 h-3 mr-1" />
+                Suspend Selected
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Suspend {selectedIds.size} member{selectedIds.size !== 1 ? "s" : ""}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  The following members will be suspended and lose API access:
+                  <span className="block mt-2 text-sm font-medium">{selectedNames.join(", ")}</span>
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => bulkSuspendMutation.mutate()}
+                  disabled={bulkSuspendMutation.isPending}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  data-testid="button-confirm-bulk-suspend"
+                >
+                  {bulkSuspendMutation.isPending ? "Suspending..." : "Suspend All"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          <AlertDialog open={bulkReactivateOpen} onOpenChange={setBulkReactivateOpen}>
+            <AlertDialogTrigger asChild>
+              <Button size="sm" variant="outline" className="h-7 text-xs" data-testid="button-bulk-reactivate">
+                <UserCheck className="w-3 h-3 mr-1" />
+                Reactivate Selected
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Reactivate {selectedIds.size} member{selectedIds.size !== 1 ? "s" : ""}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  The following members will be reactivated with new API keys:
+                  <span className="block mt-2 text-sm font-medium">{selectedNames.join(", ")}</span>
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => bulkReactivateMutation.mutate()}
+                  disabled={bulkReactivateMutation.isPending}
+                  data-testid="button-confirm-bulk-reactivate"
+                >
+                  {bulkReactivateMutation.isPending ? "Reactivating..." : "Reactivate All"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          <AlertDialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+            <AlertDialogTrigger asChild>
+              <Button size="sm" variant="destructive" className="h-7 text-xs" data-testid="button-bulk-delete">
+                <Trash2 className="w-3 h-3 mr-1" />
+                Delete Selected
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete {selectedIds.size} member{selectedIds.size !== 1 ? "s" : ""}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will permanently delete the following members and free their email addresses. This cannot be undone.
+                  <span className="block mt-2 text-sm font-medium">{selectedNames.join(", ")}</span>
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => bulkDeleteMutation.mutate()}
+                  disabled={bulkDeleteMutation.isPending}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  data-testid="button-confirm-bulk-delete"
+                >
+                  {bulkDeleteMutation.isPending ? "Deleting..." : "Delete All"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      </div>
     </Card>
   );
 }
@@ -362,6 +791,7 @@ export default function MembersPage() {
   const [selectedProviders, setSelectedProviders] = useState<string[]>([]);
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [newMemberKey, setNewMemberKey] = useState<string | null>(null);
+  const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set());
 
   const { data: teams } = useQuery<any[]>({ queryKey: ["/api/teams"] });
   const { data: members, isLoading } = useQuery<any[]>({ queryKey: ["/api/members"] });
@@ -376,6 +806,7 @@ export default function MembersPage() {
 
   const connectedProviders = providers || [];
   const hasProviders = connectedProviders.length > 0;
+  const isRootAdmin = user?.orgRole === "ROOT_ADMIN";
 
   const orgAllowedModels: { modelId: string; provider: string }[] = [];
   if (providerConnections) {
@@ -450,6 +881,21 @@ export default function MembersPage() {
     setSelectedModels(prev =>
       prev.includes(modelId) ? prev.filter(m => m !== modelId) : [...prev, modelId]
     );
+  };
+
+  const toggleMemberSelection = (id: string) => {
+    setSelectedMemberIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    if (members) {
+      setSelectedMemberIds(new Set(members.map(m => m.id)));
+    }
   };
 
   return (
@@ -599,11 +1045,42 @@ export default function MembersPage() {
         </Card>
       )}
 
+      {selectedMemberIds.size > 0 && members && user?.orgRole !== "MEMBER" && (
+        <BulkActionBar
+          selectedIds={selectedMemberIds}
+          members={members}
+          onClearSelection={() => setSelectedMemberIds(new Set())}
+        />
+      )}
+
       {isLoading ? (
         <div className="space-y-4">{[1, 2, 3].map(i => <Skeleton key={i} className="h-32" />)}</div>
       ) : members && members.length > 0 ? (
         <div className="space-y-3" data-testid="members-list">
-          {members.map(m => <MemberCard key={m.id} member={m} onRemove={(id) => removeMutation.mutate(id)} />)}
+          {members.length > 1 && user?.orgRole !== "MEMBER" && (
+            <div className="flex items-center gap-2 px-1">
+              <Checkbox
+                checked={selectedMemberIds.size === members.length}
+                onCheckedChange={(checked) => {
+                  if (checked) selectAll();
+                  else setSelectedMemberIds(new Set());
+                }}
+                data-testid="checkbox-select-all"
+              />
+              <span className="text-xs text-muted-foreground">Select all</span>
+            </div>
+          )}
+          {members.map(m => (
+            <MemberCard
+              key={m.id}
+              member={m}
+              onRemove={(id) => removeMutation.mutate(id)}
+              isSelected={selectedMemberIds.has(m.id)}
+              onSelectToggle={toggleMemberSelection}
+              teams={teams || []}
+              isRootAdmin={isRootAdmin}
+            />
+          ))}
         </div>
       ) : (
         <EmptyState
