@@ -1,0 +1,88 @@
+MILESTONE CC-7: SETTINGS, DATA EXPORTS, AND CLEANUP TOOLS
+Goal: Add organization settings page, data export capabilities, and database cleanup tools. This is the final "operational hygiene" milestone.
+Requirements
+
+MUST create an Organization Settings page (/dashboard/settings).
+
+Sections:
+a. General: Org name (editable, using CC-1 edit endpoint), billing email, description.
+b. Notifications: Toggle email notifications per type (budget alerts, voucher redemptions, member invites accepted, spend anomalies, provider key issues). Stored as JSON on Organization model.
+c. Defaults: Default monthly budget for new team members, default allowed models for new members, default voucher expiry duration. Stored as JSON on Organization model.
+MUST add settings Json? @map("settings") field to Organization model if not already present.
+MUST require Root Admin.
+VERIFY: Change notification settings → only toggled-on notifications are sent.
+VERIFY: Set default budget → new member creation form pre-fills with this value.
+
+
+MUST create a "Danger Zone" section at the bottom of the Settings page.
+
+Red-bordered section with:
+a. "Revoke All API Keys" button → revokes every active allotly_sk_ key in the org. Confirmation: "This will immediately revoke all N active API keys. All team members and voucher recipients will lose access. Type REVOKE ALL to confirm."
+b. "Disconnect All Providers" button → disconnects all providers, revokes all keys (provider disconnection cascade from the spec). Confirmation: type org name.
+c. "Delete Organization" button → uses CC-2 org delete endpoint. Confirmation: type org name.
+Each action MUST create AuditLog and PlatformAuditLog entries.
+VERIFY: "Revoke All Keys" → every active key in org returns 401. Verify count matches.
+
+
+MUST implement GET /api/export/usage endpoint.
+
+Query params: startDate, endDate, teamId, memberId, provider, model.
+Returns CSV: timestamp, memberName, memberEmail, teamName, accessType, model, provider, inputTokens, outputTokens, totalTokens, costCents, responseStatus.
+MUST set proper CSV headers for download.
+MUST require Root Admin or Team Admin (filtered to own team).
+VERIFY: Export usage for last 30 days → CSV contains all matching requests.
+
+
+MUST implement GET /api/export/members endpoint.
+
+Returns CSV: name, email, team, role, accessType, budgetCents, spentCents, remainingCents, status, keyStatus, createdAt, lastActive.
+Filterable by team, status, accessType.
+MUST require Root Admin or Team Admin (filtered to own team).
+VERIFY: Export member list → CSV matches current member table.
+
+
+MUST implement team-level bulk add: POST /api/teams/[teamId]/bulk-add-members.
+
+Request body: { members: [{ email, name?, budgetCents? }] } — up to 200 members.
+Uses org defaults for budget/models if not specified per member.
+For each member: create user (if email not already in org) → create membership → generate key → initialize Redis → send invite email.
+If email already exists in this org: skip and report in results.
+Returns: { created: [{ email, keyPrefix }], skipped: [{ email, reason }], errors: [{ email, error }] }.
+MUST require Root Admin or Team Admin (own team).
+MUST create AuditLog entries.
+VERIFY: Bulk add 20 members → 20 created → 20 invite emails sent → 20 Redis budgets initialized.
+VERIFY: Bulk add with duplicate email → duplicate reported in skipped, others created.
+
+
+MUST implement cleanup utilities at POST /api/admin/cleanup/[type] (Root Admin only).
+
+type=expired-vouchers: Delete all vouchers expired more than 90 days ago (configurable via query param olderThanDays). Returns count deleted.
+type=revoked-keys: Delete all revoked API key records older than 90 days. Returns count deleted.
+type=orphans: Find and report orphaned records (users with no memberships, memberships with no users, keys with no memberships, Redis keys with no DB counterpart). Returns report. If query param fix=true, auto-delete orphans.
+type=redis-reconcile: Trigger immediate Redis↔Postgres reconciliation (same logic as the 60s job). Returns: { checked: number, corrected: number, corrections: [{membershipId, redisBefore, postgresValue}] }.
+Each cleanup MUST create AuditLog entry with counts.
+VERIFY: Create expired vouchers → run cleanup → verify deleted.
+VERIFY: Introduce orphan Redis key → run orphan cleanup → verify reported/fixed.
+
+
+MUST add nav menu updates for new pages.
+
+Root Admin nav: Dashboard, Teams, Members, Vouchers, Providers, API Keys (new), Audit Log (new), Settings (new).
+Team Admin nav: Dashboard, My Team, Members, Vouchers, Providers (read-only).
+Export buttons: Add "Export CSV" buttons on Members page, Vouchers page, and Usage/Analytics views.
+Cleanup tools: Add in Settings page under an "Admin Tools" section (below Danger Zone).
+
+
+
+Tests
+
+Settings page → edit defaults → verify new member creation uses defaults.
+Danger Zone → Revoke All Keys → verify all keys dead.
+Export usage CSV → verify data matches.
+Export members CSV → verify data matches.
+Bulk add 20 members → verify all created correctly.
+Bulk add with duplicates → verify proper skip/create behavior.
+Cleanup expired vouchers → verify correct records deleted.
+Cleanup orphans → verify detection and cleanup.
+Redis reconciliation → verify corrections applied.
+Navigation → verify all new pages accessible to correct roles.

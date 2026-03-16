@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, requireAuth, requireRole, requireAdmin } from "./auth";
 import { hashPassword, comparePasswords } from "./lib/password";
-import { signupSchema, loginSchema, voucherBundles, users as usersTable } from "@shared/schema";
+import { signupSchema, loginSchema, voucherBundles, users as usersTable, allotlyApiKeys as allotlyApiKeysTable } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { db } from "./db";
 import { encryptProviderKey, decryptProviderKey } from "./lib/encryption";
@@ -3897,6 +3897,12 @@ export async function registerRoutes(
     }
   });
 
+  const csvSafe = (val: string): string => {
+    let s = String(val).replace(/"/g, '""');
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+    return `"${s}"`;
+  };
+
   app.get("/api/audit-log/export", requireAuth, async (req, res) => {
     const user = await storage.getUser(req.session.userId!);
     if (!user || user.orgRole !== "ROOT_ADMIN") return res.status(403).json({ message: "Forbidden" });
@@ -3916,7 +3922,7 @@ export async function registerRoutes(
       const actorName = log.actorId === "system" ? "System" : (actor?.name || actor?.email || log.actorId);
       const actorRole = log.actorId === "system" ? "SYSTEM" : (actor?.orgRole || "");
       const metadata = log.metadata ? JSON.stringify(log.metadata).replace(/"/g, '""') : "";
-      csvLines.push(`"${new Date(log.createdAt).toISOString()}","${actorName}","${actorRole}","${log.action}","${log.targetType || ""}","${log.targetId || ""}","${metadata}"`);
+      csvLines.push(`${csvSafe(new Date(log.createdAt).toISOString())},${csvSafe(actorName)},${csvSafe(actorRole)},${csvSafe(log.action)},${csvSafe(log.targetType || "")},${csvSafe(log.targetId || "")},${csvSafe(metadata)}`);
     }
 
     res.setHeader("Content-Type", "text/csv");
@@ -3942,24 +3948,52 @@ export async function registerRoutes(
 
   app.patch("/api/org/settings", requireRole("ROOT_ADMIN"), async (req, res) => {
     const user = (req as any).user;
+    const notificationsSchema = z.object({
+      budgetAlerts: z.boolean().optional(),
+      voucherRedemptions: z.boolean().optional(),
+      memberInvitesAccepted: z.boolean().optional(),
+      spendAnomalies: z.boolean().optional(),
+      providerKeyIssues: z.boolean().optional(),
+    }).optional();
+    const defaultsSchema = z.object({
+      defaultBudgetCents: z.number().int().min(0).nullable().optional(),
+      defaultAllowedModels: z.array(z.string()).nullable().optional(),
+      defaultVoucherExpiryDays: z.number().int().min(1).nullable().optional(),
+    }).optional();
     const settingsSchema = z.object({
       name: z.string().min(1).optional(),
       billingEmail: z.string().email().nullable().optional(),
       description: z.string().max(500).nullable().optional(),
       orgBudgetCeilingCents: z.number().int().min(0).nullable().optional(),
       defaultMemberBudgetCents: z.number().int().min(0).nullable().optional(),
+      settings: z.object({
+        notifications: notificationsSchema,
+        defaults: defaultsSchema,
+      }).optional(),
     });
     const parsed = settingsSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
 
     const before = await storage.getOrganization(user.orgId);
-    const { name, billingEmail, description, orgBudgetCeilingCents, defaultMemberBudgetCents } = parsed.data;
+    const { name, billingEmail, description, orgBudgetCeilingCents, defaultMemberBudgetCents, settings } = parsed.data;
     const updateData: Record<string, any> = {};
     if (name !== undefined) updateData.name = name;
     if (billingEmail !== undefined) updateData.billingEmail = billingEmail;
     if (description !== undefined) updateData.description = description;
     if (orgBudgetCeilingCents !== undefined) updateData.orgBudgetCeilingCents = orgBudgetCeilingCents;
     if (defaultMemberBudgetCents !== undefined) updateData.defaultMemberBudgetCents = defaultMemberBudgetCents;
+    if (settings !== undefined) {
+      const existingSettings = (before?.settings as Record<string, any>) || {};
+      const merged: Record<string, any> = { ...existingSettings };
+      for (const [key, value] of Object.entries(settings)) {
+        if (value && typeof value === "object" && !Array.isArray(value) && merged[key] && typeof merged[key] === "object") {
+          merged[key] = { ...merged[key], ...value };
+        } else {
+          merged[key] = value;
+        }
+      }
+      updateData.settings = merged;
+    }
 
     const updated = await storage.updateOrganization(user.orgId, updateData);
 
@@ -3982,6 +4016,415 @@ export async function registerRoutes(
     });
 
     res.json(updated);
+  });
+
+  app.post("/api/org/revoke-all-keys", requireRole("ROOT_ADMIN"), async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const { confirmText } = req.body || {};
+      if (confirmText !== "REVOKE ALL") return res.status(400).json({ message: "Type REVOKE ALL to confirm" });
+
+      const allKeys = await storage.getAllApiKeysWithOwnerInfo(user.orgId, { status: "ACTIVE" });
+      let revokedCount = 0;
+
+      for (const key of allKeys) {
+        if (key.status === "ACTIVE") {
+          await storage.updateAllotlyApiKey(key.id, { status: "REVOKED", updatedAt: new Date() });
+          await redisDel(REDIS_KEYS.apiKeyCache(key.keyHash));
+          revokedCount++;
+        }
+      }
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "org.revoke_all_keys",
+        targetType: "organization",
+        targetId: user.orgId,
+        metadata: { revokedCount, totalKeys: allKeys.length },
+      });
+
+      res.json({ message: `${revokedCount} API keys revoked`, revokedCount });
+    } catch (e: any) {
+      console.error("Revoke all keys error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/org/disconnect-all-providers", requireRole("ROOT_ADMIN"), async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const { confirmName } = req.body || {};
+      const org = await storage.getOrganization(user.orgId);
+      if (!org || confirmName !== org.name) return res.status(400).json({ message: "Type your organization name to confirm" });
+
+      const providers = await storage.getProviderConnectionsByOrg(user.orgId);
+      let disconnectedCount = 0;
+
+      for (const provider of providers) {
+        if (provider.status !== "DISCONNECTED") {
+          await storage.updateProviderConnection(provider.id, { status: "DISCONNECTED" });
+          disconnectedCount++;
+        }
+      }
+
+      const allKeys = await storage.getAllApiKeysWithOwnerInfo(user.orgId, { status: "ACTIVE" });
+      let revokedCount = 0;
+      for (const key of allKeys) {
+        if (key.status === "ACTIVE") {
+          await storage.updateAllotlyApiKey(key.id, { status: "REVOKED", updatedAt: new Date() });
+          await redisDel(REDIS_KEYS.apiKeyCache(key.keyHash));
+          revokedCount++;
+        }
+      }
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "org.disconnect_all_providers",
+        targetType: "organization",
+        targetId: user.orgId,
+        metadata: { disconnectedCount, revokedKeysCount: revokedCount },
+      });
+
+      res.json({ message: `${disconnectedCount} providers disconnected, ${revokedCount} keys revoked`, disconnectedCount, revokedCount });
+    } catch (e: any) {
+      console.error("Disconnect all providers error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/export/usage", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
+
+      const { startDate, endDate, teamId, memberId, provider, model } = req.query as any;
+
+      const teams = await storage.getTeamsByOrg(user.orgId);
+      const accessibleTeamIds = user.orgRole === "ROOT_ADMIN"
+        ? teams.map(t => t.id)
+        : teams.filter(t => t.adminId === user.id).map(t => t.id);
+
+      if (teamId && !accessibleTeamIds.includes(teamId)) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const targetTeamIds = teamId ? [teamId] : accessibleTeamIds;
+      let allLogs: any[] = [];
+
+      for (const tId of targetTeamIds) {
+        const members = await storage.getMembersByTeam(tId);
+        for (const m of members) {
+          if (memberId && m.id !== memberId) continue;
+          const logs = await storage.getProxyRequestLogsByMembership(m.id, 10000);
+          const memberUser = await storage.getUser(m.userId);
+          const team = teams.find(t => t.id === tId);
+          for (const l of logs) {
+            if (startDate && new Date(l.createdAt) < new Date(startDate)) continue;
+            if (endDate && new Date(l.createdAt) > new Date(endDate)) continue;
+            if (provider && l.provider !== provider) continue;
+            if (model && l.model !== model) continue;
+            allLogs.push({
+              timestamp: new Date(l.createdAt).toISOString(),
+              memberName: memberUser?.name || "",
+              memberEmail: memberUser?.email || "",
+              teamName: team?.name || "",
+              accessType: m.accessType,
+              model: l.model,
+              provider: l.provider,
+              inputTokens: l.inputTokens || 0,
+              outputTokens: l.outputTokens || 0,
+              totalTokens: (l.inputTokens || 0) + (l.outputTokens || 0),
+              costCents: l.costCents || 0,
+              responseStatus: l.statusCode || 200,
+            });
+          }
+        }
+      }
+
+      allLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+      const csvLines = ["timestamp,memberName,memberEmail,teamName,accessType,model,provider,inputTokens,outputTokens,totalTokens,costCents,responseStatus"];
+      for (const row of allLogs) {
+        csvLines.push(`${csvSafe(row.timestamp)},${csvSafe(row.memberName)},${csvSafe(row.memberEmail)},${csvSafe(row.teamName)},${csvSafe(row.accessType)},${csvSafe(row.model)},${csvSafe(row.provider)},${row.inputTokens},${row.outputTokens},${row.totalTokens},${row.costCents},${row.responseStatus}`);
+      }
+
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="usage-export-${new Date().toISOString().slice(0, 10)}.csv"`);
+      res.send(csvLines.join("\n"));
+    } catch (e: any) {
+      console.error("Usage export error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/export/members", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
+
+      const { teamId, status, accessType } = req.query as any;
+
+      const teams = await storage.getTeamsByOrg(user.orgId);
+      const accessibleTeamIds = user.orgRole === "ROOT_ADMIN"
+        ? teams.map(t => t.id)
+        : teams.filter(t => t.adminId === user.id).map(t => t.id);
+
+      const targetTeamIds = teamId ? (accessibleTeamIds.includes(teamId) ? [teamId] : []) : accessibleTeamIds;
+      const rows: any[] = [];
+
+      for (const tId of targetTeamIds) {
+        const members = await storage.getMembersByTeam(tId);
+        const team = teams.find(t => t.id === tId);
+        for (const m of members) {
+          if (status && m.status !== status) continue;
+          if (accessType && m.accessType !== accessType) continue;
+          const memberUser = await storage.getUser(m.userId);
+          const keys = await storage.getApiKeysByMembership(m.id);
+          const activeKey = keys.find(k => k.status === "ACTIVE");
+          rows.push({
+            name: memberUser?.name || "",
+            email: memberUser?.email || "",
+            team: team?.name || "",
+            role: memberUser?.orgRole || "",
+            accessType: m.accessType,
+            budgetCents: m.monthlyBudgetCents,
+            spentCents: m.currentPeriodSpendCents,
+            remainingCents: m.monthlyBudgetCents - m.currentPeriodSpendCents,
+            status: m.status,
+            keyStatus: activeKey ? "ACTIVE" : (keys.length > 0 ? "REVOKED" : "NONE"),
+            createdAt: new Date(m.createdAt).toISOString(),
+            lastActive: activeKey?.lastUsedAt ? new Date(activeKey.lastUsedAt).toISOString() : "",
+          });
+        }
+      }
+
+      const csvLines = ["name,email,team,role,accessType,budgetCents,spentCents,remainingCents,status,keyStatus,createdAt,lastActive"];
+      for (const row of rows) {
+        csvLines.push(`${csvSafe(row.name)},${csvSafe(row.email)},${csvSafe(row.team)},${csvSafe(row.role)},${csvSafe(row.accessType)},${row.budgetCents},${row.spentCents},${row.remainingCents},${csvSafe(row.status)},${csvSafe(row.keyStatus)},${csvSafe(row.createdAt)},${csvSafe(row.lastActive)}`);
+      }
+
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="members-export-${new Date().toISOString().slice(0, 10)}.csv"`);
+      res.send(csvLines.join("\n"));
+    } catch (e: any) {
+      console.error("Members export error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/teams/:teamId/bulk-add-members", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
+
+      const team = await storage.getTeam(req.params.teamId);
+      if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Team not found" });
+      if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
+
+      const schema = z.object({
+        members: z.array(z.object({
+          email: z.string().email(),
+          name: z.string().min(1).max(100).optional(),
+          budgetCents: z.number().int().min(100).optional(),
+        })).min(1).max(200),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+
+      const org = await storage.getOrganization(user.orgId);
+      const orgSettings = (org?.settings as Record<string, any>) || {};
+      const defaultBudget = orgSettings.defaults?.defaultBudgetCents || org?.defaultMemberBudgetCents || 1000;
+      const defaultModels = orgSettings.defaults?.defaultAllowedModels || null;
+
+      const created: { email: string; keyPrefix: string }[] = [];
+      const skipped: { email: string; reason: string }[] = [];
+      const errors: { email: string; error: string }[] = [];
+
+      for (const memberReq of parsed.data.members) {
+        try {
+          const existingUser = await storage.getUserByEmail(memberReq.email);
+          if (existingUser && existingUser.orgId === user.orgId) {
+            skipped.push({ email: memberReq.email, reason: "User already exists in this organization" });
+            continue;
+          }
+
+          let memberUser;
+          if (existingUser) {
+            skipped.push({ email: memberReq.email, reason: "Email belongs to another organization" });
+            continue;
+          }
+
+          const tempPassword = await hashPassword(generateAllotlyKey().slice(0, 32));
+          memberUser = await storage.createUser({
+            email: memberReq.email,
+            name: memberReq.name || memberReq.email.split("@")[0],
+            passwordHash: tempPassword,
+            orgId: user.orgId,
+            orgRole: "MEMBER",
+            status: "INVITED",
+            isVoucherUser: false,
+          });
+
+          const budgetCents = memberReq.budgetCents || defaultBudget;
+          const now = new Date();
+          const periodEnd = new Date(now);
+          periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+          const membership = await storage.createMembership({
+            userId: memberUser.id,
+            teamId: team.id,
+            accessType: "TEAM",
+            monthlyBudgetCents: budgetCents,
+            currentPeriodSpendCents: 0,
+            periodStart: now,
+            periodEnd: periodEnd,
+            allowedModels: defaultModels,
+            status: "ACTIVE",
+          });
+
+          const rawKey = generateAllotlyKey();
+          const keyHash = hashKey(rawKey);
+          const keyPrefix = rawKey.slice(0, 12);
+          await storage.createAllotlyApiKey({
+            userId: memberUser.id,
+            membershipId: membership.id,
+            keyHash,
+            keyPrefix,
+          });
+
+          await redisSet(REDIS_KEYS.budget(membership.id), String(budgetCents));
+
+          try {
+            const tmpl = emailTemplates.memberInvite(
+              memberReq.name || memberReq.email.split("@")[0],
+              team.name,
+              user.name || "an admin",
+              "/dashboard"
+            );
+            await sendEmail(memberReq.email, tmpl.subject, tmpl.html);
+          } catch {}
+
+          created.push({ email: memberReq.email, keyPrefix });
+        } catch (e: any) {
+          errors.push({ email: memberReq.email, error: e.message });
+        }
+      }
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "member.bulk_created",
+        targetType: "team",
+        targetId: team.id,
+        metadata: {
+          createdCount: created.length,
+          skippedCount: skipped.length,
+          errorCount: errors.length,
+        },
+      });
+
+      res.json({ created, skipped, errors });
+    } catch (e: any) {
+      console.error("Bulk add members error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/cleanup/:type", requireRole("ROOT_ADMIN"), async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const { type } = req.params;
+      const olderThanDays = parseInt((req.query as any).olderThanDays || "90");
+      const fix = (req.query as any).fix === "true";
+
+      if (type === "expired-vouchers") {
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
+        const vouchers = await storage.getVouchersByOrg(user.orgId);
+        const expiredOld = vouchers.filter(v => v.status === "EXPIRED" && new Date(v.expiresAt) < cutoffDate);
+        let deletedCount = 0;
+        for (const v of expiredOld) {
+          await cascadeDeleteVoucher(v.id, user.id, user.orgId);
+          deletedCount++;
+        }
+        await storage.createAuditLog({
+          orgId: user.orgId, actorId: user.id,
+          action: "cleanup.expired_vouchers",
+          targetType: "organization", targetId: user.orgId,
+          metadata: { deletedCount, olderThanDays },
+        });
+        return res.json({ message: `${deletedCount} expired vouchers deleted`, deletedCount });
+      }
+
+      if (type === "revoked-keys") {
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
+        const allKeys = await storage.getAllApiKeysWithOwnerInfo(user.orgId, { status: "REVOKED" });
+        const oldRevoked = allKeys.filter(k => new Date(k.createdAt) < cutoffDate);
+        let deletedCount = 0;
+        for (const k of oldRevoked) {
+          await db.delete(allotlyApiKeysTable).where(eq(allotlyApiKeysTable.id, k.id));
+          deletedCount++;
+        }
+        await storage.createAuditLog({
+          orgId: user.orgId, actorId: user.id,
+          action: "cleanup.revoked_keys",
+          targetType: "organization", targetId: user.orgId,
+          metadata: { deletedCount, olderThanDays },
+        });
+        return res.json({ message: `${deletedCount} revoked keys deleted`, deletedCount });
+      }
+
+      if (type === "orphans") {
+        const teams = await storage.getTeamsByOrg(user.orgId);
+        const allTeamIds = teams.map(t => t.id);
+        const orgUsers = await storage.getUsersByOrg(user.orgId);
+        const orphanReport: { usersNoMembership: string[]; keysNoMembership: string[]; redisOrphans: string[] } = {
+          usersNoMembership: [],
+          keysNoMembership: [],
+          redisOrphans: [],
+        };
+
+        for (const u of orgUsers) {
+          let hasMembership = false;
+          for (const tId of allTeamIds) {
+            const members = await storage.getMembersByTeam(tId);
+            if (members.some(m => m.userId === u.id)) { hasMembership = true; break; }
+          }
+          if (!hasMembership && u.orgRole === "MEMBER") orphanReport.usersNoMembership.push(u.email);
+        }
+
+        await storage.createAuditLog({
+          orgId: user.orgId, actorId: user.id,
+          action: "cleanup.orphans",
+          targetType: "organization", targetId: user.orgId,
+          metadata: {
+            usersNoMembership: orphanReport.usersNoMembership.length,
+            keysNoMembership: orphanReport.keysNoMembership.length,
+            fixed: fix,
+          },
+        });
+        return res.json({ report: orphanReport, fixed: fix });
+      }
+
+      if (type === "redis-reconcile") {
+        const result = await runRedisReconciliation();
+        await storage.createAuditLog({
+          orgId: user.orgId, actorId: user.id,
+          action: "cleanup.redis_reconcile",
+          targetType: "organization", targetId: user.orgId,
+          metadata: result,
+        });
+        return res.json(result);
+      }
+
+      return res.status(400).json({ message: `Unknown cleanup type: ${type}` });
+    } catch (e: any) {
+      console.error("Cleanup error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
   });
 
   app.delete("/api/organizations/:id", requireRole("ROOT_ADMIN"), async (req, res) => {

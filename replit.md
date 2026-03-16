@@ -33,6 +33,11 @@ Allotly employs a robust architecture with a focus on real-time budget enforceme
 - **Budget Management**: Features manual budget reset and credit functionalities for members, with corresponding audit logs.
 - **Audit Log UI**: Enhanced audit logs with expandable metadata, human-readable action labels, categorized filters, and change diff views.
 - **Email Service**: Uses a consistent `sendEmail` signature with positional arguments `(to, subject, html)`.
+- **Organization Settings**: `settings` JSONB column on `organizations` table stores `notifications` (budgetAlerts, spendAnomalies, providerKeyIssues, voucherRedemptions, memberInvitesAccepted) and `defaults` (defaultBudgetCents, defaultAllowedModels, defaultVoucherExpiryDays). PATCH `/api/org/settings` deep-merges nested JSON.
+- **Danger Zone**: `POST /api/org/revoke-all-keys` (requires `confirmText: "REVOKE ALL"`) and `POST /api/org/disconnect-all-providers` (requires `confirmName` matching org name). Both cascade-clear Redis caches and create audit logs.
+- **Data Exports**: `GET /api/export/usage` and `GET /api/export/members` return CSV files with formula-injection-safe escaping. Available to ROOT_ADMIN and TEAM_ADMIN (scoped to their teams).
+- **Bulk Add Members**: `POST /api/teams/:teamId/bulk-add-members` accepts up to 200 members with email, optional name, optional budgetCents. Creates user, membership, API key, and sends invite email per member.
+- **Cleanup Utilities**: `POST /api/admin/cleanup/:type` supports `expired-vouchers`, `revoked-keys`, `orphans`, `redis-reconcile`. ROOT_ADMIN only.
 
 ## External Dependencies
 - **Frontend**: React 18, Vite, wouter (routing), TanStack Query v5, Shadcn/ui, Tailwind CSS, Recharts.

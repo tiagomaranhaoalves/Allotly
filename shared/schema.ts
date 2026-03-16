@@ -7,6 +7,7 @@ import {
   boolean,
   timestamp,
   json,
+  jsonb,
   pgEnum,
   uniqueIndex,
   index,
@@ -43,6 +44,7 @@ export const organizations = pgTable("organizations", {
   maxTeamAdmins: integer("max_team_admins").default(0).notNull(),
   orgBudgetCeilingCents: integer("org_budget_ceiling_cents"),
   defaultMemberBudgetCents: integer("default_member_budget_cents"),
+  settings: jsonb("settings"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
