@@ -27,6 +27,7 @@ import { sendEmail, emailTemplates } from "./lib/email";
 import { getCostPerModel, getTopSpenders, getSpendForecast, getAnomalies, getOptimizationRecommendations } from "./lib/analytics";
 import { loginLimiter, redeemLimiter, regenerateKeyLimiter } from "./lib/rate-limiter";
 import { z } from "zod";
+import { cascadeDeleteOrganization, cascadeDeleteTeam, cascadeDeleteMember, cascadeDeleteVoucher } from "./lib/cascade-delete";
 
 const VOUCHER_LIMITS = {
   FREE: {
@@ -1057,18 +1058,10 @@ export async function registerRoutes(
       if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
       if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
 
-      await storage.deleteMembership(membership.id);
-      await storage.deleteUser(membership.userId);
+      const result = await cascadeDeleteMember(membership.id, user.id, user.orgId);
+      if (!result.success) return res.status(400).json({ message: result.error });
 
-      await storage.createAuditLog({
-        orgId: user.orgId,
-        actorId: user.id,
-        action: "member.removed",
-        targetType: "team_membership",
-        targetId: membership.id,
-      });
-
-      res.json({ message: "Member removed" });
+      res.json({ message: "Member removed", deletedCounts: result.deletedCounts });
     } catch (e: any) {
       console.error("Member remove error:", e);
       res.status(500).json({ message: "Internal server error" });
@@ -1213,31 +1206,16 @@ export async function registerRoutes(
   app.delete("/api/teams/:id", requireRole("ROOT_ADMIN"), async (req, res) => {
     try {
       const user = (req as any).user;
+      const { confirmName } = req.body || {};
+      if (!confirmName) return res.status(400).json({ message: "Confirmation name is required" });
+
       const team = await storage.getTeam(req.params.id);
       if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
 
-      const memberships = await storage.getMembershipsByTeam(team.id);
-      for (const m of memberships) {
-        await storage.updateMembership(m.id, { status: "SUSPENDED" });
-      }
+      const result = await cascadeDeleteTeam(team.id, confirmName, user.id, user.orgId);
+      if (!result.success) return res.status(400).json({ message: result.error });
 
-      const teamAdmin = await storage.getUser(team.adminId);
-      if (teamAdmin) {
-        await storage.updateUser(teamAdmin.id, { status: "SUSPENDED" as any });
-      }
-
-      await storage.deleteTeam(team.id);
-
-      await storage.createAuditLog({
-        orgId: user.orgId,
-        actorId: user.id,
-        action: "team.removed",
-        targetType: "team",
-        targetId: team.id,
-        metadata: { teamName: team.name, adminId: team.adminId, suspendedMembers: memberships.length },
-      });
-
-      res.json({ message: "Team removed" });
+      res.json({ message: "Team deleted", deletedCounts: result.deletedCounts });
     } catch (e: any) {
       console.error("Team delete error:", e);
       res.status(500).json({ message: "Internal server error" });
@@ -1682,6 +1660,31 @@ export async function registerRoutes(
       res.json(updated);
     } catch (e: any) {
       console.error("Voucher update error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/vouchers/:id", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || (user.orgRole !== "ROOT_ADMIN" && user.orgRole !== "TEAM_ADMIN")) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const voucher = await storage.getVoucher(req.params.id);
+      if (!voucher || voucher.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
+
+      if (user.orgRole === "TEAM_ADMIN") {
+        const team = await storage.getTeam(voucher.teamId);
+        if (!team || team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const result = await cascadeDeleteVoucher(voucher.id, user.id, user.orgId);
+      if (!result.success) return res.status(400).json({ message: result.error });
+
+      res.json({ message: "Voucher deleted", deletedCounts: result.deletedCounts });
+    } catch (e: any) {
+      console.error("Voucher delete error:", e);
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -2585,6 +2588,25 @@ export async function registerRoutes(
     });
 
     res.json(updated);
+  });
+
+  app.delete("/api/organizations/:id", requireRole("ROOT_ADMIN"), async (req, res) => {
+    try {
+      const user = (req as any).user;
+      if (req.params.id !== user.orgId) return res.status(403).json({ message: "Forbidden" });
+
+      const { confirmName } = req.body || {};
+      if (!confirmName) return res.status(400).json({ message: "Confirmation name is required" });
+
+      const result = await cascadeDeleteOrganization(user.orgId, confirmName, user.id);
+      if (!result.success) return res.status(400).json({ message: result.error });
+
+      req.session.destroy(() => {});
+      res.json({ message: "Organization deleted", deletedCounts: result.deletedCounts });
+    } catch (e: any) {
+      console.error("Org delete error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
   });
 
   // Analytics API routes

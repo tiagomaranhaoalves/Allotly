@@ -17,7 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Ticket, Plus, Copy, Check, Info, AlertTriangle, Link2, Mail, Send, Ban, ExternalLink, Pencil } from "lucide-react";
+import { Ticket, Plus, Copy, Check, Info, AlertTriangle, Link2, Mail, Send, Ban, ExternalLink, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 export default function VouchersPage() {
@@ -163,6 +163,20 @@ export default function VouchersPage() {
     },
     onError: (err: any) => {
       toast({ title: "Failed to revoke voucher", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteVoucherMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/vouchers/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vouchers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/voucher-limits"] });
+      toast({ title: "Voucher deleted" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to delete voucher", description: err.message, variant: "destructive" });
     },
   });
 
@@ -455,9 +469,9 @@ export default function VouchersPage() {
               expiresAt={v.expiresAt}
               redemptions={v.currentRedemptions}
               maxRedemptions={v.maxRedemptions}
-              actions={v.status === "ACTIVE" ? (
+              actions={(
                 <div className="flex items-center gap-1">
-                  {v.currentRedemptions === 0 && (
+                  {v.status === "ACTIVE" && v.currentRedemptions === 0 && (
                     <Button
                       size="sm"
                       variant="ghost"
@@ -469,40 +483,77 @@ export default function VouchersPage() {
                       Edit
                     </Button>
                   )}
+                  {v.status === "ACTIVE" && (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                          disabled={revokeMutation.isPending}
+                          data-testid={`button-revoke-voucher-${v.id}`}
+                        >
+                          <Ban className="w-3.5 h-3.5 mr-1" />
+                          Revoke
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Revoke Voucher?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Are you sure you want to revoke voucher <strong>{v.code}</strong>? This will prevent any new redemptions. Existing members who already redeemed this voucher will not be affected. This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel data-testid="button-cancel-revoke-voucher">Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => revokeMutation.mutate(v.id)}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            data-testid="button-confirm-revoke-voucher"
+                          >
+                            Revoke Voucher
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  )}
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button
                         size="sm"
                         variant="ghost"
                         className="h-7 px-2 text-xs text-destructive hover:text-destructive"
-                        disabled={revokeMutation.isPending}
-                        data-testid={`button-revoke-voucher-${v.id}`}
+                        disabled={deleteVoucherMutation.isPending}
+                        data-testid={`button-delete-voucher-${v.id}`}
                       >
-                        <Ban className="w-3.5 h-3.5 mr-1" />
-                        Revoke
+                        <Trash2 className="w-3.5 h-3.5 mr-1" />
+                        Delete
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
-                        <AlertDialogTitle>Revoke Voucher?</AlertDialogTitle>
+                        <AlertDialogTitle>Delete Voucher?</AlertDialogTitle>
                         <AlertDialogDescription>
-                          Are you sure you want to revoke voucher <strong>{v.code}</strong>? This will prevent any new redemptions. Existing members who already redeemed this voucher will not be affected. This action cannot be undone.
+                          {v.currentRedemptions > 0
+                            ? <>This voucher has been redeemed {v.currentRedemptions} time(s). Deleting it will also revoke the recipient's API key and remove their membership. This cannot be undone.</>
+                            : <>This will permanently delete voucher <strong>{v.code}</strong>. This cannot be undone.</>
+                          }
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
-                        <AlertDialogCancel data-testid="button-cancel-revoke-voucher">Cancel</AlertDialogCancel>
+                        <AlertDialogCancel data-testid="button-cancel-delete-voucher">Cancel</AlertDialogCancel>
                         <AlertDialogAction
-                          onClick={() => revokeMutation.mutate(v.id)}
+                          onClick={() => deleteVoucherMutation.mutate(v.id)}
                           className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                          data-testid="button-confirm-revoke-voucher"
+                          data-testid="button-confirm-delete-voucher"
                         >
-                          Revoke Voucher
+                          Delete Voucher
                         </AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
                   </AlertDialog>
                 </div>
-              ) : undefined}
+              )}
             />
           ))}
         </div>

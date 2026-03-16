@@ -234,6 +234,16 @@ export const auditLogs = pgTable("audit_logs", {
   index("audit_logs_org_created_idx").on(table.orgId, table.createdAt),
 ]);
 
+export const platformAuditLogs = pgTable("platform_audit_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  action: text("action").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id").notNull(),
+  metadata: json("metadata"),
+  performedBy: text("performed_by").notNull(),
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+});
+
 export const modelPricing = pgTable("model_pricing", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   provider: providerEnum("provider").notNull(),
@@ -288,6 +298,7 @@ export type UsageSnapshot = typeof usageSnapshots.$inferSelect;
 export type BudgetAlert = typeof budgetAlerts.$inferSelect;
 export type AllotlyApiKey = typeof allotlyApiKeys.$inferSelect;
 export type VoucherRedemption = typeof voucherRedemptions.$inferSelect;
+export type PlatformAuditLog = typeof platformAuditLogs.$inferSelect;
 
 export const signupSchema = z.object({
   email: z.string().email(),

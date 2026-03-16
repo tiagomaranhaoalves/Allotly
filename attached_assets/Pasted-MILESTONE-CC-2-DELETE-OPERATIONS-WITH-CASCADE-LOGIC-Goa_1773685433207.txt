@@ -1,0 +1,111 @@
+MILESTONE CC-2: DELETE OPERATIONS WITH CASCADE LOGIC
+Goal: Add hard-delete capability for all entities with proper cascade logic. This is the most important milestone — without it, test data accumulates forever and emails can never be reused.
+Context: The system currently has no delete operations. Test orgs, teams, users, and vouchers persist in the database indefinitely. Email addresses used during testing are permanently burned.
+Requirements
+
+MUST implement a cascadeDelete utility module at lib/cascade-delete.ts that centralizes all delete logic. Every delete endpoint MUST use this module — no inline delete logic in route handlers.
+MUST implement DELETE /api/organizations/[orgId] endpoint.
+
+MUST require Root Admin role.
+MUST require confirmation: request body must include { confirmName: "exact org name" }. If name doesn't match, return 400.
+Cascade order (THIS ORDER IS MANDATORY — do not reorder):
+a. Revoke all allotly_sk_ keys for this org (set status = REVOKED in DB).
+b. Delete all Redis keys for this org's memberships: DEL allotly:budget:{membershipId} and DEL allotly:concurrent:{membershipId} for every membership.
+c. Delete all ProxyRequestLogs for this org.
+d. Delete all UsageSnapshots for this org.
+e. Delete all BudgetAlerts for this org.
+f. Delete all AuditLog entries for this org (or retain if compliance requires — make this configurable).
+g. Delete all AllotlyApiKeys for this org.
+h. Delete all TeamMemberships for this org.
+i. Delete all VoucherCodes for this org.
+j. Delete all Vouchers for this org.
+k. Delete all Bundles for this org.
+l. Delete all ProviderConnections for this org (wipe encrypted keys from DB).
+m. Delete all Teams for this org.
+n. Delete all Users whose ONLY org membership was this org. Users who belong to multiple orgs MUST NOT be deleted — only their memberships in this org are removed.
+o. Delete the Organization record.
+MUST wrap entire cascade in a database transaction. If any step fails, roll back everything.
+MUST log a final audit entry BEFORE deleting audit logs (if audit logs are being deleted): { action: "DELETE_ORG", entityType: "ORG", entityId, performedBy, note: "All org data cascade-deleted" }. Store this in a separate PlatformAuditLog table that survives org deletion.
+VERIFY: Delete test org → all related records gone from DB → all related Redis keys gone → email addresses freed → no orphaned records.
+
+
+MUST implement DELETE /api/teams/[teamId] endpoint.
+
+MUST require Root Admin role.
+MUST require confirmation: { confirmName: "exact team name" }.
+Cascade order:
+a. Revoke all keys for members in this team.
+b. Delete Redis state for all memberships in this team.
+c. Delete all TeamMemberships in this team.
+d. Delete associated AllotlyApiKeys.
+e. Delete associated UsageSnapshots and BudgetAlerts.
+f. Delete the Team record.
+MUST NOT delete Users — users persist as org-level users without team membership.
+MUST create AuditLog entry.
+VERIFY: Delete team → team gone → members still exist as users → members' keys are revoked → Redis cleaned.
+
+
+MUST implement DELETE /api/members/[membershipId] endpoint.
+
+MUST require Root Admin or Team Admin (own team).
+Cascade order:
+a. Revoke all allotly_sk_ keys for this membership.
+b. Delete Redis budget key: DEL allotly:budget:{membershipId}.
+c. Delete Redis concurrency key: DEL allotly:concurrent:{membershipId}.
+d. Delete AllotlyApiKeys for this membership.
+e. Delete UsageSnapshots for this membership.
+f. Delete BudgetAlerts for this membership.
+g. Delete the TeamMembership record.
+h. If the User has NO remaining memberships in ANY org, delete the User record (freeing the email).
+i. If the User still has memberships in other teams/orgs, keep the User record.
+MUST create AuditLog entry.
+VERIFY: Delete member who only belongs to one team → user record deleted → email freed → can re-invite with same email.
+VERIFY: Delete member who belongs to multiple teams → membership deleted → user record persists → other team memberships unaffected.
+
+
+MUST implement DELETE /api/vouchers/[voucherId] endpoint.
+
+If voucher is unredeemed: hard-delete from DB.
+If voucher is redeemed: revoke key first → delete Redis state → delete membership → delete voucher.
+If voucher is expired or revoked: hard-delete from DB.
+MUST require Root Admin or Team Admin.
+MUST create AuditLog entry.
+VERIFY: Delete unredeemed voucher → gone from DB.
+VERIFY: Delete redeemed voucher → key revoked → Redis cleaned → voucher gone → if anonymous recipient, user record cleaned up.
+
+
+MUST add delete buttons in the UI for each entity.
+
+Organization: "Delete Organization" in a "Danger Zone" section at the bottom of org settings. Red button. Confirmation modal requiring typing the org name.
+Team: "Delete" action in team row dropdown. Confirmation modal requiring typing team name.
+Member: "Delete" action in member row dropdown. Confirmation modal: "This will permanently remove [name] and free their email address for reuse. This cannot be undone."
+Voucher: "Delete" action in voucher row dropdown. If redeemed, confirmation warns: "This voucher has been redeemed. Deleting it will also revoke the recipient's API key."
+
+
+MUST create the PlatformAuditLog table for org-surviving audit records:
+
+   model PlatformAuditLog {
+     id          String   @id @default(cuid())
+     action      String
+     entityType  String
+     entityId    String   @map("entity_id")
+     metadata    Json?
+     performedBy String   @map("performed_by")
+     timestamp   DateTime @default(now())
+     
+     @@map("platform_audit_logs")
+   }
+Tests
+
+Delete org → verify ALL related records gone from Postgres AND Redis.
+Delete org → verify email addresses of deleted users are now available for new invites.
+Delete org where a user belongs to another org → verify user survives, only this org's memberships removed.
+Delete team → verify team gone, users persist, keys revoked.
+Delete member (sole membership) → verify user deleted, email freed.
+Delete member (multiple memberships) → verify only this membership deleted, user persists.
+Delete unredeemed voucher → verify clean removal.
+Delete redeemed voucher → verify key revoked, Redis cleaned, voucher removed.
+Attempt delete without correct confirmation name → verify 400 rejection.
+Non-Root Admin attempts org/team delete → verify 403.
+Verify no orphaned Redis keys after any delete operation.
+

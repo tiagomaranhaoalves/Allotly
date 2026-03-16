@@ -12,11 +12,16 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Settings as SettingsIcon, Building, CreditCard, Shield,
   ExternalLink, Check, AlertTriangle, Users, Database,
-  Clock, Zap, Plus,
+  Clock, Zap, Plus, Trash2,
 } from "lucide-react";
 import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 
 const PLAN_LIMITS = {
   FREE: {
@@ -37,11 +42,14 @@ export default function SettingsPage() {
   const { data: orgData, isLoading } = useQuery<any>({ queryKey: ["/api/org/settings"] });
   const { data: billing } = useQuery<any>({ queryKey: ["/api/billing/subscription"] });
 
+  const [, navigate] = useLocation();
   const [orgName, setOrgName] = useState("");
   const [billingEmail, setBillingEmail] = useState("");
   const [description, setDescription] = useState("");
   const [seatCount, setSeatCount] = useState("1");
   const [addSeatsCount, setAddSeatsCount] = useState("1");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteConfirmName, setDeleteConfirmName] = useState("");
 
   useEffect(() => {
     if (orgData) {
@@ -142,6 +150,22 @@ export default function SettingsPage() {
     },
     onError: (err: any) => {
       toast({ title: "Failed to open billing portal", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteOrgMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("DELETE", `/api/organizations/${orgData?.id}`, {
+        confirmName: deleteConfirmName,
+      });
+    },
+    onSuccess: () => {
+      toast({ title: "Organization deleted" });
+      setDeleteDialogOpen(false);
+      navigate("/");
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to delete organization", description: err.message, variant: "destructive" });
     },
   });
 
@@ -405,6 +429,57 @@ export default function SettingsPage() {
               </div>
             )}
           </Card>
+
+          {user?.orgRole === "ROOT_ADMIN" && (
+            <Card className="p-6 border-destructive/50">
+              <div className="flex items-center gap-2 mb-4">
+                <AlertTriangle className="w-5 h-5 text-destructive" />
+                <h2 className="text-base font-semibold text-destructive">Danger Zone</h2>
+              </div>
+              <p className="text-sm text-muted-foreground mb-4">
+                Permanently delete this organization and all associated data including teams, members, API keys, vouchers, usage logs, and provider connections. This action cannot be undone.
+              </p>
+              <Button
+                variant="destructive"
+                onClick={() => { setDeleteDialogOpen(true); setDeleteConfirmName(""); }}
+                data-testid="button-delete-org"
+              >
+                <Trash2 className="w-4 h-4 mr-1.5" />
+                Delete Organization
+              </Button>
+
+              <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete Organization</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will permanently delete <strong>{orgData?.name}</strong> and all associated data. This action cannot be undone. Type the organization name to confirm.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <div className="py-3">
+                    <Label className="text-sm text-muted-foreground mb-2 block">Type "{orgData?.name}" to confirm</Label>
+                    <Input
+                      value={deleteConfirmName}
+                      onChange={e => setDeleteConfirmName(e.target.value)}
+                      placeholder={orgData?.name}
+                      data-testid="input-confirm-org-name"
+                    />
+                  </div>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel data-testid="button-cancel-delete-org">Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => deleteOrgMutation.mutate()}
+                      disabled={deleteConfirmName !== orgData?.name || deleteOrgMutation.isPending}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      data-testid="button-confirm-delete-org"
+                    >
+                      {deleteOrgMutation.isPending ? "Deleting..." : "Delete Organization"}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </Card>
+          )}
         </>
       )}
     </div>

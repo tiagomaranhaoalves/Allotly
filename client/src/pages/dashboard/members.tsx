@@ -323,9 +323,9 @@ function MemberCard({ member, onRemove }: { member: any; onRemove: (id: string) 
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Remove Member</AlertDialogTitle>
+                  <AlertDialogTitle>Delete Member</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Are you sure you want to remove <strong>{member.user?.name || member.user?.email}</strong>? Their account and API keys will be deleted permanently.
+                    This will permanently remove <strong>{member.user?.name || member.user?.email}</strong> and free their email address for reuse. All API keys, usage data, and budget history will be deleted. This cannot be undone.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -335,7 +335,7 @@ function MemberCard({ member, onRemove }: { member: any; onRemove: (id: string) 
                     className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                     data-testid="button-confirm-remove"
                   >
-                    Remove Member
+                    Delete Member
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>

@@ -158,5 +158,16 @@ All core entities support full CRUD with audit logging:
 - **Voucher**: PATCH `/api/vouchers/:id` — label, budgetCents, expiresAt, allowedProviders, allowedModels, maxRedemptions. Only ACTIVE unredeemed vouchers. Audit log.
 - Schema additions: `billingEmail` and `description` on organizations, `description` on teams.
 
+## Delete Operations (CC-2)
+All entities support cascade delete with full cleanup:
+- **Organization**: DELETE `/api/organizations/:id` — ROOT_ADMIN only, requires `confirmName`. Cascade: revoke Redis keys → delete proxy logs → usage snapshots → budget alerts → audit logs → API keys → voucher redemptions → memberships → vouchers → bundles → provider connections → teams → password reset tokens → users → org. Platform audit log survives deletion.
+- **Team**: DELETE `/api/teams/:id` — ROOT_ADMIN, requires `confirmName`. Cascade: revoke keys → delete proxy logs → usage → alerts → API keys → memberships → voucher redemptions → vouchers → team.
+- **Member**: DELETE `/api/members/:id` — ROOT_ADMIN/TEAM_ADMIN. Cascade: revoke keys → delete API keys → proxy logs → usage → alerts → membership. If user has no other memberships, also deletes voucher redemptions, password reset tokens, and user account (frees email).
+- **Voucher**: DELETE `/api/vouchers/:id` — ROOT_ADMIN/TEAM_ADMIN (own team). Works on all statuses. If redeemed: cascades to revoke member API keys, delete memberships, voucher redemptions, and orphaned voucher-users.
+- All operations wrapped in DB transactions for atomicity. Audit logs written inside transactions. Redis cleanup includes budget, concurrent, ratelimit, and request-pattern keys.
+- `platformAuditLogs` table: survives org deletion, records platform-level events.
+- Frontend: Settings page has Danger Zone with org delete (type-to-confirm). Teams page requires typing team name. Vouchers page has delete button with redeemed-warning variant.
+- Key file: `server/lib/cascade-delete.ts` — centralized cascade logic.
+
 ## Completed Milestones
-All milestones (1-13) complete including: v4 proxy migration, Admin Control Center, Stripe integration, email system, background jobs, analytics dashboard, dark mode, security review, 191 passing tests, E2E tests. CC-1 entity edit operations milestone complete.
+All milestones (1-13) complete including: v4 proxy migration, Admin Control Center, Stripe integration, email system, background jobs, analytics dashboard, dark mode, security review, 191 passing tests, E2E tests. CC-1 entity edit operations milestone complete. CC-2 delete operations with cascade logic complete.

@@ -19,7 +19,7 @@ import { Users, Plus, Shield, DollarSign, Trash2, User, ChevronRight, CreditCard
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 
-function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string) => void }) {
+function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string, confirmName: string) => void }) {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const { data: stats } = useQuery<any>({
@@ -32,6 +32,7 @@ function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string) => voi
   });
 
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [deleteConfirmName, setDeleteConfirmName] = useState("");
   const [editOpen, setEditOpen] = useState(false);
   const [editName, setEditName] = useState(team.name);
   const [editDescription, setEditDescription] = useState(team.description || "");
@@ -146,7 +147,7 @@ function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string) => voi
             >
               <ChevronRight className="w-4 h-4" />
             </Button>
-            <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+            <AlertDialog open={confirmOpen} onOpenChange={(o) => { setConfirmOpen(o); if (o) setDeleteConfirmName(""); }}>
               <AlertDialogTrigger asChild>
                 <Button
                   size="sm"
@@ -159,19 +160,29 @@ function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string) => voi
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Remove Team</AlertDialogTitle>
+                  <AlertDialogTitle>Delete Team</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Are you sure you want to remove <strong>{team.name}</strong>? This will suspend all members on their team. This action cannot be undone.
+                    This will permanently delete <strong>{team.name}</strong> and all associated members, API keys, vouchers, and usage data. This action cannot be undone. Type the team name to confirm.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
+                <div className="py-3">
+                  <Label className="text-sm text-muted-foreground mb-2 block">Type "{team.name}" to confirm</Label>
+                  <Input
+                    value={deleteConfirmName}
+                    onChange={e => setDeleteConfirmName(e.target.value)}
+                    placeholder={team.name}
+                    data-testid="input-confirm-team-name"
+                  />
+                </div>
                 <AlertDialogFooter>
                   <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
                   <AlertDialogAction
-                    onClick={() => { onDelete(team.id); setConfirmOpen(false); }}
+                    onClick={() => { onDelete(team.id, deleteConfirmName); setConfirmOpen(false); }}
+                    disabled={deleteConfirmName !== team.name}
                     className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                     data-testid="button-confirm-delete"
                   >
-                    Remove Team
+                    Delete Team
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
@@ -274,16 +285,16 @@ export default function TeamsPage() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await apiRequest("DELETE", `/api/teams/${id}`);
+    mutationFn: async ({ id, confirmName }: { id: string; confirmName: string }) => {
+      await apiRequest("DELETE", `/api/teams/${id}`, { confirmName });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
       queryClient.invalidateQueries({ queryKey: ["/api/teams/capacity"] });
-      toast({ title: "Team removed successfully" });
+      toast({ title: "Team deleted successfully" });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to remove team", description: err.message, variant: "destructive" });
+      toast({ title: "Failed to delete team", description: err.message, variant: "destructive" });
     },
   });
 
@@ -391,7 +402,7 @@ export default function TeamsPage() {
       ) : teams && teams.length > 0 ? (
         <div className="space-y-4">
           {teams.map((team: any) => (
-            <TeamCard key={team.id} team={team} onDelete={(id) => deleteMutation.mutate(id)} />
+            <TeamCard key={team.id} team={team} onDelete={(id, confirmName) => deleteMutation.mutate({ id, confirmName })} />
           ))}
         </div>
       ) : (
