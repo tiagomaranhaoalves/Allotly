@@ -662,6 +662,7 @@ function UsersTab() {
 function TransferUserDialog({ user, orgs, onClose }: { user: AdminUser; orgs: AdminOrg[]; onClose: () => void }) {
   const [targetOrgId, setTargetOrgId] = useState("");
   const [targetTeamId, setTargetTeamId] = useState("");
+  const [targetOrgRole, setTargetOrgRole] = useState(user.orgRole);
   const [moveHistory, setMoveHistory] = useState(false);
   const [budget, setBudget] = useState("5.00");
   const { toast } = useToast();
@@ -684,6 +685,7 @@ function TransferUserDialog({ user, orgs, onClose }: { user: AdminUser; orgs: Ad
         targetTeamId,
         moveHistory,
         monthlyBudgetCents: Math.round(parseFloat(budget) * 100),
+        targetOrgRole,
       });
     },
     onSuccess: () => {
@@ -730,6 +732,17 @@ function TransferUserDialog({ user, orgs, onClose }: { user: AdminUser; orgs: Ad
               )}
             </div>
           )}
+          <div className="space-y-2">
+            <Label>Role in New Organization</Label>
+            <Select value={targetOrgRole} onValueChange={setTargetOrgRole}>
+              <SelectTrigger data-testid="select-target-role"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ROOT_ADMIN">Root Admin</SelectItem>
+                <SelectItem value="TEAM_ADMIN">Team Admin</SelectItem>
+                <SelectItem value="MEMBER">Member</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <div className="space-y-2">
             <Label htmlFor="transfer-budget">Monthly Budget ($)</Label>
             <Input id="transfer-budget" type="number" step="0.01" min="0" value={budget} onChange={(e) => setBudget(e.target.value)} className="w-32" data-testid="input-transfer-budget" />

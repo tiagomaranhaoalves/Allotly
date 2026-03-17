@@ -4925,6 +4925,7 @@ export async function registerRoutes(
         targetTeamId: z.string().min(1),
         moveHistory: z.boolean().default(false),
         monthlyBudgetCents: z.number().int().min(0).default(500),
+        targetOrgRole: z.enum(["ROOT_ADMIN", "TEAM_ADMIN", "MEMBER"]).optional(),
       });
       const parsed = transferSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
@@ -5018,8 +5019,9 @@ export async function registerRoutes(
           });
         }
 
+        const finalRole = parsed.data.targetOrgRole || user.orgRole;
         await tx.update(usersTable)
-          .set({ orgId: targetOrg.id, orgRole: "MEMBER" } as any)
+          .set({ orgId: targetOrg.id, orgRole: finalRole } as any)
           .where(eq(usersTable.id, user.id));
 
         await redisSet(REDIS_KEYS.budget(activeMembershipId), String(parsed.data.monthlyBudgetCents));
