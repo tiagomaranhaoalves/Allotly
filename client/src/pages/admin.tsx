@@ -863,7 +863,7 @@ function ProxyStatsTab() {
           <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Total Cost</CardTitle></CardHeader>
           <CardContent>
             <div className="text-2xl font-bold" data-testid="stat-total-proxy-cost">
-              ${stats.byProvider.reduce((sum, p) => sum + p.totalCostCents, 0) / 100}
+              ${(stats.byProvider.reduce((sum, p) => sum + Number(p.totalCostCents), 0) / 100).toFixed(2)}
             </div>
           </CardContent>
         </Card>
@@ -887,8 +887,8 @@ function ProxyStatsTab() {
                   <TableRow key={p.provider}>
                     <TableCell className="font-medium">{p.provider}</TableCell>
                     <TableCell>{p.requests.toLocaleString()}</TableCell>
-                    <TableCell className="font-mono">${(p.totalCostCents / 100).toFixed(2)}</TableCell>
-                    <TableCell>{Math.round(p.avgDurationMs)}ms</TableCell>
+                    <TableCell className="font-mono">${(Number(p.totalCostCents) / 100).toFixed(2)}</TableCell>
+                    <TableCell>{Math.round(Number(p.avgDurationMs))}ms</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -912,7 +912,7 @@ function ProxyStatsTab() {
                   <TableRow key={m.model}>
                     <TableCell className="font-mono text-sm">{m.model}</TableCell>
                     <TableCell>{m.requests.toLocaleString()}</TableCell>
-                    <TableCell className="font-mono">${(m.totalCostCents / 100).toFixed(2)}</TableCell>
+                    <TableCell className="font-mono">${(Number(m.totalCostCents) / 100).toFixed(2)}</TableCell>
                   </TableRow>
                 ))}
                 {stats.byModel.length === 0 && (
