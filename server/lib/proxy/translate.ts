@@ -1,7 +1,7 @@
 export type ProviderType = "OPENAI" | "ANTHROPIC" | "GOOGLE";
 
 export function detectProvider(model: string): ProviderType | null {
-  if (model.startsWith("gpt-") || model.startsWith("o3") || model.startsWith("o4")) return "OPENAI";
+  if (model.startsWith("gpt-") || model.startsWith("o1") || model.startsWith("o3") || model.startsWith("o4")) return "OPENAI";
   if (model.startsWith("claude-")) return "ANTHROPIC";
   if (model.startsWith("gemini-")) return "GOOGLE";
   return null;
@@ -38,11 +38,19 @@ export function translateToProvider(
   const maxTokens = effectiveMaxTokens ?? request.max_tokens;
 
   if (provider === "OPENAI") {
+    const isReasoningModel = /^(o1|o3|o4)/.test(request.model);
+    const body = { ...request };
+    if (isReasoningModel && maxTokens) {
+      body.max_completion_tokens = maxTokens;
+      delete body.max_tokens;
+    } else {
+      body.max_tokens = maxTokens;
+    }
     return {
       url: "https://api.openai.com/v1/chat/completions",
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: { ...request, max_tokens: maxTokens },
+      body,
     };
   }
 
@@ -64,6 +72,9 @@ export function translateToProvider(
     if (systemText) anthropicBody.system = systemText;
     if (request.temperature !== undefined) anthropicBody.temperature = request.temperature;
     if (request.top_p !== undefined) anthropicBody.top_p = request.top_p;
+    if (request.stop) {
+      anthropicBody.stop_sequences = Array.isArray(request.stop) ? request.stop : [request.stop];
+    }
 
     return {
       url: "https://api.anthropic.com/v1/messages",

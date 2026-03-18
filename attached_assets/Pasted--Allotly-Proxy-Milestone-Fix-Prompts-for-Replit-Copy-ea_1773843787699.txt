@@ -1,0 +1,41 @@
+# Allotly Proxy — Milestone Fix Prompts for Replit
+
+Copy each milestone into Replit one at a time, in order. Wait for each to be completed and verified before moving to the next.
+
+---
+
+## Milestone 1 of 5: Anthropic Stop Sequences + Reasoning Model Parameters
+
+```
+CONTEXT: Allotly is an AI proxy at https://allotly.ai/api/v1 that accepts OpenAI-compatible requests and routes them to OpenAI, Anthropic, or Google. Two critical parameter translation bugs exist in the provider adapters.
+
+DO NOT BREAK existing functionality: core routing, streaming (SSE), budget enforcement, concurrency limiting, multi-turn conversations, temperature/top_p pass-through, and error response structure all work correctly.
+
+FIX 1 — Anthropic stop sequences (Critical):
+The proxy does not translate the OpenAI `stop` parameter to Anthropic's `stop_sequences`. When a user sends `stop: ["5"]` targeting a Claude model, the parameter is silently dropped and Anthropic returns a full untruncated response.
+
+In the Anthropic request adapter (the code that builds the request body for Anthropic's API), add:
+
+if (request.stop) {
+  anthropicBody.stop_sequences = Array.isArray(request.stop) ? request.stop : [request.stop];
+}
+
+OpenAI accepts `stop` as either a string or an array of strings, so handle both forms.
+
+FIX 2 — Reasoning model max_tokens (Critical):
+OpenAI reasoning models (o1, o3, o4-mini) require `max_completion_tokens` instead of `max_tokens`. When a user sends `max_tokens` targeting o3, OpenAI returns 400: "Unsupported parameter: 'max_tokens' is not supported with this model."
+
+In the OpenAI request adapter, detect reasoning models and translate:
+
+const isReasoningModel = /^(o1|o3|o4)/.test(model);
+if (isReasoningModel && requestBody.max_tokens) {
+  requestBody.max_completion_tokens = requestBody.max_tokens;
+  delete requestBody.max_tokens;
+}
+
+Also, `o1-pro` is listed in the /models catalog but requests to it fail with 400 "unsupported_model" because the model prefix matcher doesn't include `o1*`. Add `o1` to the supported prefixes list alongside gpt-, o3, o4, claude-, gemini-.
+
+After making these changes, verify by checking that the Anthropic adapter code includes `stop_sequences` mapping, the OpenAI adapter handles `max_completion_tokens` for reasoning models, and `o1-pro` is recognized by the model router.
+```
+
+---

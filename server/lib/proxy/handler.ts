@@ -226,7 +226,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
       budgetCtx = await buildBudgetCtx();
       return sendProxyError(res, createProxyError(400, "unsupported_model",
         `Model "${parsed.model}" is not supported`,
-        "Supported prefixes: gpt-*, o3*, o4* (OpenAI), claude-* (Anthropic), gemini-* (Google)"
+        "Supported prefixes: gpt-*, o1*, o3*, o4* (OpenAI), claude-* (Anthropic), gemini-* (Google)"
       ), budgetCtx);
     }
 
