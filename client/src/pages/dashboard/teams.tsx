@@ -15,7 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Textarea } from "@/components/ui/textarea";
-import { Users, Plus, Shield, DollarSign, Trash2, User, ChevronRight, CreditCard, Pencil } from "lucide-react";
+import { Users, Plus, Shield, DollarSign, Trash2, User, ChevronRight, CreditCard, Pencil, Info } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 
@@ -335,6 +335,13 @@ export default function TeamsPage() {
           Create Team
         </Button>
       </div>
+
+      {user?.orgRole === "ROOT_ADMIN" && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-lg px-4 py-2.5 border" data-testid="text-root-admin-tip">
+          <Info className="w-4 h-4 shrink-0" />
+          <span>As Root Admin, if you also need API Key access, just add yourself to a new or existing Team.</span>
+        </div>
+      )}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
