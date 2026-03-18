@@ -41,9 +41,9 @@ const chatRequestSchema = z.object({
   messages: z.array(z.object({
     role: z.enum(["system", "user", "assistant"]),
     content: z.union([z.string(), z.array(z.any())]),
-  })),
+  })).min(1, "messages must be a non-empty array"),
   stream: z.boolean().optional().default(false),
-  max_tokens: z.number().optional(),
+  max_tokens: z.number().int().min(1, "max_tokens must be at least 1").optional(),
   temperature: z.number().optional(),
   top_p: z.number().optional(),
 }).passthrough();
@@ -374,7 +374,13 @@ export async function handleChatCompletion(req: Request, res: Response) {
 
       const suggestion = getProviderErrorSuggestion(providerResponse.status, cleanMessage, provider);
       budgetCtx = await buildBudgetCtx();
-      return sendProxyError(res, createProxyError(502, "provider_error", cleanMessage, suggestion), budgetCtx);
+      const isClientError = providerResponse.status >= 400 && providerResponse.status < 500;
+      return sendProxyError(res, createProxyError(
+        isClientError ? 400 : 502,
+        isClientError ? "invalid_request" : "provider_error",
+        isClientError ? `Provider rejected request: ${cleanMessage}` : cleanMessage,
+        suggestion
+      ), budgetCtx);
     }
 
     if (clamped) {

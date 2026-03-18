@@ -1,0 +1,70 @@
+## Milestone 3 of 5: Request Validation Layer
+
+```
+CONTEXT: Allotly proxy currently forwards invalid requests to upstream providers, which reject them with 400 errors. The proxy wraps these as 502 "provider_error", which incorrectly signals a server-side issue to the client. Three validation gaps need fixing.
+
+FIX 1 — max_tokens: 0 silently ignored:
+Sending max_tokens: 0 produces a full response and charges the budget. The proxy should reject this before forwarding.
+
+Add to request validation, before forwarding to any provider:
+
+if (request.max_tokens !== undefined && request.max_tokens < 1) {
+  return res.status(400).json({
+    error: {
+      code: 'invalid_request',
+      message: 'max_tokens must be at least 1',
+      type: 'allotly_error'
+    }
+  });
+}
+
+FIX 2 — Empty messages array returns 502 instead of 400:
+Sending messages: [] gets forwarded to OpenAI, which returns 400. The proxy wraps this as 502.
+
+Add validation:
+
+if (!request.messages || !Array.isArray(request.messages) || request.messages.length === 0) {
+  return res.status(400).json({
+    error: {
+      code: 'invalid_request',
+      message: 'messages must be a non-empty array',
+      type: 'allotly_error'
+    }
+  });
+}
+
+if (request.max_tokens !== undefined && (typeof request.max_tokens !== 'number' || request.max_tokens < 0)) {
+  return res.status(400).json({
+    error: {
+      code: 'invalid_request',
+      message: 'max_tokens must be a non-negative integer',
+      type: 'allotly_error'
+    }
+  });
+}
+
+FIX 3 — Upstream 400s surfaced as 502:
+When an upstream provider returns a 400 (client error), the proxy should return 400, not 502. In the error handler that catches upstream failures:
+
+if (upstreamStatusCode >= 400 && upstreamStatusCode < 500) {
+  return res.status(400).json({
+    error: {
+      code: 'invalid_request',
+      message: `Provider rejected request: ${upstreamErrorMessage}`,
+      type: 'allotly_error'
+    }
+  });
+} else {
+  return res.status(502).json({
+    error: {
+      code: 'provider_error',
+      message: `${providerName} returned ${upstreamStatusCode}: ${upstreamErrorMessage}`,
+      type: 'allotly_error'
+    }
+  });
+}
+
+Reserve 502 exclusively for cases where the upstream is unreachable or returns 5xx.
+```
+
+---
