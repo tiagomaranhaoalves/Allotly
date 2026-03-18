@@ -184,9 +184,8 @@ export function translateResponseToOpenAI(
     const candidate = body.candidates?.[0];
     const text = candidate?.content?.parts?.map((p: any) => p.text || "").join("") || "";
     const promptTokens = body.usageMetadata?.promptTokenCount || 0;
+    const completionTokens = body.usageMetadata?.candidatesTokenCount || 0;
     const thinkingTokens = body.usageMetadata?.thoughtsTokenCount || 0;
-    const rawCandidates = body.usageMetadata?.candidatesTokenCount || 0;
-    const completionTokens = thinkingTokens > 0 ? Math.max(0, rawCandidates - thinkingTokens) : rawCandidates;
     const usage: Record<string, number> = {
       prompt_tokens: promptTokens,
       completion_tokens: completionTokens,
@@ -287,9 +286,8 @@ export function translateStreamChunkToOpenAI(
       };
 
       const gPrompt = parsed.usageMetadata?.promptTokenCount || 0;
+      const gCompletion = parsed.usageMetadata?.candidatesTokenCount || 0;
       const gThinking = parsed.usageMetadata?.thoughtsTokenCount || 0;
-      const gRawCandidates = parsed.usageMetadata?.candidatesTokenCount || 0;
-      const gCompletion = gThinking > 0 ? Math.max(0, gRawCandidates - gThinking) : gRawCandidates;
       const usage = parsed.usageMetadata ? {
         prompt_tokens: gPrompt,
         completion_tokens: gCompletion,
