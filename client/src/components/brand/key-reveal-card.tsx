@@ -34,7 +34,7 @@ export function KeyRevealCard({ keyValue, masked = true, className = "" }: KeyRe
         </div>
       )}
       <div className="flex items-center gap-2">
-        <code className="flex-1 font-mono text-sm bg-muted/50 px-3 py-2 rounded-md overflow-hidden text-ellipsis select-all" data-testid="text-api-key">
+        <code className="flex-1 font-mono text-sm bg-muted/50 px-3 py-2 rounded-md break-all select-all" data-testid="text-api-key">
           {displayValue}
         </code>
         <Button size="icon" variant="secondary" onClick={copy} data-testid="button-copy-key">
