@@ -205,14 +205,6 @@ export async function handleChatCompletion(req: Request, res: Response) {
       return sendProxyError(res, rlError, budgetCtx);
     }
 
-    const bundleError = await checkBundleRequestPool(membership);
-    if (bundleError) {
-      await releaseRateLimit(membershipId);
-      await releaseConcurrency(membershipId, requestId);
-      budgetCtx = await buildBudgetCtx();
-      return sendProxyError(res, bundleError, budgetCtx);
-    }
-
     const parseResult = chatRequestSchema.safeParse(req.body);
     if (!parseResult.success) {
       await releaseRateLimit(membershipId);
@@ -292,7 +284,6 @@ export async function handleChatCompletion(req: Request, res: Response) {
         GOOGLE: {
           "gemini-1.5-flash": "gemini-2.5-flash",
           "gemini-1.5-pro": "gemini-2.5-pro",
-          "gemini-2.0-flash": "gemini-2.5-flash",
         },
       };
       const alt = alternatives[provider]?.[parsed.model];
@@ -323,6 +314,16 @@ export async function handleChatCompletion(req: Request, res: Response) {
       await releaseConcurrency(membershipId, requestId);
       budgetCtx = await buildBudgetCtx();
       return sendProxyError(res, budgetResult, budgetCtx);
+    }
+
+    const bundleError = await checkBundleRequestPool(membership);
+    if (bundleError) {
+      await refundBudget(membershipId, reservedCostCents);
+      reservedCostCents = 0;
+      await releaseRateLimit(membershipId);
+      await releaseConcurrency(membershipId, requestId);
+      budgetCtx = await buildBudgetCtx();
+      return sendProxyError(res, bundleError, budgetCtx);
     }
 
     const adminApiKey = decryptProviderKey(

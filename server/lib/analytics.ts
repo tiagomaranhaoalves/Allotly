@@ -252,7 +252,7 @@ export async function getOptimizationRecommendations(orgId: string, teamId?: str
     "gpt-4-turbo": { cheaperModel: "gpt-4o-mini", pricingRatio: 0.01 },
     "claude-sonnet-4-20250514": { cheaperModel: "claude-haiku-3-5-20241022", pricingRatio: 0.08 },
     "claude-3-5-sonnet-20241022": { cheaperModel: "claude-haiku-3-5-20241022", pricingRatio: 0.08 },
-    "gemini-2.5-pro": { cheaperModel: "gemini-2.0-flash", pricingRatio: 0.1 },
+    "gemini-2.5-pro": { cheaperModel: "gemini-2.5-flash", pricingRatio: 0.1 },
   };
 
   for (const usage of modelUsage) {

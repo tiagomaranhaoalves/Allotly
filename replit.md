@@ -24,7 +24,7 @@ Allotly employs a robust architecture with a focus on real-time budget enforceme
 - **Real-time Budget Enforcement**: The proxy reserves budget before forwarding requests and refunds any overage after the response. Alerts are triggered at 80%, 90%, and 100% budget utilization.
 - **Pricing Formula**: `costCents = ceil(tokens * pricePerMTok / 1_000_000)` calculates costs based on tokens and a configurable price per million tokens.
 - **API Key Management**: AI provider API keys are encrypted using AES-256-GCM. The system includes functionality for key rotation, immediate validation, and connection testing to ensure provider health.
-- **Rate & Concurrency Limiting**: Tiered limits are implemented: Free (20rpm/2conc), Team-TEAM (60rpm/5conc), Team-VOUCHER (30rpm/2conc), and Enterprise (120rpm/10conc).
+- **Rate & Concurrency Limiting**: Tiered limits are implemented: Free (20rpm/2conc), Team-TEAM (60rpm/5conc), Team-VOUCHER (30rpm/2conc), and Enterprise (120rpm/10conc). Rate limit checks happen early (DDoS protection), but bundle pool checks are deferred until after all proxy validation passes — only fully-validated requests reaching upstream count against the user's quota.
 - **Plan Limits**: Configurable limits for various features (Teams, Team Admins, Members/Team, Providers, Vouchers, Data Retention) are defined and enforced per plan (FREE, TEAM, ENTERPRISE).
 - **Entity Management**: Comprehensive CRUD operations for core entities (Organization, Team, Member, Voucher, Provider) with detailed audit logging.
 - **Cascade Delete**: Robust cascade deletion logic ensures complete cleanup across all related entities when an organization, team, member, or voucher is deleted. These operations are wrapped in DB transactions for atomicity.
