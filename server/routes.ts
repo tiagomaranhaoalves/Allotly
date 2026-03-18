@@ -1078,17 +1078,34 @@ export async function registerRoutes(
       }
 
       const crypto = await import("crypto");
-      const randomPassword = crypto.randomBytes(32).toString("hex");
-      const passwordHash = await hashPassword(randomPassword);
-      const memberUser = await storage.createUser({
-        email,
-        name: name || email.split("@")[0],
-        passwordHash,
-        orgId: user.orgId,
-        orgRole: "MEMBER",
-        status: "INVITED",
-        isVoucherUser: false,
-      });
+
+      const existingUser = await storage.getUserByEmail(email);
+      let memberUser;
+      let isExistingUser = false;
+
+      if (existingUser) {
+        if (existingUser.orgId !== user.orgId) {
+          return res.status(400).json({ message: "This email belongs to a user in another organization" });
+        }
+        const existingMembership = await storage.getMembershipByUser(existingUser.id);
+        if (existingMembership) {
+          return res.status(400).json({ message: "This user already has an active team membership" });
+        }
+        memberUser = existingUser;
+        isExistingUser = true;
+      } else {
+        const randomPassword = crypto.randomBytes(32).toString("hex");
+        const passwordHash = await hashPassword(randomPassword);
+        memberUser = await storage.createUser({
+          email,
+          name: name || email.split("@")[0],
+          passwordHash,
+          orgId: user.orgId,
+          orgRole: "MEMBER",
+          status: "INVITED",
+          isVoucherUser: false,
+        });
+      }
 
       const now = new Date();
       const periodEnd = new Date(now);
@@ -1137,24 +1154,28 @@ export async function registerRoutes(
         metadata: { memberUserId: memberUser.id, keyPrefix },
       });
 
-      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      if (isExistingUser) {
+        res.json({ membership, user: { id: memberUser.id, email: memberUser.email, name: memberUser.name }, apiKey: rawKey, keyPrefix });
+      } else {
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
 
-      const rawToken = crypto.randomBytes(32).toString("hex");
-      const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-      await storage.createPasswordResetToken({ userId: memberUser.id, tokenHash, expiresAt });
+        const rawToken = crypto.randomBytes(32).toString("hex");
+        const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        await storage.createPasswordResetToken({ userId: memberUser.id, tokenHash, expiresAt });
 
-      const team = await storage.getTeam(targetTeamId);
-      const setupUrl = `${baseUrl}/invite/${rawToken}`;
-      const inviteEmail = emailTemplates.memberInvite(
-        name || email.split("@")[0],
-        team?.name || "your team",
-        user.name || user.email,
-        setupUrl
-      );
-      sendEmail(email, inviteEmail.subject, inviteEmail.html);
+        const team = await storage.getTeam(targetTeamId);
+        const setupUrl = `${baseUrl}/invite/${rawToken}`;
+        const inviteEmail = emailTemplates.memberInvite(
+          name || email.split("@")[0],
+          team?.name || "your team",
+          user.name || user.email,
+          setupUrl
+        );
+        sendEmail(email, inviteEmail.subject, inviteEmail.html);
 
-      res.json({ membership, user: { id: memberUser.id, email: memberUser.email, name: memberUser.name }, apiKey: rawKey, keyPrefix });
+        res.json({ membership, user: { id: memberUser.id, email: memberUser.email, name: memberUser.name }, apiKey: rawKey, keyPrefix });
+      }
     } catch (e: any) {
       if (e.code === "23505") {
         return res.status(400).json({ message: "Email already in use" });
