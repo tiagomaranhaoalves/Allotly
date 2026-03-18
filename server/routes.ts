@@ -964,9 +964,11 @@ export async function registerRoutes(
         if (existingUser.orgId !== user.orgId) {
           return res.status(400).json({ message: "This email belongs to a user in another organization" });
         }
-        const existingAdminTeam = await storage.getTeamByAdmin(existingUser.id);
-        if (existingAdminTeam) {
-          return res.status(400).json({ message: "This user is already an admin of another team" });
+        if (existingUser.orgRole !== "ROOT_ADMIN") {
+          const existingAdminTeam = await storage.getTeamByAdmin(existingUser.id);
+          if (existingAdminTeam) {
+            return res.status(400).json({ message: "This user is already an admin of another team" });
+          }
         }
         adminUser = existingUser;
         isExistingUser = true;
