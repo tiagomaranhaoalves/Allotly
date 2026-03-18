@@ -13,6 +13,7 @@ import {
   checkRateLimit,
   releaseRateLimit,
   checkBundleRequestPool,
+  getBundleRequestsRemaining,
   incrementBundleRequests,
   estimateInputTokens,
   estimateInputCostCents,
@@ -175,9 +176,11 @@ export async function handleChatCompletion(req: Request, res: Response) {
     const periodEnd = new Date(membership.periodEnd);
     const rlKey = REDIS_KEYS.ratelimit(membershipId);
 
-    const buildBudgetCtx = async (remaining?: number) => {
-      const currentRequests = await redisGet(rlKey);
-      const requestsRemaining = Math.max(0, tier.rpm - (parseInt(currentRequests || "0")));
+    const buildBudgetCtx = async (remaining?: number, countCurrentRequest: boolean = false) => {
+      const bundleRemaining = await getBundleRequestsRemaining(membership, countCurrentRequest);
+      const requestsRemaining = bundleRemaining !== null
+        ? bundleRemaining
+        : Math.max(0, tier.rpm - parseInt(await redisGet(rlKey) || "0"));
       const budgetKey = REDIS_KEYS.budget(membershipId!);
       const budgetRemaining = remaining ?? parseInt(await redisGet(budgetKey) || String(membership.monthlyBudgetCents - membership.currentPeriodSpendCents));
       return {
@@ -379,8 +382,10 @@ export async function handleChatCompletion(req: Request, res: Response) {
     }
     res.setHeader("X-Allotly-Budget-Remaining", String(budgetResult.remaining));
     res.setHeader("X-Allotly-Budget-Total", String(membership.monthlyBudgetCents));
-    const currentRequests = await redisGet(rlKey);
-    const requestsRemaining = Math.max(0, tier.rpm - (parseInt(currentRequests || "0")));
+    const bundleRemaining = await getBundleRequestsRemaining(membership, true);
+    const requestsRemaining = bundleRemaining !== null
+      ? bundleRemaining
+      : Math.max(0, tier.rpm - parseInt(await redisGet(rlKey) || "0"));
     res.setHeader("X-Allotly-Requests-Remaining", String(requestsRemaining));
     res.setHeader("X-Allotly-Expires", periodEnd.toISOString());
 

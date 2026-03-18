@@ -237,6 +237,25 @@ export async function checkBundleRequestPool(membership: TeamMembership): Promis
   return null;
 }
 
+export async function getBundleRequestsRemaining(membership: TeamMembership, includeCurrentRequest: boolean = false): Promise<number | null> {
+  if (!membership.voucherRedemptionId) return null;
+
+  const voucher = await storage.getVoucher(membership.voucherRedemptionId);
+  if (!voucher?.bundleId) return null;
+
+  const bundle = await storage.getVoucherBundle(voucher.bundleId);
+  if (!bundle) return null;
+
+  const usedKey = REDIS_KEYS.bundleRequests(bundle.id);
+  let used = await redisGet(usedKey);
+  if (used === null) {
+    used = String(bundle.usedProxyRequests);
+  }
+
+  const usedCount = parseInt(used) + (includeCurrentRequest ? 1 : 0);
+  return Math.max(0, bundle.totalProxyRequests - usedCount);
+}
+
 export async function incrementBundleRequests(membership: TeamMembership): Promise<void> {
   if (!membership.voucherRedemptionId) return;
 
