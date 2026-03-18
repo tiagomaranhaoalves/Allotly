@@ -37,7 +37,7 @@ export default function VouchersPage() {
   const [budgetDollars, setBudgetDollars] = useState("5");
   const [maxRedemptions, setMaxRedemptions] = useState("5");
   const [expiryDays, setExpiryDays] = useState("1");
-  const [providers, setProviders] = useState<string[]>(["OPENAI", "ANTHROPIC"]);
+  const [providers, setProviders] = useState<string[]>(["OPENAI", "ANTHROPIC", "GOOGLE"]);
   const [createdCode, setCreatedCode] = useState("");
   const [selectedBundleId, setSelectedBundleId] = useState("");
 
@@ -45,7 +45,7 @@ export default function VouchersPage() {
   const [bulkCount, setBulkCount] = useState("10");
   const [bulkBudget, setBulkBudget] = useState("5");
   const [bulkExpiryDays, setBulkExpiryDays] = useState("7");
-  const [bulkProviders, setBulkProviders] = useState<string[]>(["OPENAI", "ANTHROPIC"]);
+  const [bulkProviders, setBulkProviders] = useState<string[]>(["OPENAI", "ANTHROPIC", "GOOGLE"]);
   const [bulkLabel, setBulkLabel] = useState("");
   const [bulkCreatedCodes, setBulkCreatedCodes] = useState<{ id: string; code: string; budgetCents: number; expiresAt: string }[]>([]);
 
