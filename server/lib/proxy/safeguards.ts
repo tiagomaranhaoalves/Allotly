@@ -18,6 +18,7 @@ export interface AuthResult {
   membership: TeamMembership;
   userId: string;
   keyHash: string;
+  apiKeyId: string;
 }
 
 export async function authenticateKey(authHeader: string | undefined): Promise<AuthResult | ProxyError> {
@@ -35,7 +36,7 @@ export async function authenticateKey(authHeader: string | undefined): Promise<A
   const cached = await redisGet(REDIS_KEYS.apiKeyCache(keyHash));
   if (cached) {
     const data = JSON.parse(cached);
-    return { membership: data.membership, userId: data.userId, keyHash };
+    return { membership: data.membership, userId: data.userId, keyHash, apiKeyId: data.apiKeyId };
   }
 
   const apiKey = await storage.getApiKeyByHash(keyHash);
@@ -71,9 +72,10 @@ export async function authenticateKey(authHeader: string | undefined): Promise<A
   await redisSet(REDIS_KEYS.apiKeyCache(keyHash), JSON.stringify({
     membership,
     userId: apiKey.userId,
+    apiKeyId: apiKey.id,
   }), 60);
 
-  return { membership, userId: apiKey.userId, keyHash };
+  return { membership, userId: apiKey.userId, keyHash, apiKeyId: apiKey.id };
 }
 
 export async function checkConcurrency(membershipId: string, requestId: string, maxConcurrent: number = 2): Promise<ProxyError | null> {

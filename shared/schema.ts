@@ -115,10 +115,22 @@ export const providerConnections = pgTable("provider_connections", {
   uniqueIndex("provider_connections_org_provider_idx").on(table.orgId, table.provider),
 ]);
 
+export const projects = pgTable("projects", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  teamId: varchar("team_id").notNull().references(() => teams.id),
+  name: text("name").notNull(),
+  description: text("description"),
+  createdById: varchar("created_by_id").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("projects_team_idx").on(table.teamId),
+]);
+
 export const allotlyApiKeys = pgTable("allotly_api_keys", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id),
   membershipId: varchar("membership_id").notNull(),
+  projectId: varchar("project_id").references(() => projects.id),
   keyHash: text("key_hash").notNull().unique(),
   keyPrefix: text("key_prefix").notNull(),
   status: allotlyKeyStatusEnum("status").default("ACTIVE").notNull(),
@@ -159,6 +171,7 @@ export const budgetAlerts = pgTable("budget_alerts", {
 export const proxyRequestLogs = pgTable("proxy_request_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   membershipId: varchar("membership_id").notNull().references(() => teamMemberships.id),
+  apiKeyId: varchar("api_key_id").references(() => allotlyApiKeys.id),
   provider: providerEnum("provider").notNull(),
   model: text("model").notNull(),
   inputTokens: integer("input_tokens").notNull(),
@@ -278,6 +291,7 @@ export const insertProviderConnectionSchema = createInsertSchema(providerConnect
 export const insertVoucherSchema = createInsertSchema(vouchers).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({ id: true, createdAt: true });
 export const insertModelPricingSchema = createInsertSchema(modelPricing).omit({ id: true, updatedAt: true });
+export const insertProjectSchema = createInsertSchema(projects).omit({ id: true, createdAt: true });
 
 export type Organization = typeof organizations.$inferSelect;
 export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;
@@ -295,6 +309,8 @@ export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
 export type ModelPricing = typeof modelPricing.$inferSelect;
 export type VoucherBundle = typeof voucherBundles.$inferSelect;
+export type Project = typeof projects.$inferSelect;
+export type InsertProject = z.infer<typeof insertProjectSchema>;
 export type ProxyRequestLog = typeof proxyRequestLogs.$inferSelect;
 export type UsageSnapshot = typeof usageSnapshots.$inferSelect;
 export type BudgetAlert = typeof budgetAlerts.$inferSelect;

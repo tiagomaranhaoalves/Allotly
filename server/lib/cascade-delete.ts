@@ -4,7 +4,7 @@ import {
   organizations, users, teams, teamMemberships, providerConnections,
   allotlyApiKeys, usageSnapshots, proxyRequestLogs, budgetAlerts,
   vouchers, voucherRedemptions, voucherBundles, auditLogs, platformAuditLogs,
-  passwordResetTokens,
+  passwordResetTokens, projects,
 } from "@shared/schema";
 import { redisDel, redisKeys, REDIS_KEYS } from "./redis";
 
@@ -119,6 +119,11 @@ export async function cascadeDeleteOrganization(
     }
 
     if (teamIds.length > 0) {
+      const projectResult = await tx.delete(projects)
+        .where(inArray(projects.teamId, teamIds))
+        .returning();
+      counts.projects = projectResult.length;
+
       const voucherList = await tx.select().from(vouchers)
         .where(inArray(vouchers.teamId, teamIds));
       const voucherIds = voucherList.map(v => v.id);
@@ -230,6 +235,11 @@ export async function cascadeDeleteTeam(
       counts.teamMemberships = membershipResult.length;
     }
 
+    const projectResult = await tx.delete(projects)
+      .where(eq(projects.teamId, teamId))
+      .returning();
+    counts.projects = projectResult.length;
+
     const voucherList = await tx.select().from(vouchers).where(eq(vouchers.teamId, teamId));
     if (voucherList.length > 0) {
       const voucherIds = voucherList.map(v => v.id);
@@ -273,15 +283,15 @@ export async function cascadeDeleteMember(
     const revokedKeys = await revokeKeysAndClearRedis(tx, [membershipId]);
     counts.revokedKeys = revokedKeys;
 
-    const apiKeyResult = await tx.delete(allotlyApiKeys)
-      .where(eq(allotlyApiKeys.membershipId, membershipId))
-      .returning();
-    counts.apiKeys = apiKeyResult.length;
-
     const proxyResult = await tx.delete(proxyRequestLogs)
       .where(eq(proxyRequestLogs.membershipId, membershipId))
       .returning();
     counts.proxyRequestLogs = proxyResult.length;
+
+    const apiKeyResult = await tx.delete(allotlyApiKeys)
+      .where(eq(allotlyApiKeys.membershipId, membershipId))
+      .returning();
+    counts.apiKeys = apiKeyResult.length;
 
     const usageResult = await tx.delete(usageSnapshots)
       .where(eq(usageSnapshots.membershipId, membershipId))
@@ -362,10 +372,10 @@ export async function cascadeDeleteVoucher(
         if (membership) {
           await revokeKeysAndClearRedis(tx, [membership.id]);
 
-          await tx.delete(allotlyApiKeys)
-            .where(eq(allotlyApiKeys.membershipId, membership.id));
           await tx.delete(proxyRequestLogs)
             .where(eq(proxyRequestLogs.membershipId, membership.id));
+          await tx.delete(allotlyApiKeys)
+            .where(eq(allotlyApiKeys.membershipId, membership.id));
           await tx.delete(usageSnapshots)
             .where(eq(usageSnapshots.membershipId, membership.id));
           await tx.delete(budgetAlerts)

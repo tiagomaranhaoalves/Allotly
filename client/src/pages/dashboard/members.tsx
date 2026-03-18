@@ -29,6 +29,7 @@ import {
   AlertTriangle, Trash2, Pencil,
   RefreshCw, ShieldOff, ArrowRightLeft, Shield, Send,
   Activity, RotateCcw, CreditCard, Zap, Key, Bell, ClipboardList,
+  FolderOpen, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -1102,6 +1103,185 @@ function BulkActionBar({
   );
 }
 
+function ProjectsSection({ teamId }: { teamId: string }) {
+  const { toast } = useToast();
+  const [expanded, setExpanded] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+
+  const { data: projects, isLoading } = useQuery<any[]>({
+    queryKey: ["/api/teams", teamId, "projects"],
+    queryFn: async () => {
+      const res = await fetch(`/api/teams/${teamId}/projects`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load projects");
+      return res.json();
+    },
+    enabled: !!teamId,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/teams/${teamId}/projects`, {
+        name: newName.trim(),
+        description: newDesc.trim() || undefined,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/teams", teamId, "projects"] });
+      toast({ title: "Project created" });
+      setShowCreate(false);
+      setNewName("");
+      setNewDesc("");
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to create project", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const renameMutation = useMutation({
+    mutationFn: async ({ id, name }: { id: string; name: string }) => {
+      const res = await apiRequest("PATCH", `/api/projects/${id}`, { name });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/teams", teamId, "projects"] });
+      toast({ title: "Project renamed" });
+      setEditingId(null);
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to rename", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/projects/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/teams", teamId, "projects"] });
+      toast({ title: "Project deleted" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to delete", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const count = projects?.length || 0;
+
+  return (
+    <Card className="overflow-hidden" data-testid="card-projects">
+      <button
+        className="w-full flex items-center justify-between p-4 hover:bg-muted/30 transition-colors text-left"
+        onClick={() => setExpanded(!expanded)}
+        data-testid="button-toggle-projects"
+      >
+        <div className="flex items-center gap-2">
+          <FolderOpen className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm font-semibold">Projects</span>
+          <Badge variant="secondary" className="text-xs">{count}</Badge>
+        </div>
+        {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+      </button>
+
+      {expanded && (
+        <div className="px-4 pb-4 space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Projects help organize API keys by purpose. Members can assign their keys to these projects for usage tracking.
+          </p>
+
+          {isLoading ? (
+            <Skeleton className="h-16" />
+          ) : projects && projects.length > 0 ? (
+            <div className="space-y-2">
+              {projects.map((p: any) => (
+                <div key={p.id} className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/50" data-testid={`project-row-${p.id}`}>
+                  {editingId === p.id ? (
+                    <>
+                      <Input
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        className="h-8 text-sm flex-1"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && editName.trim()) renameMutation.mutate({ id: p.id, name: editName.trim() });
+                          if (e.key === "Escape") setEditingId(null);
+                        }}
+                        data-testid={`input-rename-project-${p.id}`}
+                      />
+                      <Button size="sm" variant="ghost" onClick={() => { if (editName.trim()) renameMutation.mutate({ id: p.id, name: editName.trim() }); }}>
+                        Save
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>Cancel</Button>
+                    </>
+                  ) : (
+                    <>
+                      <FolderOpen className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      <span className="text-sm font-medium flex-1">{p.name}</span>
+                      {p.description && <span className="text-xs text-muted-foreground hidden sm:inline">{p.description}</span>}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => { setEditingId(p.id); setEditName(p.name); }}
+                        data-testid={`button-rename-project-${p.id}`}
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => { if (confirm(`Delete project "${p.name}"?`)) deleteMutation.mutate(p.id); }}
+                        disabled={deleteMutation.isPending}
+                        data-testid={`button-delete-project-${p.id}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground py-2">No projects yet</p>
+          )}
+
+          {showCreate ? (
+            <div className="space-y-2 p-3 rounded-lg border">
+              <Input
+                placeholder="Project name"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                maxLength={100}
+                data-testid="input-new-project-name"
+              />
+              <Input
+                placeholder="Description (optional)"
+                value={newDesc}
+                onChange={(e) => setNewDesc(e.target.value)}
+                maxLength={500}
+                data-testid="input-new-project-desc"
+              />
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => createMutation.mutate()} disabled={!newName.trim() || createMutation.isPending} data-testid="button-confirm-create-project">
+                  {createMutation.isPending ? "Creating..." : "Create"}
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => { setShowCreate(false); setNewName(""); setNewDesc(""); }}>Cancel</Button>
+              </div>
+            </div>
+          ) : (
+            <Button size="sm" variant="outline" onClick={() => setShowCreate(true)} data-testid="button-add-project">
+              <Plus className="w-3.5 h-3.5 mr-1" /> Add Project
+            </Button>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export default function MembersPage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -1377,6 +1557,10 @@ export default function MembersPage() {
           members={members}
           onClearSelection={() => setSelectedMemberIds(new Set())}
         />
+      )}
+
+      {user?.orgRole !== "MEMBER" && (selectedTeam || teams?.[0]?.id) && (
+        <ProjectsSection teamId={selectedTeam || teams?.[0]?.id} />
       )}
 
       {isLoading ? (

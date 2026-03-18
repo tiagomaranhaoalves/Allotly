@@ -5,10 +5,11 @@ import {
   type AuditLog, type InsertAuditLog, type ModelPricing,
   type VoucherBundle, type ProxyRequestLog, type UsageSnapshot,
   type AllotlyApiKey, type VoucherRedemption, type BudgetAlert,
+  type Project, type InsertProject,
   organizations, users, teams, teamMemberships, providerConnections,
   vouchers, voucherRedemptions, voucherBundles, auditLogs, modelPricing,
   allotlyApiKeys, usageSnapshots, proxyRequestLogs, budgetAlerts,
-  passwordResetTokens,
+  passwordResetTokens, projects,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, asc, gte, lte, count, inArray } from "drizzle-orm";
@@ -69,10 +70,19 @@ export interface IStorage {
   deleteMembership(id: string): Promise<void>;
   deleteUser(id: string): Promise<void>;
 
-  createAllotlyApiKey(data: { userId: string; membershipId: string; keyHash: string; keyPrefix: string }): Promise<AllotlyApiKey>;
+  createAllotlyApiKey(data: { userId: string; membershipId: string; keyHash: string; keyPrefix: string; projectId?: string }): Promise<AllotlyApiKey>;
   getApiKeyByHash(hash: string): Promise<AllotlyApiKey | undefined>;
   updateAllotlyApiKey(id: string, data: Partial<AllotlyApiKey>): Promise<AllotlyApiKey | undefined>;
   getActiveKeyByUserId(userId: string): Promise<AllotlyApiKey | undefined>;
+  getActiveKeysByUserId(userId: string): Promise<AllotlyApiKey[]>;
+  getActiveKeyCountByMembership(membershipId: string): Promise<number>;
+
+  createProject(data: InsertProject): Promise<Project>;
+  getProject(id: string): Promise<Project | undefined>;
+  getProjectsByTeam(teamId: string): Promise<Project[]>;
+  updateProject(id: string, data: Partial<Project>): Promise<Project | undefined>;
+  deleteProject(id: string): Promise<void>;
+  getActiveKeyCountByProject(projectId: string): Promise<number>;
 
   createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
   getAuditLogsByOrg(orgId: string, limit?: number, offset?: number): Promise<AuditLog[]>;
@@ -361,7 +371,7 @@ export class DrizzleStorage implements IStorage {
     await db.delete(users).where(eq(users.id, id));
   }
 
-  async createAllotlyApiKey(data: { userId: string; membershipId: string; keyHash: string; keyPrefix: string }): Promise<AllotlyApiKey> {
+  async createAllotlyApiKey(data: { userId: string; membershipId: string; keyHash: string; keyPrefix: string; projectId?: string }): Promise<AllotlyApiKey> {
     const [result] = await db.insert(allotlyApiKeys).values(data).returning();
     return result;
   }
@@ -380,6 +390,48 @@ export class DrizzleStorage implements IStorage {
     const [result] = await db.select().from(allotlyApiKeys)
       .where(and(eq(allotlyApiKeys.userId, userId), eq(allotlyApiKeys.status, "ACTIVE")));
     return result;
+  }
+
+  async getActiveKeysByUserId(userId: string): Promise<AllotlyApiKey[]> {
+    return db.select().from(allotlyApiKeys)
+      .where(and(eq(allotlyApiKeys.userId, userId), eq(allotlyApiKeys.status, "ACTIVE")))
+      .orderBy(desc(allotlyApiKeys.createdAt));
+  }
+
+  async getActiveKeyCountByMembership(membershipId: string): Promise<number> {
+    const [result] = await db.select({ count: count() }).from(allotlyApiKeys)
+      .where(and(eq(allotlyApiKeys.membershipId, membershipId), eq(allotlyApiKeys.status, "ACTIVE")));
+    return Number(result?.count || 0);
+  }
+
+  async createProject(data: InsertProject): Promise<Project> {
+    const [result] = await db.insert(projects).values(data).returning();
+    return result;
+  }
+
+  async getProject(id: string): Promise<Project | undefined> {
+    const [result] = await db.select().from(projects).where(eq(projects.id, id));
+    return result;
+  }
+
+  async getProjectsByTeam(teamId: string): Promise<Project[]> {
+    return db.select().from(projects).where(eq(projects.teamId, teamId)).orderBy(asc(projects.name));
+  }
+
+  async updateProject(id: string, data: Partial<Project>): Promise<Project | undefined> {
+    const [result] = await db.update(projects).set(data).where(eq(projects.id, id)).returning();
+    return result;
+  }
+
+  async deleteProject(id: string): Promise<void> {
+    await db.update(allotlyApiKeys).set({ projectId: null }).where(eq(allotlyApiKeys.projectId, id));
+    await db.delete(projects).where(eq(projects.id, id));
+  }
+
+  async getActiveKeyCountByProject(projectId: string): Promise<number> {
+    const [result] = await db.select({ count: count() }).from(allotlyApiKeys)
+      .where(and(eq(allotlyApiKeys.projectId, projectId), eq(allotlyApiKeys.status, "ACTIVE")));
+    return Number(result?.count || 0);
   }
 
   async createAuditLog(log: InsertAuditLog): Promise<AuditLog> {
@@ -651,6 +703,28 @@ export class DrizzleStorage implements IStorage {
 
     const team = await this.getTeam(membership.teamId);
 
+    const activeKeys = keys.filter(k => k.status === "ACTIVE");
+    const teamProjects = await this.getProjectsByTeam(membership.teamId);
+    const projectMap = new Map(teamProjects.map(p => [p.id, p.name]));
+    const keysWithProjects = activeKeys.map(k => ({
+      id: k.id,
+      keyPrefix: k.keyPrefix,
+      projectId: k.projectId,
+      projectName: k.projectId ? (projectMap.get(k.projectId) || null) : null,
+      createdAt: k.createdAt,
+      lastUsedAt: k.lastUsedAt,
+    }));
+
+    const allKeys = keys;
+    const keyProjectMap = new Map<string, string | null>();
+    for (const k of allKeys) {
+      keyProjectMap.set(k.id, k.projectId ? (projectMap.get(k.projectId) || null) : null);
+    }
+    const enrichedLogs = proxyLogs.map(log => ({
+      ...log,
+      projectName: log.apiKeyId ? (keyProjectMap.get(log.apiKeyId) || null) : null,
+    }));
+
     return {
       membership,
       accessType: membership.accessType,
@@ -661,7 +735,9 @@ export class DrizzleStorage implements IStorage {
       status: membership.status,
       teamName: team?.name || "Unknown",
       keyPrefix: activeKey?.keyPrefix || null,
-      proxyLogs,
+      activeKeys: keysWithProjects,
+      projects: teamProjects,
+      proxyLogs: enrichedLogs,
       usageSnapshots: snapshots,
       availableModels,
       voucherInfo,
@@ -726,6 +802,12 @@ export class DrizzleStorage implements IStorage {
           if (!ownerName.toLowerCase().startsWith(s) && !ownerEmail.toLowerCase().startsWith(s)) continue;
         }
 
+        let projectName: string | null = null;
+        if (key.projectId) {
+          const project = await this.getProject(key.projectId);
+          projectName = project?.name || null;
+        }
+
         results.push({
           id: key.id,
           keyPrefix: key.keyPrefix,
@@ -738,6 +820,8 @@ export class DrizzleStorage implements IStorage {
           lastUsed: key.lastUsedAt,
           status: key.status,
           membershipId: m.id,
+          projectId: key.projectId,
+          projectName,
         });
       }
     }

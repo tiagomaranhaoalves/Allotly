@@ -28,6 +28,8 @@ interface ApiKeyAudit {
   lastUsed: string | null;
   status: string;
   membershipId: string;
+  projectId: string | null;
+  projectName: string | null;
 }
 
 interface Team {
@@ -211,6 +213,7 @@ function KeyAuditView() {
                   <th className="p-3 text-left font-medium">Owner</th>
                   <th className="p-3 text-left font-medium">Type</th>
                   <th className="p-3 text-left font-medium">Team</th>
+                  <th className="p-3 text-left font-medium">Project</th>
                   <th className="p-3 text-left font-medium">Status</th>
                   <th className="p-3 text-left font-medium">Created</th>
                   <th className="p-3 text-left font-medium">Last Used</th>
@@ -256,6 +259,9 @@ function KeyAuditView() {
                       </Badge>
                     </td>
                     <td className="p-3 text-xs text-muted-foreground">{k.teamName}</td>
+                    <td className="p-3 text-xs text-muted-foreground" data-testid={`text-key-project-${k.id}`}>
+                      {k.projectName || <span className="text-muted-foreground/50">—</span>}
+                    </td>
                     <td className="p-3">
                       <Badge
                         variant="secondary"

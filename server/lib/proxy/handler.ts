@@ -158,7 +158,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
       return sendProxyError(res, authResult);
     }
 
-    const { membership, userId } = authResult;
+    const { membership, userId, apiKeyId } = authResult;
     membershipId = membership.id;
 
     const team = await storage.getTeam(membership.teamId);
@@ -468,6 +468,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
       try {
         await storage.createProxyRequestLog({
           membershipId: membershipId!,
+          apiKeyId,
           provider,
           model: parsed.model,
           inputTokens: actualInputTokens,

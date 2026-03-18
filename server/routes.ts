@@ -2077,6 +2077,287 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/teams/:teamId/projects", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(401).json({ message: "Unauthorized" });
+
+      const team = await storage.getTeam(req.params.teamId);
+      if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Team not found" });
+
+      const projects = await storage.getProjectsByTeam(team.id);
+      res.json(projects);
+    } catch (e: any) {
+      console.error("List projects error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/teams/:teamId/projects", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(401).json({ message: "Unauthorized" });
+
+      const team = await storage.getTeam(req.params.teamId);
+      if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Team not found" });
+
+      const createProjectSchema = z.object({
+        name: z.string().min(1).max(100).trim(),
+        description: z.string().max(500).optional(),
+      });
+      const parsed = createProjectSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+
+      const existing = await storage.getProjectsByTeam(team.id);
+      if (existing.some(p => p.name.toLowerCase() === parsed.data.name.toLowerCase())) {
+        return res.status(409).json({ message: "A project with this name already exists in this team" });
+      }
+
+      if (existing.length >= 50) {
+        return res.status(400).json({ message: "Maximum of 50 projects per team reached" });
+      }
+
+      const project = await storage.createProject({
+        teamId: team.id,
+        name: parsed.data.name,
+        description: parsed.data.description || null,
+        createdById: user.id,
+      });
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "project.created",
+        targetType: "project",
+        targetId: project.id,
+        metadata: { name: project.name, teamId: team.id },
+      });
+
+      res.status(201).json(project);
+    } catch (e: any) {
+      console.error("Create project error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/projects/:id", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(401).json({ message: "Unauthorized" });
+
+      const project = await storage.getProject(req.params.id);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+
+      const team = await storage.getTeam(project.teamId);
+      if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Project not found" });
+
+      const isAdmin = user.orgRole === "ROOT_ADMIN" || (user.orgRole === "TEAM_ADMIN" && team.adminId === user.id);
+      if (!isAdmin) return res.status(403).json({ message: "Only team admins can edit projects" });
+
+      const updateProjectSchema = z.object({
+        name: z.string().min(1).max(100).trim().optional(),
+        description: z.string().max(500).nullable().optional(),
+      });
+      const parsed = updateProjectSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+
+      if (parsed.data.name) {
+        const existing = await storage.getProjectsByTeam(team.id);
+        if (existing.some(p => p.id !== project.id && p.name.toLowerCase() === parsed.data.name!.toLowerCase())) {
+          return res.status(409).json({ message: "A project with this name already exists in this team" });
+        }
+      }
+
+      const updated = await storage.updateProject(project.id, parsed.data);
+      res.json(updated);
+    } catch (e: any) {
+      console.error("Update project error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/projects/:id", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(401).json({ message: "Unauthorized" });
+
+      const project = await storage.getProject(req.params.id);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+
+      const team = await storage.getTeam(project.teamId);
+      if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Project not found" });
+
+      const isAdmin = user.orgRole === "ROOT_ADMIN" || (user.orgRole === "TEAM_ADMIN" && team.adminId === user.id);
+      if (!isAdmin) return res.status(403).json({ message: "Only team admins can delete projects" });
+
+      const activeKeys = await storage.getActiveKeyCountByProject(project.id);
+      if (activeKeys > 0) {
+        return res.status(400).json({ message: `Cannot delete project with ${activeKeys} active key(s). Revoke them first.` });
+      }
+
+      await storage.deleteProject(project.id);
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "project.deleted",
+        targetType: "project",
+        targetId: project.id,
+        metadata: { name: project.name, teamId: team.id },
+      });
+
+      res.json({ message: "Project deleted" });
+    } catch (e: any) {
+      console.error("Delete project error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/me/keys", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(401).json({ message: "Unauthorized" });
+
+      const membership = await storage.getMembershipByUser(user.id);
+      if (!membership) return res.status(404).json({ message: "No active membership found" });
+      if (membership.status !== "ACTIVE") return res.status(400).json({ message: "Membership is not active" });
+
+      const activeCount = await storage.getActiveKeyCountByMembership(membership.id);
+      if (activeCount >= 10) {
+        return res.status(400).json({ message: "Maximum of 10 active API keys per membership. Revoke an existing key first." });
+      }
+
+      const createKeySchema = z.object({
+        projectId: z.string().optional(),
+        newProjectName: z.string().min(1).max(100).trim().optional(),
+      }).refine(data => !(data.projectId && data.newProjectName), {
+        message: "Provide either projectId or newProjectName, not both",
+      });
+      const parsed = createKeySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+
+      let projectId: string | undefined;
+
+      if (parsed.data.projectId) {
+        const project = await storage.getProject(parsed.data.projectId);
+        if (!project || project.teamId !== membership.teamId) {
+          return res.status(400).json({ message: "Project not found in your team" });
+        }
+        projectId = project.id;
+      } else if (parsed.data.newProjectName) {
+        const existing = await storage.getProjectsByTeam(membership.teamId);
+        const dup = existing.find(p => p.name.toLowerCase() === parsed.data.newProjectName!.toLowerCase());
+        if (dup) {
+          projectId = dup.id;
+        } else {
+          if (existing.length >= 50) {
+            return res.status(400).json({ message: "Maximum of 50 projects per team reached" });
+          }
+          const newProject = await storage.createProject({
+            teamId: membership.teamId,
+            name: parsed.data.newProjectName,
+            createdById: user.id,
+          });
+          projectId = newProject.id;
+        }
+      }
+
+      const { key: rawKey, hash, prefix } = generateAllotlyKey();
+      const apiKey = await storage.createAllotlyApiKey({
+        userId: user.id,
+        membershipId: membership.id,
+        keyHash: hash,
+        keyPrefix: prefix,
+        projectId,
+      });
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "key.created_self_service",
+        targetType: "allotly_api_key",
+        targetId: apiKey.id,
+        metadata: { keyPrefix: prefix, projectId: projectId || null },
+      });
+
+      const projectName = projectId ? (await storage.getProject(projectId))?.name : null;
+
+      res.status(201).json({
+        apiKey: rawKey,
+        keyPrefix: prefix,
+        keyId: apiKey.id,
+        projectId: projectId || null,
+        projectName: projectName || null,
+      });
+    } catch (e: any) {
+      console.error("Create project key error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/me/keys", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(401).json({ message: "Unauthorized" });
+
+      const membership = await storage.getMembershipByUser(user.id);
+      if (!membership) return res.status(404).json({ message: "No active membership found" });
+
+      const keys = await storage.getApiKeysByMembership(membership.id);
+      const activeKeys = keys.filter(k => k.status === "ACTIVE");
+
+      const teamProjects = await storage.getProjectsByTeam(membership.teamId);
+      const projectMap = new Map(teamProjects.map(p => [p.id, p.name]));
+
+      const result = activeKeys.map(k => ({
+        id: k.id,
+        keyPrefix: k.keyPrefix,
+        projectId: k.projectId,
+        projectName: k.projectId ? (projectMap.get(k.projectId) || null) : null,
+        createdAt: k.createdAt,
+        lastUsedAt: k.lastUsedAt,
+      }));
+
+      res.json(result);
+    } catch (e: any) {
+      console.error("List my keys error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/me/keys/:keyId", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(401).json({ message: "Unauthorized" });
+
+      const membership = await storage.getMembershipByUser(user.id);
+      if (!membership) return res.status(404).json({ message: "No active membership found" });
+
+      const keys = await storage.getApiKeysByMembership(membership.id);
+      const key = keys.find(k => k.id === req.params.keyId && k.status === "ACTIVE");
+      if (!key) return res.status(404).json({ message: "Key not found or already revoked" });
+
+      await storage.updateAllotlyApiKey(key.id, { status: "REVOKED" });
+
+      const { redisDel: redisDelKey, REDIS_KEYS: redisKeys } = await import("./lib/redis");
+      await redisDelKey(redisKeys.apiKeyCache(key.keyHash));
+
+      await storage.createAuditLog({
+        orgId: user.orgId,
+        actorId: user.id,
+        action: "key.revoked_self_service",
+        targetType: "allotly_api_key",
+        targetId: key.id,
+        metadata: { keyPrefix: key.keyPrefix, projectId: key.projectId || null },
+      });
+
+      res.json({ message: "Key revoked" });
+    } catch (e: any) {
+      console.error("Revoke my key error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.patch("/api/teams/:id", requireAuth, async (req, res) => {
     try {
       const user = await storage.getUser(req.session.userId!);
@@ -4136,11 +4417,23 @@ export async function registerRoutes(
 
       for (const tId of targetTeamIds) {
         const members = await storage.getMembersByTeam(tId);
+        const teamProjects = await storage.getProjectsByTeam(tId);
+        const projectMap = new Map(teamProjects.map(p => [p.id, p.name]));
+
         for (const m of members) {
           if (memberId && m.id !== memberId) continue;
           const logs = await storage.getProxyRequestLogsByMembership(m.id, 10000);
           const memberUser = await storage.getUser(m.userId);
           const team = teams.find(t => t.id === tId);
+
+          const memberKeys = await storage.getApiKeysByMembership(m.id);
+          const keyProjectMap = new Map<string, string>();
+          for (const k of memberKeys) {
+            if (k.projectId) {
+              keyProjectMap.set(k.id, projectMap.get(k.projectId) || "");
+            }
+          }
+
           for (const l of logs) {
             if (startDate && new Date(l.createdAt) < new Date(startDate)) continue;
             if (endDate && new Date(l.createdAt) > new Date(endDate)) continue;
@@ -4152,6 +4445,7 @@ export async function registerRoutes(
               memberEmail: memberUser?.email || "",
               teamName: team?.name || "",
               accessType: m.accessType,
+              project: l.apiKeyId ? (keyProjectMap.get(l.apiKeyId) || "") : "",
               model: l.model,
               provider: l.provider,
               inputTokens: l.inputTokens || 0,
@@ -4166,9 +4460,9 @@ export async function registerRoutes(
 
       allLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-      const csvLines = ["timestamp,memberName,memberEmail,teamName,accessType,model,provider,inputTokens,outputTokens,totalTokens,costCents,responseStatus"];
+      const csvLines = ["timestamp,memberName,memberEmail,teamName,accessType,project,model,provider,inputTokens,outputTokens,totalTokens,costCents,responseStatus"];
       for (const row of allLogs) {
-        csvLines.push(`${csvSafe(row.timestamp)},${csvSafe(row.memberName)},${csvSafe(row.memberEmail)},${csvSafe(row.teamName)},${csvSafe(row.accessType)},${csvSafe(row.model)},${csvSafe(row.provider)},${row.inputTokens},${row.outputTokens},${row.totalTokens},${row.costCents},${row.responseStatus}`);
+        csvLines.push(`${csvSafe(row.timestamp)},${csvSafe(row.memberName)},${csvSafe(row.memberEmail)},${csvSafe(row.teamName)},${csvSafe(row.accessType)},${csvSafe(row.project)},${csvSafe(row.model)},${csvSafe(row.provider)},${row.inputTokens},${row.outputTokens},${row.totalTokens},${row.costCents},${row.responseStatus}`);
       }
 
       res.setHeader("Content-Type", "text/csv");
@@ -4384,6 +4678,7 @@ export async function registerRoutes(
         const oldRevoked = allKeys.filter(k => new Date(k.createdAt) < cutoffDate);
         let deletedCount = 0;
         for (const k of oldRevoked) {
+          await db.update(proxyRequestLogs).set({ apiKeyId: null }).where(eq(proxyRequestLogs.apiKeyId, k.id));
           await db.delete(allotlyApiKeysTable).where(eq(allotlyApiKeysTable.id, k.id));
           deletedCount++;
         }
@@ -4843,6 +5138,11 @@ export async function registerRoutes(
         }
 
         await tx.delete(auditLogs).where(eq(auditLogs.actorId, user.id));
+
+        const { projects: projectsTable } = await import("@shared/schema");
+        await tx.update(projectsTable)
+          .set({ createdById: null } as any)
+          .where(eq(projectsTable.createdById, user.id));
 
         await tx.delete(usersTable).where(eq(usersTable.id, user.id));
         counts.users = 1;

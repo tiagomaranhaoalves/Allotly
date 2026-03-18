@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { StatsCard } from "@/components/brand/stats-card";
 import { BudgetBar } from "@/components/brand/budget-bar";
@@ -10,18 +11,23 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Link } from "wouter";
 import {
   DollarSign, Users, Ticket, Plug, Plus, ArrowRight,
   TrendingUp, Key, Activity, ShoppingCart, Clock,
   AlertTriangle, CheckCircle, XCircle, Copy, Zap,
-  Timer, Hash, ShieldCheck,
+  Timer, Hash, ShieldCheck, Trash2, FolderOpen,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, AreaChart, Area, LineChart, Line, Legend,
 } from "recharts";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient as qc } from "@/lib/queryClient";
 
 const PROVIDER_COLORS: Record<string, string> = {
   OPENAI: "#10A37F",
@@ -475,6 +481,285 @@ function TeamAdminOverview() {
   );
 }
 
+function ApiKeysManager({ data }: { data: any }) {
+  const { toast } = useToast();
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [projectMode, setProjectMode] = useState<"existing" | "new" | "none">("none");
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [newProjectName, setNewProjectName] = useState("");
+  const [newKeyRevealed, setNewKeyRevealed] = useState<string | null>(null);
+
+  const createKeyMutation = useMutation({
+    mutationFn: async (body: any) => {
+      const res = await apiRequest("POST", "/api/me/keys", body);
+      return res.json();
+    },
+    onSuccess: (result: any) => {
+      qc.invalidateQueries({ queryKey: ["/api/dashboard/member-overview"] });
+      qc.invalidateQueries({ queryKey: ["/api/me/keys"] });
+      setNewKeyRevealed(result.apiKey);
+      toast({ title: "API key created", description: result.projectName ? `Project: ${result.projectName}` : "No project assigned" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to create key", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const revokeKeyMutation = useMutation({
+    mutationFn: async (keyId: string) => {
+      await apiRequest("DELETE", `/api/me/keys/${keyId}`);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/dashboard/member-overview"] });
+      qc.invalidateQueries({ queryKey: ["/api/me/keys"] });
+      toast({ title: "Key revoked" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to revoke key", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast({ title: "Copied to clipboard" });
+  };
+
+  const handleCreate = () => {
+    const body: any = {};
+    if (projectMode === "existing" && selectedProjectId) {
+      body.projectId = selectedProjectId;
+    } else if (projectMode === "new" && newProjectName.trim()) {
+      body.newProjectName = newProjectName.trim();
+    }
+    createKeyMutation.mutate(body);
+  };
+
+  const resetDialog = () => {
+    setShowCreateDialog(false);
+    setProjectMode("none");
+    setSelectedProjectId("");
+    setNewProjectName("");
+    setNewKeyRevealed(null);
+  };
+
+  const activeKeys = data?.activeKeys || [];
+  const projects = data?.projects || [];
+
+  return (
+    <>
+      <Card className="p-6" data-testid="card-api-keys">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-base font-semibold">API Keys</h2>
+            <p className="text-sm text-muted-foreground">Use these with any OpenAI-compatible client</p>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => setShowCreateDialog(true)}
+            disabled={activeKeys.length >= 10}
+            data-testid="button-create-project-key"
+          >
+            <Plus className="w-4 h-4 mr-1" /> New Key
+          </Button>
+        </div>
+
+        <div className="space-y-3 mb-4">
+          <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50">
+            <code className="font-mono text-sm flex-1" data-testid="text-base-url">
+              Base URL: {window.location.origin}/api/v1
+            </code>
+            <Button variant="ghost" size="sm" onClick={() => copyToClipboard(`${window.location.origin}/api/v1`)} data-testid="button-copy-url">
+              <Copy className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+
+        {activeKeys.length > 0 ? (
+          <div className="space-y-2">
+            {activeKeys.map((k: any) => (
+              <div key={k.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50" data-testid={`key-row-${k.id}`}>
+                <Key className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                <code className="font-mono text-sm">{k.keyPrefix}...</code>
+                {k.projectName ? (
+                  <Badge variant="secondary" className="text-xs">
+                    <FolderOpen className="w-3 h-3 mr-1" />
+                    {k.projectName}
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-xs text-muted-foreground">No project</Badge>
+                )}
+                <span className="text-xs text-muted-foreground ml-auto">
+                  {k.lastUsedAt ? formatTimeAgo(k.lastUsedAt) : "Never used"}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => copyToClipboard(k.keyPrefix)}
+                  data-testid={`button-copy-key-${k.id}`}
+                >
+                  <Copy className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => {
+                    if (confirm("Revoke this key? This cannot be undone.")) {
+                      revokeKeyMutation.mutate(k.id);
+                    }
+                  }}
+                  disabled={revokeKeyMutation.isPending}
+                  data-testid={`button-revoke-key-${k.id}`}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            ))}
+            <p className="text-xs text-muted-foreground mt-2">{activeKeys.length}/10 keys active</p>
+          </div>
+        ) : (
+          <EmptyState
+            icon={<Key className="w-8 h-8 text-muted-foreground" />}
+            title="No active keys"
+            description='Click "New Key" to create your first API key'
+          />
+        )}
+      </Card>
+
+      <Dialog open={showCreateDialog} onOpenChange={(open) => { if (!open) resetDialog(); else setShowCreateDialog(true); }}>
+        <DialogContent>
+          {newKeyRevealed ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Key Created</DialogTitle>
+                <DialogDescription>Copy your key now — it won't be shown again.</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div className="p-3 rounded-lg bg-muted/50 font-mono text-sm break-all" data-testid="text-new-key">
+                  {newKeyRevealed}
+                </div>
+                <Button className="w-full" onClick={() => { copyToClipboard(newKeyRevealed); }} data-testid="button-copy-new-key">
+                  <Copy className="w-4 h-4 mr-2" /> Copy Key
+                </Button>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={resetDialog} data-testid="button-close-key-dialog">Done</Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>Create API Key</DialogTitle>
+                <DialogDescription>Optionally assign this key to a project for usage tracking.</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Project Assignment</Label>
+                  <Select value={projectMode} onValueChange={(v) => { setProjectMode(v as any); setSelectedProjectId(""); setNewProjectName(""); }}>
+                    <SelectTrigger data-testid="select-project-mode">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No project</SelectItem>
+                      {projects.length > 0 && <SelectItem value="existing">Choose existing project</SelectItem>}
+                      <SelectItem value="new">Create new project</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {projectMode === "existing" && (
+                  <div className="space-y-2">
+                    <Label>Select Project</Label>
+                    <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+                      <SelectTrigger data-testid="select-project">
+                        <SelectValue placeholder="Choose a project..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {projects.map((p: any) => (
+                          <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {projectMode === "new" && (
+                  <div className="space-y-2">
+                    <Label>Project Name</Label>
+                    <Input
+                      placeholder="e.g. Internal Tools, Customer Bot"
+                      value={newProjectName}
+                      onChange={(e) => setNewProjectName(e.target.value)}
+                      maxLength={100}
+                      data-testid="input-new-project-name"
+                    />
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={resetDialog}>Cancel</Button>
+                <Button
+                  onClick={handleCreate}
+                  disabled={createKeyMutation.isPending || (projectMode === "existing" && !selectedProjectId) || (projectMode === "new" && !newProjectName.trim())}
+                  data-testid="button-confirm-create-key"
+                >
+                  {createKeyMutation.isPending ? "Creating..." : "Create Key"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function ProjectBreakdown({ proxyLogs }: { proxyLogs: any[] }) {
+  if (!proxyLogs || proxyLogs.length === 0) return null;
+
+  const byProject = new Map<string, { requests: number; costCents: number; inputTokens: number; outputTokens: number }>();
+  for (const log of proxyLogs) {
+    const name = log.projectName || "Unassigned";
+    const entry = byProject.get(name) || { requests: 0, costCents: 0, inputTokens: 0, outputTokens: 0 };
+    entry.requests++;
+    entry.costCents += log.costCents || 0;
+    entry.inputTokens += log.inputTokens || 0;
+    entry.outputTokens += log.outputTokens || 0;
+    byProject.set(name, entry);
+  }
+
+  if (byProject.size <= 1 && byProject.has("Unassigned")) return null;
+
+  const sorted = Array.from(byProject.entries()).sort((a, b) => b[1].costCents - a[1].costCents);
+  const totalCost = sorted.reduce((sum, [, v]) => sum + v.costCents, 0);
+
+  return (
+    <Card className="p-5" data-testid="card-project-breakdown">
+      <h2 className="text-base font-semibold mb-4">Usage by Project</h2>
+      <div className="space-y-3">
+        {sorted.map(([name, stats]) => {
+          const pct = totalCost > 0 ? (stats.costCents / totalCost) * 100 : 0;
+          return (
+            <div key={name} className="space-y-1" data-testid={`project-breakdown-${name}`}>
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <FolderOpen className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="font-medium">{name}</span>
+                  <span className="text-xs text-muted-foreground">{stats.requests} req</span>
+                </div>
+                <span className="font-mono text-sm">${(stats.costCents / 100).toFixed(4)}</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                <div className="h-full rounded-full bg-primary" style={{ width: `${Math.max(pct, 1)}%` }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
 function ProxyMemberOverview({ data }: { data: any }) {
   const { toast } = useToast();
 
@@ -539,30 +824,9 @@ function ProxyMemberOverview({ data }: { data: any }) {
         </Card>
       )}
 
-      <Card className="p-6" data-testid="card-api-key">
-        <h2 className="text-base font-semibold mb-2">Your API Key</h2>
-        <p className="text-sm text-muted-foreground mb-4">Use this with any OpenAI-compatible client</p>
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50">
-            <code className="font-mono text-sm flex-1" data-testid="text-key-prefix">
-              {data.keyPrefix ? `${data.keyPrefix}...` : "No active key"}
-            </code>
-            {data.keyPrefix && (
-              <Button variant="ghost" size="sm" onClick={() => copyToClipboard(data.keyPrefix)} data-testid="button-copy-key">
-                <Copy className="w-4 h-4" />
-              </Button>
-            )}
-          </div>
-          <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50">
-            <code className="font-mono text-sm flex-1" data-testid="text-base-url">
-              Base URL: {window.location.origin}/api/v1
-            </code>
-            <Button variant="ghost" size="sm" onClick={() => copyToClipboard(`${window.location.origin}/api/v1`)} data-testid="button-copy-url">
-              <Copy className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-      </Card>
+      <ApiKeysManager data={data} />
+
+      <ProjectBreakdown proxyLogs={data.proxyLogs} />
 
       <Card className="p-5" data-testid="card-models">
         <h2 className="text-base font-semibold mb-4">Available Models</h2>
@@ -591,6 +855,7 @@ function ProxyMemberOverview({ data }: { data: any }) {
                 <tr className="border-b">
                   <th className="text-left py-2 px-3 text-xs font-semibold text-muted-foreground uppercase">Time</th>
                   <th className="text-left py-2 px-3 text-xs font-semibold text-muted-foreground uppercase">Model</th>
+                  <th className="text-left py-2 px-3 text-xs font-semibold text-muted-foreground uppercase">Project</th>
                   <th className="text-right py-2 px-3 text-xs font-semibold text-muted-foreground uppercase">Tokens In</th>
                   <th className="text-right py-2 px-3 text-xs font-semibold text-muted-foreground uppercase">Tokens Out</th>
                   <th className="text-right py-2 px-3 text-xs font-semibold text-muted-foreground uppercase">Cost</th>
@@ -607,6 +872,7 @@ function ProxyMemberOverview({ data }: { data: any }) {
                         <span className="text-xs font-mono">{log.model}</span>
                       </div>
                     </td>
+                    <td className="py-2 px-3 text-xs text-muted-foreground">{log.projectName || "—"}</td>
                     <td className="py-2 px-3 text-right font-mono">{log.inputTokens?.toLocaleString()}</td>
                     <td className="py-2 px-3 text-right font-mono">{log.outputTokens?.toLocaleString()}</td>
                     <td className="py-2 px-3 text-right font-mono">${(log.costCents / 100).toFixed(4)}</td>
@@ -695,15 +961,9 @@ function DirectMemberOverview({ data }: { data: any }) {
         )}
       </Card>
 
-      <Card className="p-5" data-testid="card-api-info">
-        <h2 className="text-base font-semibold mb-4">API Access</h2>
-        <div className="p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground">
-          <p>All requests route through Allotly's proxy using your <code className="text-foreground">allotly_sk_</code> key. Your team admin manages provider connections and budget allocation.</p>
-          {data.keyPrefix && (
-            <p className="mt-2">Your key prefix: <code className="text-foreground font-medium">{data.keyPrefix}...</code></p>
-          )}
-        </div>
-      </Card>
+      <ProjectBreakdown proxyLogs={data.proxyLogs || []} />
+
+      <ApiKeysManager data={data} />
     </div>
   );
 }
