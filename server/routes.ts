@@ -92,7 +92,8 @@ export async function registerRoutes(
   app.post("/api/auth/signup", async (req, res) => {
     try {
       const data = signupSchema.parse(req.body);
-      const existing = await storage.getUserByEmail(data.email);
+      const normalizedEmail = data.email.toLowerCase().trim();
+      const existing = await storage.getUserByEmail(normalizedEmail);
       if (existing) {
         return res.status(400).json({ message: "Email already in use" });
       }
@@ -100,7 +101,7 @@ export async function registerRoutes(
       const org = await storage.createOrganization({ name: data.orgName, plan: "FREE", maxTeamAdmins: 0 });
       const passwordHash = await hashPassword(data.password);
       const user = await storage.createUser({
-        email: data.email,
+        email: normalizedEmail,
         name: data.name,
         passwordHash,
         orgId: org.id,
@@ -943,7 +944,8 @@ export async function registerRoutes(
       });
       const parsed = createTeamSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
-      const { adminEmail, adminName, teamName, adminPassword } = parsed.data;
+      const { adminName, teamName, adminPassword } = parsed.data;
+      const adminEmail = parsed.data.adminEmail.toLowerCase().trim();
 
       const teamCheck = await checkPlanLimit(user.orgId, "team");
       if (!teamCheck.allowed) {
@@ -964,11 +966,9 @@ export async function registerRoutes(
         if (existingUser.orgId !== user.orgId) {
           return res.status(400).json({ message: "This email belongs to a user in another organization" });
         }
-        if (existingUser.orgRole !== "ROOT_ADMIN") {
-          const existingAdminTeam = await storage.getTeamByAdmin(existingUser.id);
-          if (existingAdminTeam) {
-            return res.status(400).json({ message: "This user is already an admin of another team" });
-          }
+        const existingAdminTeam = await storage.getTeamByAdmin(existingUser.id);
+        if (existingAdminTeam) {
+          return res.status(400).json({ message: `This user is already the admin of team "${existingAdminTeam.name}". Each team needs a different admin.` });
         }
         adminUser = existingUser;
         isExistingUser = true;
@@ -1025,7 +1025,8 @@ export async function registerRoutes(
       res.json({ team, admin: { id: adminUser.id, email: adminUser.email, name: adminUser.name, status: "INVITED" } });
     } catch (e: any) {
       if (e.code === "23505") {
-        return res.status(400).json({ message: "Email already in use" });
+        console.error("Team create 23505 constraint:", e.detail, e.constraint);
+        return res.status(400).json({ message: "A user with this email already exists. Try a different email." });
       }
       console.error("Team create error:", e);
       res.status(500).json({ message: "Internal server error" });
@@ -1078,7 +1079,8 @@ export async function registerRoutes(
       });
       const parsed = addMemberSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
-      const { email, name, teamId, budgetCents, accessType, allowedModels, allowedProviders } = parsed.data;
+      const { name, teamId, budgetCents, accessType, allowedModels, allowedProviders } = parsed.data;
+      const email = parsed.data.email.toLowerCase().trim();
 
       let targetTeamId = teamId;
       if (user.orgRole === "TEAM_ADMIN") {
