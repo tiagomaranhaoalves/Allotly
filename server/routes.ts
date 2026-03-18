@@ -955,17 +955,38 @@ export async function registerRoutes(
       }
 
       const crypto = await import("crypto");
-      const randomPassword = crypto.randomBytes(32).toString("hex");
-      const passwordHash = await hashPassword(randomPassword);
-      const adminUser = await storage.createUser({
-        email: adminEmail,
-        name: adminName || adminEmail.split("@")[0],
-        passwordHash,
-        orgId: user.orgId,
-        orgRole: "TEAM_ADMIN",
-        status: "INVITED",
-        isVoucherUser: false,
-      });
+
+      let adminUser;
+      let isExistingUser = false;
+      const existingUser = await storage.getUserByEmail(adminEmail);
+
+      if (existingUser) {
+        if (existingUser.orgId !== user.orgId) {
+          return res.status(400).json({ message: "This email belongs to a user in another organization" });
+        }
+        const existingAdminTeam = await storage.getTeamByAdmin(existingUser.id);
+        if (existingAdminTeam) {
+          return res.status(400).json({ message: "This user is already an admin of another team" });
+        }
+        adminUser = existingUser;
+        isExistingUser = true;
+
+        if (existingUser.orgRole === "MEMBER") {
+          await storage.updateUser(existingUser.id, { orgRole: "TEAM_ADMIN" });
+        }
+      } else {
+        const randomPassword = crypto.randomBytes(32).toString("hex");
+        const passwordHash = await hashPassword(randomPassword);
+        adminUser = await storage.createUser({
+          email: adminEmail,
+          name: adminName || adminEmail.split("@")[0],
+          passwordHash,
+          orgId: user.orgId,
+          orgRole: "TEAM_ADMIN",
+          status: "INVITED",
+          isVoucherUser: false,
+        });
+      }
 
       const team = await storage.createTeam({
         name: teamName,
@@ -973,20 +994,22 @@ export async function registerRoutes(
         adminId: adminUser.id,
       });
 
-      const rawToken = crypto.randomBytes(32).toString("hex");
-      const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-      await storage.createPasswordResetToken({ userId: adminUser.id, tokenHash, expiresAt });
+      if (!isExistingUser) {
+        const rawToken = crypto.randomBytes(32).toString("hex");
+        const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        await storage.createPasswordResetToken({ userId: adminUser.id, tokenHash, expiresAt });
 
-      const baseUrl = `${req.protocol}://${req.get('host')}`;
-      const inviteUrl = `${baseUrl}/invite/${rawToken}`;
-      const inviteEmailContent = emailTemplates.teamAdminInvite(
-        adminName || adminEmail.split("@")[0],
-        (await storage.getOrganization(user.orgId))?.name || "your organization",
-        user.name || user.email,
-        inviteUrl
-      );
-      sendEmail(adminEmail, inviteEmailContent.subject, inviteEmailContent.html);
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const inviteUrl = `${baseUrl}/invite/${rawToken}`;
+        const inviteEmailContent = emailTemplates.teamAdminInvite(
+          adminName || adminEmail.split("@")[0],
+          (await storage.getOrganization(user.orgId))?.name || "your organization",
+          user.name || user.email,
+          inviteUrl
+        );
+        sendEmail(adminEmail, inviteEmailContent.subject, inviteEmailContent.html);
+      }
 
       await storage.createAuditLog({
         orgId: user.orgId,
