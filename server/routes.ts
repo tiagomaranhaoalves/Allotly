@@ -5802,6 +5802,16 @@ export async function registerRoutes(
     });
   });
 
+  app.all("/api/{*path}", (_req, res) => {
+    res.status(404).json({
+      error: {
+        code: "not_found",
+        message: "API endpoint not found.",
+        type: "allotly_error",
+      },
+    });
+  });
+
   console.log("[routes] Proxy routes registered: POST /api/v1/chat/completions, GET /api/v1/models, GET /api/v1/health");
 
   return httpServer;
