@@ -120,6 +120,8 @@ export function translateToProvider(
   }
 
   if (provider === "GOOGLE") {
+    const isThinkingModel = /^gemini-2\.5-(flash|pro)/.test(request.model) && !/lite/.test(request.model);
+
     const contents = request.messages
       .filter(m => m.role !== "system")
       .map(m => ({
@@ -137,7 +139,12 @@ export function translateToProvider(
       googleBody.systemInstruction = { parts: [{ text: systemInstruction }] };
     }
     const generationConfig: any = {};
-    if (maxTokens) generationConfig.maxOutputTokens = maxTokens;
+    if (isThinkingModel) {
+      generationConfig.maxOutputTokens = maxTokens ? Math.max(maxTokens, 16384) : 65536;
+      generationConfig.thinkingConfig = { thinkingBudget: 8192 };
+    } else {
+      if (maxTokens) generationConfig.maxOutputTokens = maxTokens;
+    }
     if (request.temperature !== undefined) generationConfig.temperature = request.temperature;
     if (request.top_p !== undefined) generationConfig.topP = request.top_p;
     if (request.stop) {
