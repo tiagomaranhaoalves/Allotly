@@ -1,0 +1,117 @@
+# Replit Prompt: Fix Google Stop Sequences on Thinking Models
+
+Copy everything below this line into Replit.
+
+---
+
+## Context
+
+Allotly is an AI proxy at `https://allotly.ai/api/v1`. We just fixed the Google empty response bug by setting a higher `maxOutputTokens` (65,536) and adding `thinkingConfig: { thinkingBudget: 8192 }` for thinking models. That fix works — `gemini-2.5-flash` and `gemini-2.5-pro` now return content reliably on normal requests.
+
+**However, there is one remaining edge case:** when `stop` sequences (OpenAI `stop` → Google `stopSequences`) are combined with thinking models, the response comes back empty every time. Without `stop`, the exact same prompt works perfectly.
+
+**Do NOT change anything outside the Google adapter. Everything else is tested and working.**
+
+---
+
+## The Bug
+
+When `stopSequences` and `thinkingConfig` are both present in a Google API request for thinking models, the model exhausts its token budget on thinking and produces no visible output — same `MAX_TOKENS` / no-parts pattern as the original empty response bug.
+
+**Test evidence (100% reproducible):**
+```
+gemini-2.5-flash  "Count 1 to 10" + stop:["5"]          → 502 empty_response  ❌
+gemini-2.5-flash  "Count 1 to 10" + stop:["5"] (retry)  → 502 empty_response  ❌
+gemini-2.5-flash  "Count 1 to 10" + stop:["5"] (retry)  → 502 empty_response  ❌
+gemini-2.5-pro    "Count 1 to 10" + stop:["5"]          → 502 empty_response  ❌
+gemini-2.5-flash  "Count 1 to 10" (NO stop)             → 200 "1,2,3,4,5,6,7,8,9,10"  ✅
+gemini-2.5-flash-lite "Count 1 to 10" + stop:["5"]      → 200 "1,2,3,4,"  ✅
+```
+
+The pattern is clear: `stopSequences` + thinking model = empty. Remove either `stopSequences` or the thinking config, and it works.
+
+---
+
+## Root Cause
+
+When Google's thinking models receive both `stopSequences` and `thinkingConfig`, the stop sequence matching appears to interfere with the thinking process. The model spends its entire budget reasoning about how to stop at the right place and never produces visible output. The response comes back as:
+```json
+{
+  "candidates": [{ "content": { "role": "model" }, "finishReason": "MAX_TOKENS" }],
+  "usageMetadata": { "thoughtsTokenCount": N, "candidatesTokenCount": 0 }
+}
+```
+
+This is the same empty structure you debugged earlier — `content` has `role` but no `parts`, `candidatesTokenCount` is 0.
+
+---
+
+## Proposed Fix
+
+There are two viable approaches. **Option A is recommended** as it's simpler and reliable:
+
+### Option A (Recommended): Disable thinkingConfig when stopSequences are present
+
+Since `stopSequences` and `thinkingConfig` conflict, disable thinking when the user sends stop sequences. The model will still produce correct output — it just won't use extended thinking for that request.
+
+```javascript
+// In the Google request adapter, where you build generationConfig:
+
+const isThinkingModel = /^gemini-2\.5-(flash|pro)/.test(model)
+  && !/lite/.test(model);
+
+const hasStopSequences = request.stop
+  && (Array.isArray(request.stop) ? request.stop.length > 0 : true);
+
+if (isThinkingModel && hasStopSequences) {
+  // Stop sequences conflict with thinkingConfig — disable thinking for this request
+  // The model will still work correctly, just without extended reasoning
+  delete generationConfig.thinkingConfig;
+  // Also restore normal maxOutputTokens since thinking won't consume tokens
+  if (!request.max_tokens) {
+    generationConfig.maxOutputTokens = 4096; // Normal default
+  }
+} else if (isThinkingModel) {
+  // Normal thinking model path — keep thinkingConfig and high maxOutputTokens
+  generationConfig.thinkingConfig = { thinkingBudget: 8192 };
+  if (!request.max_tokens) {
+    generationConfig.maxOutputTokens = 65536;
+  }
+}
+```
+
+### Option B (Alternative): Increase thinkingBudget significantly when stopSequences are present
+
+If you want to keep thinking enabled even with stop sequences, you could try a much larger thinking budget so the model has room to think AND produce output. But this is less reliable — there's no guarantee it'll be enough.
+
+```javascript
+if (isThinkingModel && hasStopSequences) {
+  generationConfig.thinkingConfig = { thinkingBudget: 16384 }; // Double the budget
+  generationConfig.maxOutputTokens = 65536;
+}
+```
+
+### Option C (Safest): Set thinkingBudget to 0 when stopSequences are present
+
+Google may support `thinkingBudget: 0` to explicitly disable thinking while keeping the field present:
+
+```javascript
+if (isThinkingModel && hasStopSequences) {
+  generationConfig.thinkingConfig = { thinkingBudget: 0 };
+}
+```
+
+---
+
+## Verification
+
+After applying the fix, all of these should pass:
+
+1. `gemini-2.5-flash` + `stop: ["5"]` + "Count 1 to 10" → 200, content is "1, 2, 3, 4, " (stops before 5) ✅
+2. `gemini-2.5-pro` + `stop: ["5"]` + "Count 1 to 10" → 200, stops before 5 ✅
+3. `gemini-2.5-flash-lite` + `stop: ["5"]` → still works (no regression) ✅
+4. `gemini-2.5-flash` "Say hello" (no stop) → still 200 with content (no regression) ✅
+5. `gemini-2.5-pro` "Say OK" (no stop) → still 200 with content (no regression) ✅
+6. `gemini-2.5-flash` + system message → still works (no regression) ✅
+7. `gemini-2.5-flash` streaming → still works (no regression) ✅
+8. Token counts: `total_tokens = prompt_tokens + completion_tokens` (no regression) ✅

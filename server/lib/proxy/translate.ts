@@ -138,16 +138,22 @@ export function translateToProvider(
     if (systemInstruction) {
       googleBody.systemInstruction = { parts: [{ text: systemInstruction }] };
     }
+    const hasStopSequences = request.stop
+      && (Array.isArray(request.stop) ? request.stop.length > 0 : true);
+
     const generationConfig: any = {};
-    if (isThinkingModel) {
+    if (isThinkingModel && !hasStopSequences) {
       generationConfig.maxOutputTokens = maxTokens ? Math.max(maxTokens, 16384) : 65536;
       generationConfig.thinkingConfig = { thinkingBudget: 8192 };
+    } else if (isThinkingModel && hasStopSequences) {
+      generationConfig.maxOutputTokens = maxTokens || 4096;
+      generationConfig.thinkingConfig = { thinkingBudget: 0 };
     } else {
       if (maxTokens) generationConfig.maxOutputTokens = maxTokens;
     }
     if (request.temperature !== undefined) generationConfig.temperature = request.temperature;
     if (request.top_p !== undefined) generationConfig.topP = request.top_p;
-    if (request.stop) {
+    if (hasStopSequences) {
       generationConfig.stopSequences = Array.isArray(request.stop) ? request.stop : [request.stop];
     }
     googleBody.generationConfig = generationConfig;
