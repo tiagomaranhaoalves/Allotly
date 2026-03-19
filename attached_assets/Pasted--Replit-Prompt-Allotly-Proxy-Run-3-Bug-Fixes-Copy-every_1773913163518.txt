@@ -1,0 +1,347 @@
+# Replit Prompt: Allotly Proxy — Run 3 Bug Fixes
+
+Copy everything below this line into Replit.
+
+---
+
+## Context
+
+Allotly is an AI spend-control proxy at `https://allotly.ai/api/v1`. It accepts OpenAI-compatible requests (`/chat/completions`, `/models`) and routes them to OpenAI, Anthropic, or Google while enforcing per-voucher budget and request limits.
+
+We just completed a comprehensive Run 3 test (40+ API calls covering regression, general functionality, proxy behavior, and security). The previous 9 bugs from Runs 1–2 are confirmed fixed — great work. Run 3 found 7 new bugs, primarily in the Google adapter.
+
+**What's working well (protect these — do NOT regress):**
+- OpenAI + Anthropic routing, streaming, stop sequences, system messages
+- Budget enforcement (2¢ per successful request, no charge on failures)
+- Request validation (max_tokens >= 1, non-empty messages, 400 on invalid input)
+- Counter consistency (monotonically decreasing across streaming + non-streaming)
+- Failed requests no longer decrement the counter
+- Reasoning model translation (max_tokens → max_completion_tokens for o1/o3/o4)
+- Anthropic stop_sequences translation
+- Google total_tokens normalization (total = prompt + completion)
+- Security: authentication, injection prevention, no key leakage, payload limits
+- All x-allotly response headers present and accurate
+
+---
+
+## Bug 1 (🔴 Critical): Google adapter returns frequent empty responses
+
+**Observed:** Requests to Google models frequently return `502 empty_response`. About 40–50% of `gemini-2.5-flash` requests fail; `gemini-2.5-pro` failed 100% of the time.
+
+**Evidence:**
+```
+gemini-2.5-flash "Say hello"              → 502 empty_response
+gemini-2.5-flash "Say hello" (retry)      → 502 empty_response
+gemini-2.5-flash "Say just yes"           → 200 OK "Yes"
+gemini-2.5-flash multi-turn conversation  → 502 empty_response
+gemini-2.5-pro   "Say OK"                → 502 empty_response (100% of attempts)
+gemini-2.5-flash "Capital of France?"     → 200 OK "The capital of France is" (truncated)
+```
+
+When a response does come back, the format is correct (id, choices, usage all present). The issue is that the adapter frequently concludes the response body is empty when it isn't.
+
+**Root cause:** Gemini 2.5 models use a "thinking" mode that changes the response structure. When thinking tokens are generated, the response contains multiple candidate parts — the adapter likely checks only the first part or checks before the model finishes thinking, finds no text content, and returns empty_response.
+
+Specifically, Google's response for thinking models looks like:
+```json
+{
+  "candidates": [{
+    "content": {
+      "parts": [
+        { "thought": true, "text": "Let me think..." },
+        { "text": "The actual response" }
+      ]
+    }
+  }]
+}
+```
+
+The adapter needs to find the LAST part where `thought` is NOT true (or is absent), rather than reading only `parts[0]`.
+
+**Fix:** In the Google response adapter, update content extraction:
+```javascript
+// Find the actual response text (skip thinking parts)
+const parts = candidate.content?.parts || [];
+const responseParts = parts.filter(p => !p.thought);
+const textContent = responseParts.map(p => p.text).filter(Boolean).join('');
+
+// Only treat as empty if there are truly no non-thinking parts with text
+if (!textContent) {
+  return emptyResponseError();
+}
+```
+
+Also check the streaming path — Google streaming for thinking models sends thinking chunks first, then content chunks. The streaming adapter must not close the stream when it encounters thinking-only chunks.
+
+---
+
+## Bug 2 (🔴 Critical): Google adapter sends `systemInstruction` field that API rejects
+
+**Observed:** Any request with a `system` role message targeting a Google model returns:
+```
+400: "Invalid JSON payload received. Unknown name "systemInstruction": Cannot find field."
+```
+
+This means system messages are completely broken for ALL Google models.
+
+**Evidence:**
+```
+gemini-2.5-flash with system message  → 400 "Unknown name systemInstruction"
+gemini-2.0-flash-001 with system message → 400 "Unknown name systemInstruction"
+```
+
+**Root cause:** The proxy converts the OpenAI `system` role message into a top-level `systemInstruction` field in the Google request body. However, the Google API version or endpoint URL being used doesn't support this field.
+
+Google's Gemini API supports `systemInstruction` starting from `v1beta` and later `v1` endpoints, using the format:
+```json
+{
+  "systemInstruction": {
+    "parts": [{ "text": "You are a helpful assistant." }]
+  }
+}
+```
+
+Check which API endpoint URL is being used. It should be:
+`https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent`
+
+If using `v1` instead of `v1beta`, `systemInstruction` may not be available.
+
+**Fix (option A — preferred):** Ensure the Google API URL uses `v1beta`:
+```javascript
+const GOOGLE_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+const url = `${GOOGLE_API_BASE}/models/${model}:generateContent`;
+```
+
+**Fix (option B — fallback):** If you can't change the API version, inject system messages into the conversation:
+```javascript
+// Extract system message content
+const systemMessages = messages.filter(m => m.role === 'system');
+const userMessages = messages.filter(m => m.role !== 'system');
+
+if (systemMessages.length > 0) {
+  const systemText = systemMessages.map(m => m.content).join('\n');
+  // Prepend to first user message
+  if (userMessages.length > 0 && userMessages[0].role === 'user') {
+    userMessages[0].content = `[System Instructions: ${systemText}]\n\n${userMessages[0].content}`;
+  }
+}
+```
+
+---
+
+## Bug 3 (🟡 Medium): Google adapter doesn't forward stop sequences
+
+**Observed:** `stop: ["5"]` is correctly forwarded to OpenAI (`stop`) and Anthropic (`stop_sequences`), but completely ignored for Google. The response contains the full untruncated output.
+
+**Evidence:**
+```
+OpenAI   + stop: ["5"] → "1, 2, 3, 4, "          ✅ stopped
+Anthropic + stop: ["5"] → "1, 2, 3, 4, "          ✅ stopped
+Google   + stop: ["5"] → "1, 2, 3, 4, 5, 6, 7, 8, 9, 10"  ❌ ignored
+```
+
+**Root cause:** Google's API uses `stopSequences` inside the `generationConfig` object. The proxy doesn't map it.
+
+**Fix:** In the Google request adapter, when building `generationConfig`:
+```javascript
+if (request.stop) {
+  generationConfig.stopSequences = Array.isArray(request.stop)
+    ? request.stop
+    : [request.stop];
+}
+```
+
+The full generationConfig should look like:
+```javascript
+const generationConfig = {
+  maxOutputTokens: request.max_tokens,
+  temperature: request.temperature,
+  topP: request.top_p,
+  ...(request.stop && {
+    stopSequences: Array.isArray(request.stop) ? request.stop : [request.stop]
+  })
+};
+```
+
+---
+
+## Bug 4 (🟡 Medium): Non-POST methods on API endpoints return 200 HTML
+
+**Observed:** GET, PUT, DELETE, and PATCH requests to `/api/v1/chat/completions` return `200` with the SPA HTML page instead of a proper JSON error. Unknown API paths like `/api/v1/nonexistent` also return `200` HTML.
+
+**Evidence:**
+```
+GET    /api/v1/chat/completions → 200 HTML page
+PUT    /api/v1/chat/completions → 200 HTML page
+DELETE /api/v1/chat/completions → 200 HTML page
+PATCH  /api/v1/chat/completions → 200 HTML page
+GET    /api/v1/nonexistent      → 200 HTML page
+```
+
+**Root cause:** The SPA catch-all route (`app.get('*', ...)` or similar) has higher priority than API routes for non-POST methods, so non-POST requests to API paths fall through to the SPA handler.
+
+**Fix:** Add method enforcement and a catch-all for undefined API routes, BEFORE the SPA fallback:
+
+```javascript
+// Method enforcement for /api/v1/chat/completions
+app.all('/api/v1/chat/completions', (req, res, next) => {
+  if (req.method === 'POST') return next(); // Let POST continue to the actual handler
+  return res.status(405).json({
+    error: {
+      code: 'method_not_allowed',
+      message: `Method ${req.method} is not allowed on this endpoint. Use POST.`,
+      type: 'allotly_error'
+    }
+  });
+});
+
+// Method enforcement for /api/v1/models
+app.all('/api/v1/models', (req, res, next) => {
+  if (req.method === 'GET') return next(); // Let GET continue to the actual handler
+  return res.status(405).json({
+    error: {
+      code: 'method_not_allowed',
+      message: `Method ${req.method} is not allowed on this endpoint. Use GET.`,
+      type: 'allotly_error'
+    }
+  });
+});
+
+// Catch-all for unknown /api/* paths — return 404 JSON, not HTML
+app.all('/api/*', (req, res) => {
+  res.status(404).json({
+    error: {
+      code: 'not_found',
+      message: 'API endpoint not found.',
+      type: 'allotly_error'
+    }
+  });
+});
+
+// SPA fallback goes AFTER all API routes
+app.get('*', (req, res) => {
+  res.sendFile('index.html', ...);
+});
+```
+
+---
+
+## Bug 5 (🟡 Medium): Unknown request parameters forwarded to provider
+
+**Observed:** Sending an unrecognized parameter (e.g., `custom_unknown: 999`) in the request body causes it to be forwarded to OpenAI, which rejects it:
+```
+400: "Unrecognized request argument supplied: custom_unknown"
+```
+
+**Why this matters:** A user might send a parameter that's valid for one provider but invalid for another (e.g., Anthropic's `top_k`). Instead of failing, the proxy should strip parameters the target provider doesn't recognize.
+
+**Fix:** Whitelist known parameters per provider before forwarding:
+
+```javascript
+const OPENAI_PARAMS = new Set([
+  'model', 'messages', 'max_tokens', 'max_completion_tokens', 'temperature',
+  'top_p', 'n', 'stream', 'stop', 'presence_penalty', 'frequency_penalty',
+  'logit_bias', 'user', 'response_format', 'seed', 'tools', 'tool_choice',
+  'parallel_tool_calls', 'stream_options'
+]);
+
+const ANTHROPIC_PARAMS = new Set([
+  'model', 'messages', 'max_tokens', 'temperature', 'top_p', 'top_k',
+  'stream', 'stop_sequences', 'system', 'metadata', 'tools', 'tool_choice'
+]);
+
+const GOOGLE_PARAMS = new Set([
+  'model', 'contents', 'generationConfig', 'systemInstruction',
+  'safetySettings', 'tools', 'toolConfig'
+]);
+
+function sanitizeParams(body, allowedSet) {
+  const sanitized = {};
+  for (const key of Object.keys(body)) {
+    if (allowedSet.has(key)) {
+      sanitized[key] = body[key];
+    }
+  }
+  return sanitized;
+}
+```
+
+Apply `sanitizeParams()` AFTER translating the OpenAI-format body into the provider-specific format, right before sending to the upstream.
+
+---
+
+## Bug 6 (🟡 Medium): Deprecated Google models still in catalog
+
+**Observed:** The `/models` endpoint lists Google models that no longer work:
+
+| Model | Error |
+|-------|-------|
+| `gemini-2.0-flash-001` | 400 (unrecognized) |
+| `gemini-2.0-flash-lite` | 404 "no longer available" |
+| `gemini-2.0-flash-lite-001` | Likely 404 |
+| `gemini-1.5-flash` | 400 "Pricing not found" |
+
+Only these Google models actually work:
+- `gemini-2.5-flash` ✅
+- `gemini-2.5-pro` ✅ (when empty response bug is fixed)
+- `gemini-2.5-flash-lite` ✅
+
+**Fix:** Remove the non-working models from the catalog. If the list is hardcoded, delete them. If dynamically fetched, add a denylist:
+
+```javascript
+const GOOGLE_MODEL_DENYLIST = new Set([
+  'gemini-2.0-flash',
+  'gemini-2.0-flash-001',
+  'gemini-2.0-flash-lite',
+  'gemini-2.0-flash-lite-001',
+  'gemini-1.5-flash',
+  'gemini-1.5-flash-001',
+  'gemini-1.5-flash-002',
+  'gemini-1.5-pro',
+  'gemini-1.5-pro-001',
+  'gemini-1.5-pro-002',
+]);
+
+// Filter when building catalog
+const googleModels = allGoogleModels.filter(m => !GOOGLE_MODEL_DENYLIST.has(m.id));
+```
+
+---
+
+## Bug 7 (🟡 Medium): o1-pro requires `/responses` endpoint
+
+**Observed:** `o1-pro` (and `o1-pro-2025-03-19`) are in the catalog but return:
+```
+400: "This model is only supported in v1/responses and not in v1/chat/completions"
+```
+
+OpenAI has migrated `o1-pro` to their newer `/responses` API. It is not callable via `/chat/completions`.
+
+**Fix (option A — quick):** Remove `o1-pro` and `o1-pro-2025-03-19` from the model catalog for now. Keep `o1-2024-12-17` which still works via chat completions.
+
+```javascript
+const OPENAI_MODEL_DENYLIST = new Set([
+  'o1-pro',
+  'o1-pro-2025-03-19',
+]);
+```
+
+**Fix (option B — future):** Add an OpenAI `/responses` adapter that translates chat completions format into the responses API format. This is a bigger lift but would enable o1-pro support.
+
+---
+
+## Priority-Ordered Fix List
+
+| # | Bug | Severity | Area | Effort |
+|---|-----|----------|------|--------|
+| 1 | Google empty responses (thinking model parsing) | 🔴 Critical | Google response adapter | Medium |
+| 2 | Google systemInstruction rejected | 🔴 Critical | Google request adapter / API version | Low |
+| 3 | Google stop sequences not forwarded | 🟡 Medium | Google request adapter | Low |
+| 4 | Non-POST methods return 200 HTML | 🟡 Medium | Route handling | Low |
+| 5 | Unknown params forwarded to provider | 🟡 Medium | Request sanitization | Medium |
+| 6 | Deprecated Google models in catalog | 🟡 Medium | Model catalog | Low |
+| 7 | o1-pro needs /responses endpoint | 🟡 Medium | Model catalog | Low |
+
+Bugs 1–3 are all in the Google adapter and can be fixed together. Bug 1 is the highest priority since it makes Google models unreliable.
+
+Please fix these in order and let me know if you need any test evidence or additional context.
