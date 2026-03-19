@@ -66,7 +66,7 @@ export function translateToProvider(
   request: OpenAIRequest,
   provider: ProviderType,
   effectiveMaxTokens?: number
-): { url: string; body: any; headers: Record<string, string>; method: string } {
+): { url: string; body: any; headers: Record<string, string>; method: string; proxyStopSequences?: string[] } {
   const maxTokens = effectiveMaxTokens ?? request.max_tokens;
 
   if (provider === "OPENAI") {
@@ -138,24 +138,28 @@ export function translateToProvider(
     if (systemInstruction) {
       googleBody.systemInstruction = { parts: [{ text: systemInstruction }] };
     }
-    const hasStopSequences = request.stop
-      && (Array.isArray(request.stop) ? request.stop.length > 0 : true);
+    const stopSequences = request.stop
+      ? (Array.isArray(request.stop) ? request.stop : [request.stop])
+      : [];
+    const hasStopSequences = stopSequences.length > 0;
 
     const generationConfig: any = {};
-    if (isThinkingModel && !hasStopSequences) {
+    let proxyStopSequences: string[] | undefined;
+
+    if (isThinkingModel) {
       generationConfig.maxOutputTokens = maxTokens ? Math.max(maxTokens, 16384) : 65536;
       generationConfig.thinkingConfig = { thinkingBudget: 8192 };
-    } else if (isThinkingModel && hasStopSequences) {
-      generationConfig.maxOutputTokens = maxTokens || 4096;
-      generationConfig.thinkingConfig = { thinkingBudget: 0 };
+      if (hasStopSequences) {
+        proxyStopSequences = stopSequences;
+      }
     } else {
       if (maxTokens) generationConfig.maxOutputTokens = maxTokens;
+      if (hasStopSequences) {
+        generationConfig.stopSequences = stopSequences;
+      }
     }
     if (request.temperature !== undefined) generationConfig.temperature = request.temperature;
     if (request.top_p !== undefined) generationConfig.topP = request.top_p;
-    if (hasStopSequences) {
-      generationConfig.stopSequences = Array.isArray(request.stop) ? request.stop : [request.stop];
-    }
     googleBody.generationConfig = generationConfig;
 
     const streamSuffix = request.stream ? ":streamGenerateContent?alt=sse" : ":generateContent";
@@ -164,6 +168,7 @@ export function translateToProvider(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: googleBody,
+      proxyStopSequences,
     };
   }
 
@@ -242,10 +247,33 @@ export function extractGoogleStreamText(candidate: any): { text: string; isThink
   return { text, isThinkingOnly };
 }
 
+export function applyStopSequences(
+  text: string,
+  stopSequences?: string[]
+): { text: string; stopped: boolean } {
+  if (!stopSequences || stopSequences.length === 0 || !text) {
+    return { text, stopped: false };
+  }
+  let earliestIndex = text.length;
+  let found = false;
+  for (const seq of stopSequences) {
+    const index = text.indexOf(seq);
+    if (index !== -1 && index < earliestIndex) {
+      earliestIndex = index;
+      found = true;
+    }
+  }
+  if (found) {
+    return { text: text.substring(0, earliestIndex), stopped: true };
+  }
+  return { text, stopped: false };
+}
+
 export function translateResponseToOpenAI(
   provider: ProviderType,
   body: any,
-  model: string
+  model: string,
+  proxyStopSequences?: string[]
 ): OpenAIResponse {
   if (provider === "OPENAI") return body;
 
@@ -271,7 +299,7 @@ export function translateResponseToOpenAI(
 
   if (provider === "GOOGLE") {
     const candidate = body.candidates?.[0];
-    const text = extractGoogleText(candidate);
+    let text = extractGoogleText(candidate);
     const promptTokens = body.usageMetadata?.promptTokenCount || 0;
     const completionTokens = body.usageMetadata?.candidatesTokenCount || 0;
     const thinkingTokens = body.usageMetadata?.thoughtsTokenCount || 0;
@@ -281,6 +309,9 @@ export function translateResponseToOpenAI(
       total_tokens: promptTokens + completionTokens,
     };
     if (thinkingTokens > 0) usage.thinking_tokens = thinkingTokens;
+
+    const { text: finalText, stopped } = applyStopSequences(text, proxyStopSequences);
+
     return {
       id: `chatcmpl-${Date.now()}`,
       object: "chat.completion",
@@ -288,8 +319,8 @@ export function translateResponseToOpenAI(
       model,
       choices: [{
         index: 0,
-        message: { role: "assistant", content: text },
-        finish_reason: candidate?.finishReason === "STOP" ? "stop" : (candidate?.finishReason?.toLowerCase() || "stop"),
+        message: { role: "assistant", content: finalText },
+        finish_reason: stopped ? "stop" : (candidate?.finishReason === "STOP" ? "stop" : (candidate?.finishReason?.toLowerCase() || "stop")),
       }],
       usage,
     };

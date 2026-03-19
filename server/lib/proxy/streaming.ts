@@ -1,5 +1,5 @@
 import type { Response as ExpressResponse } from "express";
-import { translateStreamChunkToOpenAI, extractGoogleStreamText, type ProviderType } from "./translate";
+import { translateStreamChunkToOpenAI, extractGoogleStreamText, applyStopSequences, type ProviderType } from "./translate";
 
 export interface StreamResult {
   usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | null;
@@ -10,7 +10,8 @@ export async function streamProviderResponse(
   providerResponse: globalThis.Response,
   provider: ProviderType,
   model: string,
-  res: ExpressResponse
+  res: ExpressResponse,
+  proxyStopSequences?: string[]
 ): Promise<StreamResult> {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
@@ -30,6 +31,23 @@ export async function streamProviderResponse(
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+
+  const useProxyStop = provider === "GOOGLE" && proxyStopSequences && proxyStopSequences.length > 0;
+  const maxStopLen = useProxyStop ? Math.max(...proxyStopSequences!.map(s => s.length)) : 0;
+  let stopContentBuffer = "";
+  let stopContentSent = 0;
+  let stopTriggered = false;
+
+  function sendContentChunk(text: string, finishReason: string | null = null) {
+    const chunk = {
+      id: `chatcmpl-${Date.now()}`,
+      object: "chat.completion.chunk",
+      created: Math.floor(Date.now() / 1000),
+      model,
+      choices: [{ index: 0, delta: text ? { content: text } : {}, finish_reason: finishReason }],
+    };
+    res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+  }
 
   try {
     while (true) {
@@ -102,17 +120,51 @@ export async function streamProviderResponse(
             const data = trimmed.slice(6);
             try {
               const parsed = JSON.parse(data);
+
               const result = translateStreamChunkToOpenAI(provider, parsed, model);
-              if (result) {
-                if (result.sseData) res.write(result.sseData);
-                if (result.usage) usage = result.usage;
-                const { text } = extractGoogleStreamText(parsed.candidates?.[0]);
-                if (text) fullContent += text;
+              if (result?.usage) usage = result.usage;
+
+              if (stopTriggered) continue;
+
+              const { text: chunkText } = extractGoogleStreamText(parsed.candidates?.[0]);
+              if (!chunkText) {
+                if (!useProxyStop && result) {
+                  res.write(result.sseData);
+                }
+                continue;
+              }
+
+              if (useProxyStop) {
+                stopContentBuffer += chunkText;
+                fullContent = stopContentBuffer;
+
+                const { text: truncated, stopped } = applyStopSequences(stopContentBuffer, proxyStopSequences!);
+                if (stopped) {
+                  const unsent = truncated.substring(stopContentSent);
+                  if (unsent) sendContentChunk(unsent);
+                  sendContentChunk("", "stop");
+                  fullContent = truncated;
+                  stopTriggered = true;
+                  continue;
+                }
+
+                const safe = stopContentBuffer.length - maxStopLen;
+                if (safe > stopContentSent) {
+                  sendContentChunk(stopContentBuffer.substring(stopContentSent, safe));
+                  stopContentSent = safe;
+                }
+              } else {
+                fullContent += chunkText;
+                if (result) res.write(result.sseData);
               }
             } catch {}
           }
         }
       }
+    }
+
+    if (useProxyStop && !stopTriggered && stopContentSent < stopContentBuffer.length) {
+      sendContentChunk(stopContentBuffer.substring(stopContentSent));
     }
 
     if (buffer.trim()) {
@@ -124,7 +176,7 @@ export async function streamProviderResponse(
             const parsed = JSON.parse(data);
             const result = translateStreamChunkToOpenAI(provider, parsed, model);
             if (result) {
-              res.write(result.sseData);
+              if (!stopTriggered) res.write(result.sseData);
               if (result.usage) usage = result.usage;
             }
           } catch {}

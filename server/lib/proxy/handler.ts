@@ -403,7 +403,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
     let actualCostCents = 0;
 
     if (parsed.stream) {
-      const streamResult = await streamProviderResponse(providerResponse, provider, parsed.model, res);
+      const streamResult = await streamProviderResponse(providerResponse, provider, parsed.model, res, translated.proxyStopSequences);
 
       if (streamResult.usage) {
         actualInputTokens = streamResult.usage.prompt_tokens || inputTokens;
@@ -454,7 +454,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
         console.log("=== END GOOGLE RAW ===");
       }
 
-      const openaiResponse = translateResponseToOpenAI(provider, responseBody, parsed.model);
+      const openaiResponse = translateResponseToOpenAI(provider, responseBody, parsed.model, translated.proxyStopSequences);
 
       if (provider === "GOOGLE") {
         console.log("=== GOOGLE TRANSLATED ===");
