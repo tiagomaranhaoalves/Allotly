@@ -1,0 +1,254 @@
+# Replit Prompt: Fix Google Empty Responses for Thinking Models
+
+Copy everything below this line into Replit.
+
+---
+
+## Context
+
+Allotly is an AI proxy at `https://allotly.ai/api/v1` that accepts OpenAI-compatible requests and routes them to OpenAI, Anthropic, or Google. We've run 4 rounds of testing (60+ API calls each). All 16 bugs found across those runs are now fixed **except one**: Google's "thinking" models return empty responses.
+
+**Everything else works — do NOT change anything outside the Google response adapter.** OpenAI routing, Anthropic routing, streaming, budget enforcement, counter logic, validation, security, system messages, stop sequences — all confirmed working.
+
+---
+
+## The Bug
+
+`gemini-2.5-flash` and `gemini-2.5-pro` return `502 empty_response` on nearly every request. `gemini-2.5-flash-lite` works perfectly on every request.
+
+**Test evidence from 4 separate test runs:**
+```
+gemini-2.5-flash      "Say hello"        → 502 empty_response  (fails ~90% of the time)
+gemini-2.5-flash      "Say yes"          → 502 empty_response
+gemini-2.5-flash      "What is 1+1?"     → 502 empty_response
+gemini-2.5-flash      "Name one color"   → 502 empty_response
+gemini-2.5-pro        "Say OK"           → 502 empty_response  (fails 100% of the time)
+gemini-2.5-flash-lite "Say hello"        → 200 OK "Hello! 😊"   ✅ always works
+gemini-2.5-flash-lite "What is 2+2?"     → 200 OK "4"           ✅ always works
+```
+
+When gemini-2.5-flash does occasionally succeed, the response format is correct (id, choices, usage, thinking_tokens all present). So the translation layer works — the problem is that the adapter usually concludes the response is empty when it actually isn't.
+
+---
+
+## Root Cause Analysis
+
+The critical difference between these models:
+
+| Model | Uses "Thinking" | Works? |
+|-------|----------------|--------|
+| gemini-2.5-flash-lite | No | ✅ Always |
+| gemini-2.5-flash | Yes | ❌ ~90% failure |
+| gemini-2.5-pro | Yes | ❌ ~100% failure |
+
+**The issue is in how the Google response adapter extracts text content from Gemini 2.5 thinking model responses.**
+
+Google's thinking models return a different response structure than non-thinking models. There are several possible formats Google may be using, and the adapter is probably only handling one of them.
+
+---
+
+## Debugging Step (Do This First)
+
+Before writing any fix, add temporary logging to see what Google actually returns:
+
+```javascript
+// In the Google response handler, RIGHT AFTER receiving the response from Google's API
+// and BEFORE any content extraction or empty-response checks:
+
+console.log('=== GOOGLE RAW RESPONSE ===');
+console.log('Model:', requestedModel);
+console.log('Status:', googleResponse.status || 'N/A');
+console.log('Full body:', JSON.stringify(googleResponseBody, null, 2));
+console.log('=== END GOOGLE RAW ===');
+```
+
+Then make a test request to `gemini-2.5-flash` (it will probably return empty_response) and examine the logs. The raw response will show you exactly what structure Google uses.
+
+---
+
+## Possible Response Structures to Handle
+
+Google's Gemini API has used at least 3 different structures for thinking model responses depending on the API version and endpoint. Your adapter needs to handle whichever one your API version returns:
+
+### Structure A: Inline thinking parts (v1beta with thinking enabled)
+```json
+{
+  "candidates": [{
+    "content": {
+      "parts": [
+        { "thought": true, "text": "Let me think about this..." },
+        { "text": "Hello!" }
+      ]
+    },
+    "finishReason": "STOP"
+  }],
+  "usageMetadata": {
+    "promptTokenCount": 5,
+    "candidatesTokenCount": 1,
+    "totalTokenCount": 50,
+    "thoughtsTokenCount": 44
+  }
+}
+```
+**How to extract:** Filter out parts where `thought === true`, take the remaining parts' `text`.
+
+### Structure B: Separate thinkingContent field
+```json
+{
+  "candidates": [{
+    "content": {
+      "parts": [{ "text": "Hello!" }]
+    },
+    "thinkingContent": {
+      "parts": [{ "text": "Let me think about this..." }]
+    },
+    "finishReason": "STOP"
+  }]
+}
+```
+**How to extract:** Ignore `thinkingContent` entirely, read `content.parts` normally.
+
+### Structure C: Model returns thinking as the ONLY content initially
+```json
+{
+  "candidates": [{
+    "content": {
+      "parts": [
+        { "thought": true, "text": "Let me think step by step..." }
+      ]
+    },
+    "finishReason": "STOP"
+  }]
+}
+```
+**In this case, `parts` has ONLY thinking parts — no visible text. But the actual answer may be in a different field or the response might need `thoughtsAllowed: true` in the request config to properly return both.**
+
+### Structure D: The text is nested differently for thinking models
+Some API versions return the answer inside a `modelContent` or `groundingContent` wrapper instead of directly in `content.parts`.
+
+---
+
+## Proposed Fix (apply after confirming the raw structure via logs)
+
+Here's a robust content extraction function that handles all known structures:
+
+```javascript
+function extractGoogleResponseText(candidate) {
+  // Strategy 1: Check content.parts, filter out thinking parts
+  if (candidate?.content?.parts) {
+    const parts = candidate.content.parts;
+
+    // Filter out thinking parts (thought: true)
+    const visibleParts = parts.filter(p => !p.thought);
+
+    if (visibleParts.length > 0) {
+      const text = visibleParts.map(p => p.text).filter(Boolean).join('');
+      if (text) return text;
+    }
+
+    // If ALL parts are thinking parts, maybe the answer is elsewhere
+    // Fall through to other strategies
+  }
+
+  // Strategy 2: Check for separate output/answer field
+  if (candidate?.output?.text) {
+    return candidate.output.text;
+  }
+
+  // Strategy 3: Check groundingContent or modelContent
+  if (candidate?.groundingContent?.parts) {
+    return candidate.groundingContent.parts.map(p => p.text).filter(Boolean).join('');
+  }
+
+  // Strategy 4: Even thinking parts might contain the answer as the last part
+  if (candidate?.content?.parts?.length > 0) {
+    const lastPart = candidate.content.parts[candidate.content.parts.length - 1];
+    if (lastPart?.text) return lastPart.text;
+  }
+
+  return null; // Truly empty
+}
+```
+
+Replace the current content extraction logic in the Google response adapter with this function. Then update the empty check:
+
+```javascript
+const candidate = googleResponseBody.candidates?.[0];
+const textContent = extractGoogleResponseText(candidate);
+
+if (!textContent) {
+  // Actually empty — return 502 empty_response
+  return res.status(502).json({
+    error: {
+      code: 'empty_response',
+      message: 'The model returned an empty response. No budget was charged. Try again or use a different model.',
+      type: 'allotly_error'
+    }
+  });
+}
+
+// Build the OpenAI-compatible response using textContent
+const response = {
+  id: `chatcmpl-${Date.now()}`,
+  object: 'chat.completion',
+  created: Math.floor(Date.now() / 1000),
+  model: requestedModel,
+  choices: [{
+    index: 0,
+    message: { role: 'assistant', content: textContent },
+    finish_reason: mapFinishReason(candidate.finishReason)
+  }],
+  usage: buildUsage(googleResponseBody.usageMetadata)
+};
+```
+
+---
+
+## Streaming Path (Also Check This)
+
+The same issue likely affects streaming. Google's streaming for thinking models sends chunks in this order:
+
+1. Thinking chunks (with `thought: true` or in a separate field)
+2. Content chunks (the actual answer)
+3. Final chunk with usage metadata
+
+If the streaming adapter checks for text content in each chunk and encounters thinking-only chunks first, it may:
+- Skip them (correct) but then fail to forward the actual content chunks later
+- Close the stream prematurely when it sees thinking chunks with no visible text
+- Send `[DONE]` too early
+
+Apply the same filtering logic in the streaming path:
+```javascript
+// For each streaming chunk from Google:
+const parts = chunk.candidates?.[0]?.content?.parts || [];
+const visibleParts = parts.filter(p => !p.thought);
+
+if (visibleParts.length === 0) {
+  // This is a thinking-only chunk — skip it, do NOT close the stream
+  continue;
+}
+
+// Forward only the visible content
+const text = visibleParts.map(p => p.text).filter(Boolean).join('');
+if (text) {
+  // Send this as an SSE chunk to the client
+  sendSSEChunk(text);
+}
+```
+
+---
+
+## Verification
+
+After applying the fix, these should all pass:
+
+1. `gemini-2.5-flash` with "Say hello" → 200 with content (not 502)
+2. `gemini-2.5-flash` with "What is 2+2?" → 200 with content
+3. `gemini-2.5-pro` with "Say OK" → 200 with content
+4. `gemini-2.5-flash-lite` with "Say hello" → 200 (still works, no regression)
+5. `gemini-2.5-flash` with system message → 200 (no regression on N2 fix)
+6. `gemini-2.5-flash` with `stop: ["5"]` → stops correctly (no regression on N3 fix)
+7. `gemini-2.5-flash` streaming → proper SSE with content (not just [DONE])
+8. Token counts: `total_tokens = prompt_tokens + completion_tokens` (no regression on Bug 7)
+
+**Important:** The fix should ONLY touch the Google response adapter's content extraction logic. Do not change anything else — all other components are tested and working.

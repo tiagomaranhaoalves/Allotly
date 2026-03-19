@@ -434,7 +434,34 @@ export async function handleChatCompletion(req: Request, res: Response) {
       }
     } else {
       const responseBody = await readNonStreamingResponse(providerResponse);
+
+      if (provider === "GOOGLE") {
+        console.log("=== GOOGLE RAW RESPONSE ===");
+        console.log("Model:", parsed.model);
+        console.log("Candidates count:", responseBody.candidates?.length || 0);
+        const candidate = responseBody.candidates?.[0];
+        console.log("Candidate keys:", candidate ? Object.keys(candidate) : "none");
+        console.log("Content keys:", candidate?.content ? Object.keys(candidate.content) : "none");
+        console.log("Parts count:", candidate?.content?.parts?.length || 0);
+        if (candidate?.content?.parts) {
+          for (let i = 0; i < candidate.content.parts.length; i++) {
+            const p = candidate.content.parts[i];
+            console.log(`Part[${i}]: thought=${p.thought}, hasText=${!!p.text}, textLen=${p.text?.length || 0}, keys=${Object.keys(p)}`);
+          }
+        }
+        console.log("FinishReason:", candidate?.finishReason);
+        console.log("UsageMetadata:", JSON.stringify(responseBody.usageMetadata));
+        console.log("=== END GOOGLE RAW ===");
+      }
+
       const openaiResponse = translateResponseToOpenAI(provider, responseBody, parsed.model);
+
+      if (provider === "GOOGLE") {
+        console.log("=== GOOGLE TRANSLATED ===");
+        console.log("Content:", JSON.stringify(openaiResponse.choices?.[0]?.message?.content?.slice(0, 200)));
+        console.log("Usage:", JSON.stringify(openaiResponse.usage));
+        console.log("=== END TRANSLATED ===");
+      }
 
       if (openaiResponse.usage) {
         actualInputTokens = openaiResponse.usage.prompt_tokens;

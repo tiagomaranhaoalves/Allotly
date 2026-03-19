@@ -189,6 +189,46 @@ interface OpenAIResponse {
   usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
 }
 
+export function extractGoogleText(candidate: any): string {
+  if (!candidate) return "";
+
+  if (candidate?.content?.parts) {
+    const parts = candidate.content.parts;
+    const visibleParts = parts.filter((p: any) => !p.thought);
+
+    if (visibleParts.length > 0) {
+      const text = visibleParts.map((p: any) => p.text).filter(Boolean).join("");
+      if (text) return text;
+    }
+
+    if (parts.length > 0 && visibleParts.length === 0) {
+      const lastPart = parts[parts.length - 1];
+      if (lastPart?.text) return lastPart.text;
+    }
+  }
+
+  if (candidate?.output?.text) {
+    return candidate.output.text;
+  }
+
+  if (candidate?.groundingContent?.parts) {
+    return candidate.groundingContent.parts.map((p: any) => p.text).filter(Boolean).join("");
+  }
+
+  return "";
+}
+
+export function extractGoogleStreamText(candidate: any): { text: string; isThinkingOnly: boolean } {
+  if (!candidate?.content?.parts) return { text: "", isThinkingOnly: false };
+
+  const parts = candidate.content.parts;
+  const visibleParts = parts.filter((p: any) => !p.thought);
+  const text = visibleParts.map((p: any) => p.text).filter(Boolean).join("");
+
+  const isThinkingOnly = parts.length > 0 && visibleParts.length === 0;
+  return { text, isThinkingOnly };
+}
+
 export function translateResponseToOpenAI(
   provider: ProviderType,
   body: any,
@@ -218,9 +258,7 @@ export function translateResponseToOpenAI(
 
   if (provider === "GOOGLE") {
     const candidate = body.candidates?.[0];
-    const parts = candidate?.content?.parts || [];
-    const responseParts = parts.filter((p: any) => !p.thought);
-    const text = responseParts.map((p: any) => p.text || "").join("") || "";
+    const text = extractGoogleText(candidate);
     const promptTokens = body.usageMetadata?.promptTokenCount || 0;
     const completionTokens = body.usageMetadata?.candidatesTokenCount || 0;
     const thinkingTokens = body.usageMetadata?.thoughtsTokenCount || 0;
@@ -312,31 +350,8 @@ export function translateStreamChunkToOpenAI(
     try {
       const parsed = typeof chunk === "string" ? JSON.parse(chunk) : chunk;
       const candidate = parsed.candidates?.[0];
-      const allParts = candidate?.content?.parts || [];
-      const responseParts = allParts.filter((p: any) => !p.thought);
-      const text = responseParts.map((p: any) => p.text || "").join("");
+      const { text, isThinkingOnly } = extractGoogleStreamText(candidate);
       const done = candidate?.finishReason === "STOP" || candidate?.finishReason != null;
-
-      if (!text && !done && allParts.length > 0 && responseParts.length === 0) {
-        const gPrompt = parsed.usageMetadata?.promptTokenCount || 0;
-        const gCompletion = parsed.usageMetadata?.candidatesTokenCount || 0;
-        const gThinking = parsed.usageMetadata?.thoughtsTokenCount || 0;
-        const usage = parsed.usageMetadata ? {
-          prompt_tokens: gPrompt,
-          completion_tokens: gCompletion,
-          total_tokens: gPrompt + gCompletion,
-          ...(gThinking > 0 && { thinking_tokens: gThinking }),
-        } : undefined;
-        return { sseData: "", done: false, usage };
-      }
-
-      const sseChunk = {
-        id: `chatcmpl-${Date.now()}`,
-        object: "chat.completion.chunk",
-        created: Math.floor(Date.now() / 1000),
-        model,
-        choices: [{ index: 0, delta: { content: text }, finish_reason: done ? "stop" : null }],
-      };
 
       const gPrompt = parsed.usageMetadata?.promptTokenCount || 0;
       const gCompletion = parsed.usageMetadata?.candidatesTokenCount || 0;
@@ -347,6 +362,18 @@ export function translateStreamChunkToOpenAI(
         total_tokens: gPrompt + gCompletion,
         ...(gThinking > 0 && { thinking_tokens: gThinking }),
       } : undefined;
+
+      if (isThinkingOnly && !done) {
+        return { sseData: "", done: false, usage };
+      }
+
+      const sseChunk = {
+        id: `chatcmpl-${Date.now()}`,
+        object: "chat.completion.chunk",
+        created: Math.floor(Date.now() / 1000),
+        model,
+        choices: [{ index: 0, delta: { content: text }, finish_reason: done ? "stop" : null }],
+      };
 
       return { sseData: `data: ${JSON.stringify(sseChunk)}\n\n`, done, usage };
     } catch { return null; }

@@ -1,5 +1,5 @@
 import type { Response as ExpressResponse } from "express";
-import { translateStreamChunkToOpenAI, type ProviderType } from "./translate";
+import { translateStreamChunkToOpenAI, extractGoogleStreamText, type ProviderType } from "./translate";
 
 export interface StreamResult {
   usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | null;
@@ -106,9 +106,7 @@ export async function streamProviderResponse(
               if (result) {
                 if (result.sseData) res.write(result.sseData);
                 if (result.usage) usage = result.usage;
-                const allParts = parsed.candidates?.[0]?.content?.parts || [];
-                const responseParts = allParts.filter((p: any) => !p.thought);
-                const text = responseParts.map((p: any) => p.text || "").join("");
+                const { text } = extractGoogleStreamText(parsed.candidates?.[0]);
                 if (text) fullContent += text;
               }
             } catch {}
