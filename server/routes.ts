@@ -5762,6 +5762,46 @@ export async function registerRoutes(
     res.json({ status: "ok", proxy: true, timestamp: new Date().toISOString() });
   });
 
+  app.all("/api/v1/chat/completions", (req, res) => {
+    res.status(405).json({
+      error: {
+        code: "method_not_allowed",
+        message: `Method ${req.method} is not allowed on this endpoint. Use POST.`,
+        type: "allotly_error",
+      },
+    });
+  });
+
+  app.all("/api/v1/models", (req, res) => {
+    res.status(405).json({
+      error: {
+        code: "method_not_allowed",
+        message: `Method ${req.method} is not allowed on this endpoint. Use GET.`,
+        type: "allotly_error",
+      },
+    });
+  });
+
+  app.all("/api/v1/health", (req, res) => {
+    res.status(405).json({
+      error: {
+        code: "method_not_allowed",
+        message: `Method ${req.method} is not allowed on this endpoint. Use GET.`,
+        type: "allotly_error",
+      },
+    });
+  });
+
+  app.all("/api/v1/{*path}", (_req, res) => {
+    res.status(404).json({
+      error: {
+        code: "not_found",
+        message: "API endpoint not found.",
+        type: "allotly_error",
+      },
+    });
+  });
+
   console.log("[routes] Proxy routes registered: POST /api/v1/chat/completions, GET /api/v1/models, GET /api/v1/health");
 
   return httpServer;

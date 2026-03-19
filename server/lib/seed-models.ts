@@ -13,7 +13,6 @@ export const DEFAULT_MODELS = [
   // OpenAI — o-series reasoning
   { provider: "OPENAI" as const, modelId: "o3", displayName: "o3", inputPricePerMTok: 200, outputPricePerMTok: 800 },
   { provider: "OPENAI" as const, modelId: "o3-mini", displayName: "o3 Mini", inputPricePerMTok: 110, outputPricePerMTok: 440 },
-  { provider: "OPENAI" as const, modelId: "o3-pro", displayName: "o3 Pro", inputPricePerMTok: 2000, outputPricePerMTok: 8000 },
   { provider: "OPENAI" as const, modelId: "o4-mini", displayName: "o4 Mini", inputPricePerMTok: 110, outputPricePerMTok: 440 },
 
   // Anthropic — Claude 4.6 series (latest)
@@ -42,6 +41,9 @@ export const DEPRECATED_MODELS = [
   "gpt-3.5-turbo",
   "o1",
   "o1-mini",
+  "o1-pro",
+  "o1-pro-2025-03-19",
+  "o3-pro",
   "claude-3-5-sonnet-20241022",
   "claude-3-5-haiku-20241022",
   "claude-3-7-sonnet-20250219",
@@ -49,8 +51,15 @@ export const DEPRECATED_MODELS = [
   "claude-haiku-4-20250514",
   "claude-opus-4",
   "gemini-1.5-flash",
+  "gemini-1.5-flash-001",
+  "gemini-1.5-flash-002",
   "gemini-1.5-pro",
+  "gemini-1.5-pro-001",
+  "gemini-1.5-pro-002",
   "gemini-2.0-flash",
+  "gemini-2.0-flash-001",
+  "gemini-2.0-flash-lite",
+  "gemini-2.0-flash-lite-001",
   "gemini-2.5-flash-preview-05-20",
   "gemini-2.5-pro-preview-06-05",
   "gemini-3-pro-preview",

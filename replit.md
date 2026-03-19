@@ -20,7 +20,7 @@ Allotly employs a robust architecture with a focus on real-time budget enforceme
 - **Monetary Values**: All money is handled in integer cents to prevent floating-point inaccuracies.
 
 **Technical Implementations & System Design Choices:**
-- **Unified v4 Proxy**: A single proxy endpoint (`/api/v1/chat/completions`) handles all AI API requests for both TEAM and VOUCHER access types, centralizing metering and control without reliance on external provider mechanisms.
+- **Unified v4 Proxy**: A single proxy endpoint (`/api/v1/chat/completions`) handles all AI API requests for both TEAM and VOUCHER access types, centralizing metering and control without reliance on external provider mechanisms. Non-POST methods return 405 JSON; unknown `/api/v1/` paths return 404 JSON. Request parameters are sanitized per-provider (whitelist-based) before forwarding upstream.
 - **Real-time Budget Enforcement**: The proxy reserves budget before forwarding requests and refunds any overage after the response. Alerts are triggered at 80%, 90%, and 100% budget utilization.
 - **Pricing Formula**: `costCents = ceil(tokens * pricePerMTok / 1_000_000)` calculates costs based on tokens and a configurable price per million tokens.
 - **API Key Management**: AI provider API keys are encrypted using AES-256-GCM. The system includes functionality for key rotation, immediate validation, and connection testing to ensure provider health.
@@ -47,6 +47,6 @@ Allotly employs a robust architecture with a focus on real-time budget enforceme
 - **Database**: PostgreSQL via Drizzle ORM.
 - **Payments**: Stripe (for subscriptions and one-time payments) integrated via `stripe-replit-sync`.
 - **Email**: Resend for email delivery, with `allotly.ai` as the verified domain and `hello@allotly.ai` as the sender. Fallback to `onboarding@resend.dev` if the domain is not verified.
-- **AI Providers**: OpenAI, Anthropic, Google are integrated for AI model access.
+- **AI Providers**: OpenAI, Anthropic, Google are integrated for AI model access. Google adapter uses `v1beta` API (required for `systemInstruction` support), filters out thinking/reasoning parts from Gemini 2.5 responses, and forwards `stop` → `stopSequences` in `generationConfig`. Provider parameter sanitization strips unknown keys before forwarding to prevent upstream rejections.
 - **Cache/Realtime**: Redis is used for budget counters, concurrency control, and rate limiting, with an in-memory Map fallback.
 - **Authentication**: Session-based authentication using scrypt for password hashing.

@@ -104,9 +104,11 @@ export async function streamProviderResponse(
               const parsed = JSON.parse(data);
               const result = translateStreamChunkToOpenAI(provider, parsed, model);
               if (result) {
-                res.write(result.sseData);
+                if (result.sseData) res.write(result.sseData);
                 if (result.usage) usage = result.usage;
-                const text = parsed.candidates?.[0]?.content?.parts?.map((p: any) => p.text || "").join("") || "";
+                const allParts = parsed.candidates?.[0]?.content?.parts || [];
+                const responseParts = allParts.filter((p: any) => !p.thought);
+                const text = responseParts.map((p: any) => p.text || "").join("");
                 if (text) fullContent += text;
               }
             } catch {}

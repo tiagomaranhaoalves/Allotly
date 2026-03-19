@@ -1,5 +1,37 @@
 export type ProviderType = "OPENAI" | "ANTHROPIC" | "GOOGLE";
 
+const OPENAI_ALLOWED_PARAMS = new Set([
+  "model", "messages", "max_tokens", "max_completion_tokens", "temperature",
+  "top_p", "n", "stream", "stop", "presence_penalty", "frequency_penalty",
+  "logit_bias", "logprobs", "top_logprobs", "user", "response_format", "seed",
+  "tools", "tool_choice", "parallel_tool_calls", "stream_options",
+  "reasoning_effort", "modalities", "audio", "store", "metadata",
+]);
+
+const ANTHROPIC_ALLOWED_PARAMS = new Set([
+  "model", "messages", "max_tokens", "temperature", "top_p", "top_k",
+  "stream", "stop_sequences", "system", "metadata", "tools", "tool_choice",
+]);
+
+const GOOGLE_ALLOWED_PARAMS = new Set([
+  "contents", "generationConfig", "systemInstruction",
+  "safetySettings", "tools", "toolConfig",
+]);
+
+export function sanitizeProviderBody(body: any, provider: ProviderType): any {
+  const allowedSet = provider === "OPENAI" ? OPENAI_ALLOWED_PARAMS
+    : provider === "ANTHROPIC" ? ANTHROPIC_ALLOWED_PARAMS
+    : GOOGLE_ALLOWED_PARAMS;
+
+  const sanitized: any = {};
+  for (const key of Object.keys(body)) {
+    if (allowedSet.has(key)) {
+      sanitized[key] = body[key];
+    }
+  }
+  return sanitized;
+}
+
 export function detectProvider(model: string): ProviderType | null {
   if (model.startsWith("gpt-") || model.startsWith("o1") || model.startsWith("o3") || model.startsWith("o4")) return "OPENAI";
   if (model.startsWith("claude-")) return "ANTHROPIC";
@@ -104,14 +136,18 @@ export function translateToProvider(
     if (systemInstruction) {
       googleBody.systemInstruction = { parts: [{ text: systemInstruction }] };
     }
-    googleBody.generationConfig = {};
-    if (maxTokens) googleBody.generationConfig.maxOutputTokens = maxTokens;
-    if (request.temperature !== undefined) googleBody.generationConfig.temperature = request.temperature;
-    if (request.top_p !== undefined) googleBody.generationConfig.topP = request.top_p;
+    const generationConfig: any = {};
+    if (maxTokens) generationConfig.maxOutputTokens = maxTokens;
+    if (request.temperature !== undefined) generationConfig.temperature = request.temperature;
+    if (request.top_p !== undefined) generationConfig.topP = request.top_p;
+    if (request.stop) {
+      generationConfig.stopSequences = Array.isArray(request.stop) ? request.stop : [request.stop];
+    }
+    googleBody.generationConfig = generationConfig;
 
     const streamSuffix = request.stream ? ":streamGenerateContent?alt=sse" : ":generateContent";
     return {
-      url: `https://generativelanguage.googleapis.com/v1/models/${request.model}${streamSuffix}`,
+      url: `https://generativelanguage.googleapis.com/v1beta/models/${request.model}${streamSuffix}`,
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: googleBody,
@@ -182,7 +218,9 @@ export function translateResponseToOpenAI(
 
   if (provider === "GOOGLE") {
     const candidate = body.candidates?.[0];
-    const text = candidate?.content?.parts?.map((p: any) => p.text || "").join("") || "";
+    const parts = candidate?.content?.parts || [];
+    const responseParts = parts.filter((p: any) => !p.thought);
+    const text = responseParts.map((p: any) => p.text || "").join("") || "";
     const promptTokens = body.usageMetadata?.promptTokenCount || 0;
     const completionTokens = body.usageMetadata?.candidatesTokenCount || 0;
     const thinkingTokens = body.usageMetadata?.thoughtsTokenCount || 0;
@@ -274,8 +312,23 @@ export function translateStreamChunkToOpenAI(
     try {
       const parsed = typeof chunk === "string" ? JSON.parse(chunk) : chunk;
       const candidate = parsed.candidates?.[0];
-      const text = candidate?.content?.parts?.map((p: any) => p.text || "").join("") || "";
+      const allParts = candidate?.content?.parts || [];
+      const responseParts = allParts.filter((p: any) => !p.thought);
+      const text = responseParts.map((p: any) => p.text || "").join("");
       const done = candidate?.finishReason === "STOP" || candidate?.finishReason != null;
+
+      if (!text && !done && allParts.length > 0 && responseParts.length === 0) {
+        const gPrompt = parsed.usageMetadata?.promptTokenCount || 0;
+        const gCompletion = parsed.usageMetadata?.candidatesTokenCount || 0;
+        const gThinking = parsed.usageMetadata?.thoughtsTokenCount || 0;
+        const usage = parsed.usageMetadata ? {
+          prompt_tokens: gPrompt,
+          completion_tokens: gCompletion,
+          total_tokens: gPrompt + gCompletion,
+          ...(gThinking > 0 && { thinking_tokens: gThinking }),
+        } : undefined;
+        return { sseData: "", done: false, usage };
+      }
 
       const sseChunk = {
         id: `chatcmpl-${Date.now()}`,

@@ -31,6 +31,7 @@ import {
   translateToProvider,
   setProviderAuth,
   translateResponseToOpenAI,
+  sanitizeProviderBody,
 } from "./translate";
 import { streamProviderResponse, readNonStreamingResponse } from "./streaming";
 import type { ModelPricing } from "@shared/schema";
@@ -333,6 +334,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
     );
 
     const translated = translateToProvider(parsed, provider, effectiveMaxTokens);
+    translated.body = sanitizeProviderBody(translated.body, provider);
     const authInfo = setProviderAuth(translated.headers, provider, adminApiKey, translated.url);
 
     let providerResponse: globalThis.Response;
