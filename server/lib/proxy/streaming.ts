@@ -62,7 +62,7 @@ export async function streamProviderResponse(
         const trimmed = line.trim();
         if (!trimmed) continue;
 
-        if (provider === "OPENAI") {
+        if (provider === "OPENAI" || provider === "AZURE_OPENAI") {
           if (trimmed.startsWith("data: ")) {
             const data = trimmed.slice(6);
             if (data === "[DONE]") {

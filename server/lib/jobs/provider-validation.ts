@@ -17,7 +17,15 @@ export async function runProviderValidation(): Promise<void> {
       try {
         const decryptedKey = decryptProviderKey(conn.adminApiKeyEncrypted, conn.adminApiKeyIv, conn.adminApiKeyTag);
         const adapter = getProviderAdapter(conn.provider);
-        const result = await adapter.validateAdminKey(decryptedKey);
+
+        const validationOptions = conn.provider === "AZURE_OPENAI" ? {
+          baseUrl: conn.azureBaseUrl || undefined,
+          deploymentName: ((conn.azureDeployments as any[])?.[0])?.deploymentName,
+          apiVersion: conn.azureApiVersion || undefined,
+          endpointMode: conn.azureEndpointMode || undefined,
+        } : undefined;
+
+        const result = await adapter.validateAdminKey(decryptedKey, validationOptions);
         const isValid = result.valid;
 
         if (!isValid && conn.status === "ACTIVE") {

@@ -475,13 +475,31 @@ export async function registerRoutes(
     try {
       const user = (req as any).user;
       const providerSchema = z.object({
-        provider: z.enum(["OPENAI", "ANTHROPIC", "GOOGLE"]),
+        provider: z.enum(["OPENAI", "ANTHROPIC", "GOOGLE", "AZURE_OPENAI"]),
         apiKey: z.string().min(1),
         displayName: z.string().max(100).optional(),
+        azureBaseUrl: z.string().url().optional(),
+        azureApiVersion: z.string().optional(),
+        azureEndpointMode: z.enum(["v1", "legacy"]).optional(),
+        azureDeployments: z.array(z.object({
+          deploymentName: z.string().min(1),
+          modelId: z.string().min(1),
+          inputPricePerMTok: z.number().int().min(0),
+          outputPricePerMTok: z.number().int().min(0),
+        })).optional(),
       });
       const parsed = providerSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
       const { provider, apiKey, displayName } = parsed.data;
+
+      if (provider === "AZURE_OPENAI") {
+        if (!parsed.data.azureBaseUrl) {
+          return res.status(400).json({ message: "azureBaseUrl is required for Azure OpenAI" });
+        }
+        if (!parsed.data.azureDeployments || parsed.data.azureDeployments.length === 0) {
+          return res.status(400).json({ message: "At least one Azure deployment is required" });
+        }
+      }
 
       const providerCheck = await checkPlanLimit(user.orgId, "provider");
       if (!providerCheck.allowed) {
@@ -493,7 +511,14 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Unsupported AI Provider" });
       }
 
-      const validation = await adapter.validateAdminKey(apiKey);
+      const validationOptions = provider === "AZURE_OPENAI" ? {
+        baseUrl: parsed.data.azureBaseUrl,
+        deploymentName: parsed.data.azureDeployments?.[0]?.deploymentName,
+        apiVersion: parsed.data.azureApiVersion,
+        endpointMode: parsed.data.azureEndpointMode,
+      } : undefined;
+
+      const validation = await adapter.validateAdminKey(apiKey, validationOptions);
       if (!validation.valid) {
         return res.status(400).json({ message: `Key validation failed: ${validation.error}` });
       }
@@ -509,7 +534,17 @@ export async function registerRoutes(
         adminApiKeyTag: tag,
         status: "ACTIVE",
         lastValidatedAt: new Date(),
+        ...(provider === "AZURE_OPENAI" && {
+          azureBaseUrl: parsed.data.azureBaseUrl,
+          azureApiVersion: parsed.data.azureApiVersion || null,
+          azureEndpointMode: parsed.data.azureEndpointMode || "v1",
+          azureDeployments: parsed.data.azureDeployments,
+        }),
       });
+
+      if (provider === "AZURE_OPENAI") {
+        await redisDel(REDIS_KEYS.azureDeployments(user.orgId));
+      }
 
       await storage.createAuditLog({
         orgId: user.orgId,
@@ -542,6 +577,9 @@ export async function registerRoutes(
       return res.status(404).json({ message: "Not found" });
     }
     await storage.deleteProviderConnection(conn.id);
+    if (conn.provider === "AZURE_OPENAI") {
+      await redisDel(REDIS_KEYS.azureDeployments(user.orgId));
+    }
     await storage.createAuditLog({
       orgId: user.orgId,
       actorId: user.id,
@@ -564,6 +602,15 @@ export async function registerRoutes(
       const patchSchema = z.object({
         displayName: z.string().min(1).max(100).optional(),
         orgAllowedModels: z.array(z.string()).nullable().optional(),
+        azureBaseUrl: z.string().url().optional(),
+        azureApiVersion: z.string().optional(),
+        azureEndpointMode: z.enum(["v1", "legacy"]).optional(),
+        azureDeployments: z.array(z.object({
+          deploymentName: z.string().min(1),
+          modelId: z.string().min(1),
+          inputPricePerMTok: z.number().int().min(0),
+          outputPricePerMTok: z.number().int().min(0),
+        })).optional(),
       });
       const parsed = patchSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -575,7 +622,18 @@ export async function registerRoutes(
       if (displayName !== undefined) updates.displayName = displayName;
       if (orgAllowedModels !== undefined) updates.orgAllowedModels = orgAllowedModels;
 
+      if (conn.provider === "AZURE_OPENAI") {
+        if (parsed.data.azureBaseUrl !== undefined) updates.azureBaseUrl = parsed.data.azureBaseUrl;
+        if (parsed.data.azureApiVersion !== undefined) updates.azureApiVersion = parsed.data.azureApiVersion;
+        if (parsed.data.azureEndpointMode !== undefined) updates.azureEndpointMode = parsed.data.azureEndpointMode;
+        if (parsed.data.azureDeployments !== undefined) updates.azureDeployments = parsed.data.azureDeployments;
+      }
+
       const updated = await storage.updateProviderConnection(conn.id, updates);
+
+      if (conn.provider === "AZURE_OPENAI") {
+        await redisDel(REDIS_KEYS.azureDeployments(user.orgId));
+      }
 
       await storage.createAuditLog({
         orgId: user.orgId,
@@ -593,6 +651,12 @@ export async function registerRoutes(
         status: updated!.status,
         orgAllowedModels: updated!.orgAllowedModels,
         lastValidatedAt: updated!.lastValidatedAt,
+        ...(conn.provider === "AZURE_OPENAI" && {
+          azureBaseUrl: updated!.azureBaseUrl,
+          azureApiVersion: updated!.azureApiVersion,
+          azureEndpointMode: updated!.azureEndpointMode,
+          azureDeployments: updated!.azureDeployments,
+        }),
       });
     } catch (e: any) {
       console.error("Provider update error:", e);
@@ -655,7 +719,14 @@ export async function registerRoutes(
       const adapter = getProviderAdapter(conn.provider);
       if (!adapter) return res.status(400).json({ message: "Unsupported AI Provider" });
 
-      const validation = await adapter.validateAdminKey(newApiKey);
+      const validationOptions = conn.provider === "AZURE_OPENAI" ? {
+        baseUrl: conn.azureBaseUrl || undefined,
+        deploymentName: ((conn.azureDeployments as any[])?.[0])?.deploymentName,
+        apiVersion: conn.azureApiVersion || undefined,
+        endpointMode: conn.azureEndpointMode || undefined,
+      } : undefined;
+
+      const validation = await adapter.validateAdminKey(newApiKey, validationOptions);
       if (!validation.valid) {
         return res.status(400).json({ message: `Key validation failed: ${validation.error}` });
       }
@@ -669,6 +740,10 @@ export async function registerRoutes(
         lastValidatedAt: new Date(),
         updatedAt: new Date(),
       });
+
+      if (conn.provider === "AZURE_OPENAI") {
+        await redisDel(REDIS_KEYS.azureDeployments(user.orgId));
+      }
 
       await storage.createAuditLog({
         orgId: user.orgId,

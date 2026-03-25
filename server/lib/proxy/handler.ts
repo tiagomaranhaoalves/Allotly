@@ -32,9 +32,11 @@ import {
   setProviderAuth,
   translateResponseToOpenAI,
   sanitizeProviderBody,
+  type AzureContext,
+  type DetectProviderResult,
 } from "./translate";
 import { streamProviderResponse, readNonStreamingResponse } from "./streaming";
-import type { ModelPricing } from "@shared/schema";
+import type { ModelPricing, AzureDeploymentMapping } from "@shared/schema";
 import { z } from "zod";
 
 const chatRequestSchema = z.object({
@@ -130,6 +132,7 @@ export function getProviderErrorSuggestion(statusCode: number, errorMessage: str
       "OPENAI": "gpt-4o-mini or gpt-4o",
       "ANTHROPIC": "claude-sonnet-4 or claude-haiku-3.5",
       "GOOGLE": "gemini-2.5-flash or gemini-2.5-pro",
+      "AZURE_OPENAI": "a newer Azure deployment",
     };
     return `This model has been deprecated by the provider. Try ${alternatives[provider] || "a newer model"} instead.`;
   }
@@ -215,16 +218,18 @@ export async function handleChatCompletion(req: Request, res: Response) {
     }
 
     const parsed = parseResult.data;
-    const provider = detectProvider(parsed.model);
-    if (!provider) {
+    const detectResult = await detectProvider(parsed.model, team.orgId);
+    if (!detectResult) {
       await releaseRateLimit(membershipId);
       await releaseConcurrency(membershipId, requestId);
       budgetCtx = await buildBudgetCtx();
       return sendProxyError(res, createProxyError(400, "unsupported_model",
         `Model "${parsed.model}" is not supported`,
-        "Supported prefixes: gpt-*, o1*, o3*, o4* (OpenAI), claude-* (Anthropic), gemini-* (Google)"
+        "Supported prefixes: gpt-*, o1*, o3*, o4* (OpenAI), claude-* (Anthropic), gemini-* (Google). Azure deployments are matched by deployment name."
       ), budgetCtx);
     }
+    const provider = detectResult.provider;
+    const azureDeployment = detectResult.azureDeployment;
 
     const allowedProviders = membership.allowedProviders as string[] | null;
     if (allowedProviders && allowedProviders.length > 0 && !allowedProviders.includes(provider)) {
@@ -266,7 +271,21 @@ export async function handleChatCompletion(req: Request, res: Response) {
       ), budgetCtx);
     }
 
-    const pricing = await getModelPricing(provider, parsed.model);
+    let pricing: ModelPricing | null;
+    if (provider === "AZURE_OPENAI" && azureDeployment) {
+      pricing = {
+        id: "azure-deployment",
+        provider: "AZURE_OPENAI",
+        modelId: azureDeployment.modelId,
+        displayName: azureDeployment.deploymentName,
+        inputPricePerMTok: azureDeployment.inputPricePerMTok,
+        outputPricePerMTok: azureDeployment.outputPricePerMTok,
+        isActive: true,
+        updatedAt: new Date(),
+      };
+    } else {
+      pricing = await getModelPricing(provider, parsed.model);
+    }
     if (!pricing) {
       await releaseRateLimit(membershipId);
       await releaseConcurrency(membershipId, requestId);
@@ -333,7 +352,18 @@ export async function handleChatCompletion(req: Request, res: Response) {
       connection.adminApiKeyTag
     );
 
-    const translated = translateToProvider(parsed, provider, effectiveMaxTokens);
+    let azureContext: AzureContext | undefined;
+    if (provider === "AZURE_OPENAI" && azureDeployment && connection.azureBaseUrl) {
+      azureContext = {
+        baseUrl: connection.azureBaseUrl,
+        endpointMode: (connection.azureEndpointMode as "v1" | "legacy") || "v1",
+        apiVersion: connection.azureApiVersion || undefined,
+        deploymentName: azureDeployment.deploymentName,
+        modelId: azureDeployment.modelId,
+      };
+    }
+
+    const translated = translateToProvider(parsed, provider, effectiveMaxTokens, azureContext);
     translated.body = sanitizeProviderBody(translated.body, provider);
     const authInfo = setProviderAuth(translated.headers, provider, adminApiKey, translated.url);
 
@@ -499,13 +529,14 @@ export async function handleChatCompletion(req: Request, res: Response) {
           membershipId: membershipId!,
           apiKeyId,
           provider,
-          model: parsed.model,
+          model: provider === "AZURE_OPENAI" && azureDeployment ? azureDeployment.modelId : parsed.model,
           inputTokens: actualInputTokens,
           outputTokens: actualOutputTokens,
           costCents: actualCostCents,
           durationMs,
           statusCode: 200,
           maxTokensApplied: clamped ? effectiveMaxTokens : null,
+          deploymentName: provider === "AZURE_OPENAI" && azureDeployment ? azureDeployment.deploymentName : null,
         });
 
         const freshMembership = await storage.getMembership(membershipId!);
@@ -675,6 +706,25 @@ export async function handleListModels(req: Request, res: Response) {
         input_price_per_m_tok: p.inputPricePerMTok,
         output_price_per_m_tok: p.outputPricePerMTok,
       }));
+
+    if (filteredProviders.includes("AZURE_OPENAI")) {
+      const azureConnections = connections.filter(c => c.provider === "AZURE_OPENAI" && c.status === "ACTIVE");
+      for (const azureConn of azureConnections) {
+        const deployments = (azureConn.azureDeployments as AzureDeploymentMapping[] | null) || [];
+        for (const dep of deployments) {
+          if (allowedModels && allowedModels.length > 0 && !allowedModels.includes(dep.deploymentName)) continue;
+          models.push({
+            id: dep.deploymentName,
+            object: "model",
+            created: Math.floor(new Date(azureConn.updatedAt).getTime() / 1000),
+            owned_by: "azure-openai",
+            display_name: `${dep.deploymentName} (${dep.modelId})`,
+            input_price_per_m_tok: dep.inputPricePerMTok,
+            output_price_per_m_tok: dep.outputPricePerMTok,
+          });
+        }
+      }
+    }
 
     res.json({
       object: "list",

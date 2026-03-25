@@ -34,6 +34,14 @@ export const DEFAULT_MODELS = [
   { provider: "GOOGLE" as const, modelId: "gemini-2.5-pro", displayName: "Gemini 2.5 Pro", inputPricePerMTok: 125, outputPricePerMTok: 1000 },
   { provider: "GOOGLE" as const, modelId: "gemini-2.5-flash", displayName: "Gemini 2.5 Flash", inputPricePerMTok: 15, outputPricePerMTok: 60 },
   { provider: "GOOGLE" as const, modelId: "gemini-2.5-flash-lite", displayName: "Gemini 2.5 Flash Lite", inputPricePerMTok: 10, outputPricePerMTok: 40 },
+
+  // Azure OpenAI — reference models (actual pricing from per-deployment config)
+  { provider: "AZURE_OPENAI" as const, modelId: "azure/gpt-4o", displayName: "Azure GPT-4o", inputPricePerMTok: 250, outputPricePerMTok: 1000 },
+  { provider: "AZURE_OPENAI" as const, modelId: "azure/gpt-4o-mini", displayName: "Azure GPT-4o Mini", inputPricePerMTok: 15, outputPricePerMTok: 60 },
+  { provider: "AZURE_OPENAI" as const, modelId: "azure/gpt-4.1", displayName: "Azure GPT-4.1", inputPricePerMTok: 200, outputPricePerMTok: 800 },
+  { provider: "AZURE_OPENAI" as const, modelId: "azure/gpt-4.1-mini", displayName: "Azure GPT-4.1 Mini", inputPricePerMTok: 40, outputPricePerMTok: 160 },
+  { provider: "AZURE_OPENAI" as const, modelId: "azure/gpt-4.1-nano", displayName: "Azure GPT-4.1 Nano", inputPricePerMTok: 10, outputPricePerMTok: 40 },
+  { provider: "AZURE_OPENAI" as const, modelId: "azure/o4-mini", displayName: "Azure o4 Mini", inputPricePerMTok: 110, outputPricePerMTok: 440 },
 ];
 
 export const DEPRECATED_MODELS = [

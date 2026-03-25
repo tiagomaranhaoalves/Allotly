@@ -234,7 +234,7 @@ export async function runModelSync(): Promise<void> {
         const pricing = estimatePricing(model.id, provider);
         try {
           await db.insert(modelPricing).values({
-            provider: provider as "OPENAI" | "ANTHROPIC" | "GOOGLE",
+            provider: provider as "OPENAI" | "ANTHROPIC" | "GOOGLE" | "AZURE_OPENAI",
             modelId: model.id,
             displayName: model.displayName,
             inputPricePerMTok: pricing.input,

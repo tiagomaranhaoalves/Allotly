@@ -1,4 +1,8 @@
-export type ProviderType = "OPENAI" | "ANTHROPIC" | "GOOGLE";
+import { storage } from "../../storage";
+import { redisGet, redisSet, REDIS_KEYS } from "../redis";
+import type { AzureDeploymentMapping } from "@shared/schema";
+
+export type ProviderType = "OPENAI" | "ANTHROPIC" | "GOOGLE" | "AZURE_OPENAI";
 
 const OPENAI_ALLOWED_PARAMS = new Set([
   "model", "messages", "max_tokens", "max_completion_tokens", "temperature",
@@ -19,7 +23,8 @@ const GOOGLE_ALLOWED_PARAMS = new Set([
 ]);
 
 export function sanitizeProviderBody(body: any, provider: ProviderType): any {
-  const allowedSet = provider === "OPENAI" ? OPENAI_ALLOWED_PARAMS
+  const allowedSet = provider === "OPENAI" || provider === "AZURE_OPENAI"
+    ? OPENAI_ALLOWED_PARAMS
     : provider === "ANTHROPIC" ? ANTHROPIC_ALLOWED_PARAMS
     : GOOGLE_ALLOWED_PARAMS;
 
@@ -32,10 +37,46 @@ export function sanitizeProviderBody(body: any, provider: ProviderType): any {
   return sanitized;
 }
 
-export function detectProvider(model: string): ProviderType | null {
-  if (model.startsWith("gpt-") || model.startsWith("o1") || model.startsWith("o3") || model.startsWith("o4")) return "OPENAI";
-  if (model.startsWith("claude-")) return "ANTHROPIC";
-  if (model.startsWith("gemini-")) return "GOOGLE";
+export interface DetectProviderResult {
+  provider: ProviderType;
+  azureDeployment?: AzureDeploymentMapping;
+}
+
+export async function getAzureDeployments(orgId: string): Promise<AzureDeploymentMapping[]> {
+  const cacheKey = REDIS_KEYS.azureDeployments(orgId);
+  const cached = await redisGet(cacheKey);
+  if (cached) return JSON.parse(cached);
+
+  const connections = await storage.getProviderConnectionsByOrg(orgId);
+  const azureConns = connections.filter(c => c.provider === "AZURE_OPENAI" && c.status === "ACTIVE");
+  if (azureConns.length === 0) return [];
+
+  const allDeployments: AzureDeploymentMapping[] = [];
+  for (const conn of azureConns) {
+    if (conn.azureDeployments) {
+      allDeployments.push(...(conn.azureDeployments as AzureDeploymentMapping[]));
+    }
+  }
+
+  if (allDeployments.length > 0) {
+    await redisSet(cacheKey, JSON.stringify(allDeployments), 300);
+  }
+  return allDeployments;
+}
+
+export async function detectProvider(model: string, orgId?: string): Promise<DetectProviderResult | null> {
+  if (model.startsWith("gpt-") || model.startsWith("o1") || model.startsWith("o3") || model.startsWith("o4")) return { provider: "OPENAI" };
+  if (model.startsWith("claude-")) return { provider: "ANTHROPIC" };
+  if (model.startsWith("gemini-")) return { provider: "GOOGLE" };
+
+  if (orgId) {
+    const deployments = await getAzureDeployments(orgId);
+    const deployment = deployments.find(d => d.deploymentName === model);
+    if (deployment) {
+      return { provider: "AZURE_OPENAI", azureDeployment: deployment };
+    }
+  }
+
   return null;
 }
 
@@ -44,6 +85,7 @@ export function getProviderBaseUrl(provider: ProviderType): string {
     case "OPENAI": return "https://api.openai.com";
     case "ANTHROPIC": return "https://api.anthropic.com";
     case "GOOGLE": return "https://generativelanguage.googleapis.com";
+    case "AZURE_OPENAI": return "";
   }
 }
 
@@ -62,10 +104,19 @@ interface OpenAIRequest {
   [key: string]: any;
 }
 
+export interface AzureContext {
+  baseUrl: string;
+  endpointMode: "v1" | "legacy";
+  apiVersion?: string;
+  deploymentName: string;
+  modelId: string;
+}
+
 export function translateToProvider(
   request: OpenAIRequest,
   provider: ProviderType,
-  effectiveMaxTokens?: number
+  effectiveMaxTokens?: number,
+  azureContext?: AzureContext
 ): { url: string; body: any; headers: Record<string, string>; method: string; proxyStopSequences?: string[] } {
   const maxTokens = effectiveMaxTokens ?? request.max_tokens;
 
@@ -80,6 +131,42 @@ export function translateToProvider(
     }
     return {
       url: "https://api.openai.com/v1/chat/completions",
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    };
+  }
+
+  if (provider === "AZURE_OPENAI") {
+    if (!azureContext) throw new Error("Azure context required for AZURE_OPENAI provider");
+
+    const isReasoningModel = /^(o1|o3|o4)/.test(azureContext.modelId);
+    const body = { ...request };
+
+    if (isReasoningModel && maxTokens) {
+      body.max_completion_tokens = maxTokens;
+      delete body.max_tokens;
+    } else {
+      body.max_tokens = maxTokens;
+    }
+
+    let url: string;
+    const baseUrl = azureContext.baseUrl.replace(/\/$/, "");
+
+    if (azureContext.endpointMode === "v1") {
+      url = `${baseUrl}/openai/v1/chat/completions`;
+      body.model = azureContext.deploymentName;
+    } else {
+      url = `${baseUrl}/openai/deployments/${azureContext.deploymentName}/chat/completions?api-version=${azureContext.apiVersion || "2024-10-21"}`;
+      delete body.model;
+    }
+
+    if (body.stream) {
+      body.stream_options = { include_usage: true };
+    }
+
+    return {
+      url,
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body,
@@ -188,6 +275,8 @@ export function setProviderAuth(
   } else if (provider === "GOOGLE") {
     const separator = url.includes("?") ? "&" : "?";
     url = `${url}${separator}key=${apiKey}`;
+  } else if (provider === "AZURE_OPENAI") {
+    headers["api-key"] = apiKey;
   }
   return { headers, url };
 }
@@ -275,7 +364,7 @@ export function translateResponseToOpenAI(
   model: string,
   proxyStopSequences?: string[]
 ): OpenAIResponse {
-  if (provider === "OPENAI") return body;
+  if (provider === "OPENAI" || provider === "AZURE_OPENAI") return body;
 
   if (provider === "ANTHROPIC") {
     const text = body.content?.map((c: any) => c.text || "").join("") || "";
@@ -334,7 +423,7 @@ export function translateStreamChunkToOpenAI(
   chunk: any,
   model: string
 ): { sseData: string; done: boolean; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } } | null {
-  if (provider === "OPENAI") {
+  if (provider === "OPENAI" || provider === "AZURE_OPENAI") {
     if (chunk === "[DONE]") return { sseData: "data: [DONE]\n\n", done: true };
     try {
       const parsed = typeof chunk === "string" ? JSON.parse(chunk) : chunk;

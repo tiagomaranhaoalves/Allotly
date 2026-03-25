@@ -27,7 +27,8 @@ export const orgRoleEnum = pgEnum("org_role", ["ROOT_ADMIN", "TEAM_ADMIN", "MEMB
 export const userStatusEnum = pgEnum("user_status", ["ACTIVE", "SUSPENDED", "INVITED", "EXPIRED"]);
 export const accessTypeEnum = pgEnum("access_type", ["TEAM", "VOUCHER"]);
 export const membershipStatusEnum = pgEnum("membership_status", ["ACTIVE", "SUSPENDED", "BUDGET_EXHAUSTED", "EXPIRED"]);
-export const providerEnum = pgEnum("provider", ["OPENAI", "ANTHROPIC", "GOOGLE"]);
+export const providerEnum = pgEnum("provider", ["OPENAI", "ANTHROPIC", "GOOGLE", "AZURE_OPENAI"]);
+export const azureEndpointModeEnum = pgEnum("azure_endpoint_mode", ["v1", "legacy"]);
 export const providerStatusEnum = pgEnum("provider_status", ["ACTIVE", "INVALID", "DISCONNECTED"]);
 export const allotlyKeyStatusEnum = pgEnum("allotly_key_status", ["ACTIVE", "REVOKED", "EXPIRED"]);
 export const voucherStatusEnum = pgEnum("voucher_status", ["ACTIVE", "EXPIRED", "FULLY_REDEEMED", "REVOKED"]);
@@ -109,6 +110,10 @@ export const providerConnections = pgTable("provider_connections", {
   status: providerStatusEnum("status").default("ACTIVE").notNull(),
   lastValidatedAt: timestamp("last_validated_at"),
   orgAllowedModels: json("org_allowed_models"),
+  azureBaseUrl: text("azure_base_url"),
+  azureApiVersion: text("azure_api_version"),
+  azureEndpointMode: azureEndpointModeEnum("azure_endpoint_mode"),
+  azureDeployments: json("azure_deployments"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [
@@ -180,6 +185,7 @@ export const proxyRequestLogs = pgTable("proxy_request_logs", {
   durationMs: integer("duration_ms").notNull(),
   statusCode: integer("status_code").notNull(),
   maxTokensApplied: integer("max_tokens_applied"),
+  deploymentName: text("deployment_name"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   index("proxy_request_logs_idx").on(table.membershipId, table.createdAt),
@@ -317,6 +323,13 @@ export type BudgetAlert = typeof budgetAlerts.$inferSelect;
 export type AllotlyApiKey = typeof allotlyApiKeys.$inferSelect;
 export type VoucherRedemption = typeof voucherRedemptions.$inferSelect;
 export type PlatformAuditLog = typeof platformAuditLogs.$inferSelect;
+
+export interface AzureDeploymentMapping {
+  deploymentName: string;
+  modelId: string;
+  inputPricePerMTok: number;
+  outputPricePerMTok: number;
+}
 
 export const signupSchema = z.object({
   email: z.string().email(),

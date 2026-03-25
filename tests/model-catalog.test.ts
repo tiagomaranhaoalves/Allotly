@@ -43,7 +43,7 @@ describe("Model catalog structure", () => {
   });
 
   it("all models have valid provider enum", () => {
-    const validProviders = ["OPENAI", "ANTHROPIC", "GOOGLE"];
+    const validProviders = ["OPENAI", "ANTHROPIC", "GOOGLE", "AZURE_OPENAI"];
     for (const model of DEFAULT_MODELS) {
       expect(validProviders).toContain(model.provider);
     }

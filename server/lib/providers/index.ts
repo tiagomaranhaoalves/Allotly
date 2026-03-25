@@ -2,11 +2,13 @@ import type { ProviderAdapter } from "./types";
 import { openaiAdapter } from "./openai";
 import { anthropicAdapter } from "./anthropic";
 import { googleAdapter } from "./google";
+import { azureOpenaiAdapter } from "./azure-openai";
 
 const adapters: Record<string, ProviderAdapter> = {
   OPENAI: openaiAdapter,
   ANTHROPIC: anthropicAdapter,
   GOOGLE: googleAdapter,
+  AZURE_OPENAI: azureOpenaiAdapter,
 };
 
 export function getProviderAdapter(provider: string): ProviderAdapter | undefined {
