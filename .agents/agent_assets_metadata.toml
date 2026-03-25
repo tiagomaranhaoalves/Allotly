@@ -18,3 +18,9 @@ id = "FnIundaGocgbzR3kPXykS"
 uri = "file://allotly-logo-icon.svg"
 type = "image"
 title = "Allotly Logo (Icon Only)"
+
+[[outputs]]
+id = "tq538ahMbUT5RkCf-CBLV"
+uri = "file://docs/proxy-architecture.md"
+type = "text"
+title = "Allotly Proxy — Technical Architecture"
