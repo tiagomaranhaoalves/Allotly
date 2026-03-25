@@ -143,7 +143,7 @@ Uses a Redis counter with a 60-second sliding window:
 2. On first increment (count === 1), set `EXPIRE 60`
 3. If count > RPM limit → reject with 429
 
-On rejection or pre-response error, the rate limit counter is decremented via `releaseRateLimit()` so failed requests don't consume quota.
+When a rate-limit rejection occurs, the counter is **not** decremented (the request counts against quota by design). However, if a request passes the rate-limit check but fails at a later step (validation, budget, provider error), `releaseRateLimit()` is called to decrement the counter so the failed request doesn't consume quota.
 
 ### Concurrency Control (`checkConcurrency`)
 
@@ -545,6 +545,7 @@ All proxy errors follow a consistent format:
 | `invalid_key_format` | 401 | Key doesn't start with `allotly_sk_` |
 | `invalid_key` | 401 | Key hash not found in database |
 | `key_revoked` | 401 | Key status is REVOKED |
+| `membership_not_found` | 401 | No membership associated with the API key |
 | `budget_exhausted` | 402 | Membership status is BUDGET_EXHAUSTED |
 | `insufficient_budget` | 402 | Estimated cost exceeds remaining budget |
 | `requests_exhausted` | 402 | Voucher bundle request pool depleted |
