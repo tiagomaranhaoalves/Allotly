@@ -16,6 +16,7 @@ const PROVIDER_COLORS: Record<string, string> = {
   OPENAI: "#10a37f",
   ANTHROPIC: "#d4a574",
   GOOGLE: "#4285f4",
+  AZURE_OPENAI: "#0078d4",
 };
 
 const TIME_RANGES = [

@@ -135,7 +135,7 @@ export const emailTemplates = {
         p(`Your organization <strong>${orgName}</strong> has been created. You're the Root Admin with full control over AI spend management.`),
         p("Here's what you can do next:"),
         `<ul style="color:#475569;font-size:14px;line-height:1.8;padding-left:20px;margin:12px 0">
-<li>Connect your AI providers (OpenAI, Anthropic, Google)</li>
+<li>Connect your AI providers (OpenAI, Anthropic, Google, Azure OpenAI)</li>
 <li>Create teams and add members</li>
 <li>Set budgets and monitor spend</li>
 <li>Create vouchers for external access</li>

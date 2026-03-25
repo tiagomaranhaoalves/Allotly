@@ -14,7 +14,7 @@ Allotly is a SaaS platform designed for managing and distributing AI API access 
 Allotly employs a robust architecture with a focus on real-time budget enforcement and secure API management.
 
 **UI/UX Decisions:**
-- **Design System**: Primary color: Indigo #6366F1, Secondary: Cyan #06B6D4. Provider-specific colors for OpenAI (green), Anthropic (amber), Google (blue).
+- **Design System**: Primary color: Indigo #6366F1, Secondary: Cyan #06B6D4. Provider-specific colors for OpenAI (green #10A37F), Anthropic (amber #D4A574), Google (blue #4285F4), Azure OpenAI (blue #0078D4).
 - **Dark Mode**: Uses a dark palette for background (`#111827`), card/sidebar (`#1E293B`), hover states (`#334155`), and neutral borders (`Neutral 700`).
 - **Fonts**: Inter for UI elements and JetBrains Mono for code displays.
 - **Monetary Values**: All money is handled in integer cents to prevent floating-point inaccuracies.
@@ -47,6 +47,6 @@ Allotly employs a robust architecture with a focus on real-time budget enforceme
 - **Database**: PostgreSQL via Drizzle ORM.
 - **Payments**: Stripe (for subscriptions and one-time payments) integrated via `stripe-replit-sync`.
 - **Email**: Resend for email delivery, with `allotly.ai` as the verified domain and `hello@allotly.ai` as the sender. Fallback to `onboarding@resend.dev` if the domain is not verified.
-- **AI Providers**: OpenAI, Anthropic, Google are integrated for AI model access. Google adapter uses `v1beta` API (required for `systemInstruction` support), filters out thinking/reasoning parts from Gemini 2.5 responses, and forwards `stop` → `stopSequences` in `generationConfig`. Provider parameter sanitization strips unknown keys before forwarding to prevent upstream rejections.
+- **AI Providers**: OpenAI, Anthropic, Google, and Azure OpenAI are integrated for AI model access. Google adapter uses `v1beta` API (required for `systemInstruction` support), filters out thinking/reasoning parts from Gemini 2.5 responses, and forwards `stop` → `stopSequences` in `generationConfig`. Provider parameter sanitization strips unknown keys before forwarding to prevent upstream rejections. Azure OpenAI uses `api-key` header auth, supports v1 and legacy endpoint modes, and requires deployment-to-model mappings with custom pricing. Deployment names must not conflict with existing provider model prefixes (gpt-, o1, o3, o4, claude-, gemini-).
 - **Cache/Realtime**: Redis is used for budget counters, concurrency control, and rate limiting, with an in-memory Map fallback.
 - **Authentication**: Session-based authentication using scrypt for password hashing.

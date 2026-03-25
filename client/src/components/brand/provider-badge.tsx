@@ -2,12 +2,14 @@ const PROVIDER_COLORS: Record<string, string> = {
   OPENAI: "#10A37F",
   ANTHROPIC: "#D4A574",
   GOOGLE: "#4285F4",
+  AZURE_OPENAI: "#0078D4",
 };
 
 const PROVIDER_NAMES: Record<string, string> = {
   OPENAI: "OpenAI",
   ANTHROPIC: "Anthropic",
   GOOGLE: "Google",
+  AZURE_OPENAI: "Azure OpenAI",
 };
 
 export function ProviderBadge({ provider, className = "" }: { provider: string; className?: string }) {

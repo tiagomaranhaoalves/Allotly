@@ -16,8 +16,15 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Plug, Plus, Trash2, Shield, RefreshCw, ChevronDown, ChevronRight, RotateCw, Zap, Activity } from "lucide-react";
+import { Plug, Plus, Trash2, Shield, RefreshCw, ChevronDown, ChevronRight, RotateCw, Zap, Activity, Cloud, X, AlertTriangle } from "lucide-react";
 import { useState } from "react";
+
+interface AzureDeployment {
+  deploymentName: string;
+  modelId: string;
+  inputPricePerMTok: number;
+  outputPricePerMTok: number;
+}
 
 interface ProviderConnection {
   id: string;
@@ -27,6 +34,10 @@ interface ProviderConnection {
   lastValidatedAt: string | null;
   orgAllowedModels: string[] | null;
   createdAt: string;
+  azureBaseUrl?: string | null;
+  azureApiVersion?: string | null;
+  azureEndpointMode?: string | null;
+  azureDeployments?: AzureDeployment[] | null;
 }
 
 interface ModelPricing {
@@ -55,6 +66,47 @@ interface TestResult {
   error?: string;
 }
 
+const AZURE_KNOWN_MODELS = [
+  { id: "gpt-4o", label: "GPT-4o", inputPrice: 250, outputPrice: 1000 },
+  { id: "gpt-4o-mini", label: "GPT-4o Mini", inputPrice: 15, outputPrice: 60 },
+  { id: "gpt-4.1", label: "GPT-4.1", inputPrice: 200, outputPrice: 800 },
+  { id: "gpt-4.1-mini", label: "GPT-4.1 Mini", inputPrice: 40, outputPrice: 160 },
+  { id: "gpt-4.1-nano", label: "GPT-4.1 Nano", inputPrice: 10, outputPrice: 40 },
+  { id: "o4-mini", label: "o4-mini", inputPrice: 110, outputPrice: 440 },
+  { id: "o3", label: "o3", inputPrice: 1000, outputPrice: 4000 },
+  { id: "o3-mini", label: "o3-mini", inputPrice: 110, outputPrice: 440 },
+  { id: "o1", label: "o1", inputPrice: 1500, outputPrice: 6000 },
+  { id: "o1-mini", label: "o1-mini", inputPrice: 300, outputPrice: 1200 },
+];
+
+const CONFLICT_PREFIXES = ["gpt-", "o1", "o3", "o4", "claude-", "gemini-"];
+
+function checkDeploymentNameConflict(name: string): string | null {
+  const lower = name.toLowerCase();
+  for (const prefix of CONFLICT_PREFIXES) {
+    if (lower.startsWith(prefix)) {
+      return `Deployment name '${name}' conflicts with existing provider model naming. Azure deployment names must not start with '${prefix}'. Use a custom name like 'my-gpt4o' or 'nebula-one'.`;
+    }
+  }
+  return null;
+}
+
+function validateAzureBaseUrl(url: string): { valid: boolean; warning?: string } {
+  if (!url.startsWith("https://")) {
+    return { valid: false };
+  }
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname;
+    if (hostname.endsWith(".openai.azure.com") || hostname.endsWith(".services.ai.azure.com")) {
+      return { valid: true };
+    }
+    return { valid: true, warning: "Hostname doesn't match known Azure patterns (*.openai.azure.com or *.services.ai.azure.com). This may still work if you have a custom endpoint." };
+  } catch {
+    return { valid: false };
+  }
+}
+
 export default function ProvidersPage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -64,20 +116,44 @@ export default function ProvidersPage() {
   const [displayName, setDisplayName] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  const [azureBaseUrl, setAzureBaseUrl] = useState("");
+  const [azureEndpointMode, setAzureEndpointMode] = useState<"v1" | "legacy">("v1");
+  const [azureApiVersion, setAzureApiVersion] = useState("2024-10-21");
+  const [azureDeployments, setAzureDeployments] = useState<AzureDeployment[]>([
+    { deploymentName: "", modelId: "", inputPricePerMTok: 0, outputPricePerMTok: 0 },
+  ]);
+
   const { data: providers, isLoading } = useQuery<ProviderConnection[]>({ queryKey: ["/api/providers"] });
+
+  const resetForm = () => {
+    setProvider("");
+    setApiKey("");
+    setDisplayName("");
+    setAzureBaseUrl("");
+    setAzureEndpointMode("v1");
+    setAzureApiVersion("2024-10-21");
+    setAzureDeployments([{ deploymentName: "", modelId: "", inputPricePerMTok: 0, outputPricePerMTok: 0 }]);
+  };
 
   const addMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/providers", { provider, apiKey, displayName });
+      const body: any = { provider, apiKey, displayName };
+      if (provider === "AZURE_OPENAI") {
+        body.azureBaseUrl = azureBaseUrl.replace(/\/+$/, "").replace(/\/openai\/?$/, "");
+        body.azureEndpointMode = azureEndpointMode;
+        if (azureEndpointMode === "legacy") {
+          body.azureApiVersion = azureApiVersion;
+        }
+        body.azureDeployments = azureDeployments.filter(d => d.deploymentName && d.modelId);
+      }
+      const res = await apiRequest("POST", "/api/providers", body);
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/providers"] });
       toast({ title: "AI Provider connected successfully" });
       setOpen(false);
-      setProvider("");
-      setApiKey("");
-      setDisplayName("");
+      resetForm();
     },
     onError: (err: any) => {
       toast({ title: "Failed to connect", description: err.message, variant: "destructive" });
@@ -94,6 +170,39 @@ export default function ProvidersPage() {
     },
   });
 
+  const addDeploymentRow = () => {
+    setAzureDeployments([...azureDeployments, { deploymentName: "", modelId: "", inputPricePerMTok: 0, outputPricePerMTok: 0 }]);
+  };
+
+  const removeDeploymentRow = (index: number) => {
+    setAzureDeployments(azureDeployments.filter((_, i) => i !== index));
+  };
+
+  const updateDeployment = (index: number, field: keyof AzureDeployment, value: string | number) => {
+    const updated = [...azureDeployments];
+    (updated[index] as any)[field] = value;
+    if (field === "modelId" && typeof value === "string") {
+      const model = AZURE_KNOWN_MODELS.find(m => m.id === value);
+      if (model) {
+        updated[index].inputPricePerMTok = model.inputPrice;
+        updated[index].outputPricePerMTok = model.outputPrice;
+      }
+    }
+    setAzureDeployments(updated);
+  };
+
+  const azureUrlValidation = azureBaseUrl ? validateAzureBaseUrl(azureBaseUrl) : null;
+  const deploymentErrors = azureDeployments.map(d => d.deploymentName ? checkDeploymentNameConflict(d.deploymentName) : null);
+  const hasDeploymentErrors = deploymentErrors.some(e => e !== null);
+  const validDeployments = azureDeployments.filter(d => d.deploymentName && d.modelId);
+  const duplicateDeploymentNames = azureDeployments.map(d => d.deploymentName).filter((name, i, arr) => name && arr.indexOf(name) !== i);
+
+  const isAzureFormValid = provider === "AZURE_OPENAI"
+    ? apiKey && azureBaseUrl && azureUrlValidation?.valid && validDeployments.length > 0 && !hasDeploymentErrors && duplicateDeploymentNames.length === 0
+    : true;
+
+  const isFormValid = provider && apiKey && isAzureFormValid;
+
   if (user?.orgRole !== "ROOT_ADMIN") {
     return (
       <EmptyState
@@ -109,26 +218,28 @@ export default function ProvidersPage() {
       <div className="flex items-center justify-between gap-2">
         <div>
           <h1 className="text-2xl font-bold tracking-tight" data-testid="text-providers-heading">AI Providers</h1>
-          <p className="text-muted-foreground mt-1">Connect your AI Provider accounts (up to 3)</p>
+          <p className="text-muted-foreground mt-1">Connect your AI Provider accounts (up to 4)</p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetForm(); }}>
           <DialogTrigger asChild>
-            <Button data-testid="button-connect-provider" disabled={providers && providers.length >= 3}>
+            <Button data-testid="button-connect-provider" disabled={providers && providers.length >= 4}>
               <Plus className="w-4 h-4 mr-1.5" />
               Connect AI Provider
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className={provider === "AZURE_OPENAI" ? "max-w-2xl max-h-[85vh] overflow-y-auto" : ""}>
             <DialogHeader>
               <DialogTitle>Connect AI Provider</DialogTitle>
               <DialogDescription>
-                Connect your OpenAI, Anthropic, or Google API key. The key will be validated against the provider's API before saving.
+                {provider === "AZURE_OPENAI"
+                  ? "Connect your Azure OpenAI resource. Map your deployments to models so Allotly can route requests and calculate costs."
+                  : "Connect your OpenAI, Anthropic, Google, or Azure OpenAI API key. The key will be validated against the provider's API before saving."}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 pt-2">
               <div className="space-y-2">
                 <Label>AI Provider</Label>
-                <Select value={provider} onValueChange={setProvider}>
+                <Select value={provider} onValueChange={(v) => { setProvider(v); resetForm(); setProvider(v); }}>
                   <SelectTrigger data-testid="select-provider">
                     <SelectValue placeholder="Select AI Provider" />
                   </SelectTrigger>
@@ -136,33 +247,206 @@ export default function ProvidersPage() {
                     <SelectItem value="OPENAI">OpenAI</SelectItem>
                     <SelectItem value="ANTHROPIC">Anthropic</SelectItem>
                     <SelectItem value="GOOGLE">Google</SelectItem>
+                    <SelectItem value="AZURE_OPENAI">Azure OpenAI</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label>Admin API Key</Label>
-                <Input
-                  type="password"
-                  placeholder="sk-... or similar"
-                  value={apiKey}
-                  onChange={e => setApiKey(e.target.value)}
-                  data-testid="input-api-key"
-                />
-                <p className="text-xs text-muted-foreground">Your key is encrypted with AES-256-GCM and never stored in plaintext.</p>
-              </div>
-              <div className="space-y-2">
-                <Label>Display Name (optional)</Label>
-                <Input
-                  placeholder="e.g., Production OpenAI"
-                  value={displayName}
-                  onChange={e => setDisplayName(e.target.value)}
-                  data-testid="input-display-name"
-                />
-              </div>
+
+              {provider === "AZURE_OPENAI" ? (
+                <>
+                  <div className="space-y-2">
+                    <Label>Display Name (optional)</Label>
+                    <Input
+                      placeholder='e.g., "Nebula One - Azure"'
+                      value={displayName}
+                      onChange={e => setDisplayName(e.target.value)}
+                      data-testid="input-display-name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Azure Base URL</Label>
+                    <Input
+                      placeholder="https://contoso.openai.azure.com"
+                      value={azureBaseUrl}
+                      onChange={e => setAzureBaseUrl(e.target.value)}
+                      data-testid="input-azure-base-url"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Your Azure OpenAI endpoint. Accepts both {"{name}"}.openai.azure.com and {"{name}"}.services.ai.azure.com
+                    </p>
+                    {azureUrlValidation && !azureUrlValidation.valid && (
+                      <p className="text-xs text-destructive">URL must start with https://</p>
+                    )}
+                    {azureUrlValidation?.warning && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3 shrink-0" /> {azureUrlValidation.warning}
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label>API Key</Label>
+                    <Input
+                      type="password"
+                      placeholder="Your Azure OpenAI API key"
+                      value={apiKey}
+                      onChange={e => setApiKey(e.target.value)}
+                      data-testid="input-api-key"
+                    />
+                    <p className="text-xs text-muted-foreground">Your key is encrypted with AES-256-GCM and never stored in plaintext.</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Endpoint Mode</Label>
+                    <div className="space-y-2">
+                      <label className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/30 transition-colors" data-testid="radio-endpoint-v1">
+                        <input
+                          type="radio"
+                          name="endpointMode"
+                          checked={azureEndpointMode === "v1"}
+                          onChange={() => setAzureEndpointMode("v1")}
+                          className="mt-0.5"
+                        />
+                        <div>
+                          <p className="text-sm font-medium">v1 API (recommended)</p>
+                          <p className="text-xs text-muted-foreground">Uses /openai/v1/chat/completions. No api-version needed. Most OpenAI-compatible.</p>
+                        </div>
+                      </label>
+                      <label className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/30 transition-colors" data-testid="radio-endpoint-legacy">
+                        <input
+                          type="radio"
+                          name="endpointMode"
+                          checked={azureEndpointMode === "legacy"}
+                          onChange={() => setAzureEndpointMode("legacy")}
+                          className="mt-0.5"
+                        />
+                        <div>
+                          <p className="text-sm font-medium">Legacy versioned API</p>
+                          <p className="text-xs text-muted-foreground">Uses /openai/deployments/{"{name}"}/chat/completions. Requires api-version parameter.</p>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+                  {azureEndpointMode === "legacy" && (
+                    <div className="space-y-2">
+                      <Label>API Version</Label>
+                      <Input
+                        value={azureApiVersion}
+                        onChange={e => setAzureApiVersion(e.target.value)}
+                        placeholder="2024-10-21"
+                        data-testid="input-azure-api-version"
+                      />
+                      <p className="text-xs text-muted-foreground">Defaults to 2024-10-21 (current GA)</p>
+                    </div>
+                  )}
+                  <div className="space-y-3 pt-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-semibold">Deployment Mappings</Label>
+                      <Button type="button" variant="outline" size="sm" onClick={addDeploymentRow} data-testid="button-add-deployment">
+                        <Plus className="w-3.5 h-3.5 mr-1" /> Add deployment
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Map your Azure deployments to underlying OpenAI models. Selecting a model auto-fills default pricing. Override prices if your Azure contract differs.
+                    </p>
+                    <div className="space-y-3">
+                      {azureDeployments.map((dep, idx) => (
+                        <div key={idx} className="p-3 rounded-lg border bg-muted/20 space-y-3" data-testid={`deployment-row-${idx}`}>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-muted-foreground">Deployment #{idx + 1}</span>
+                            {azureDeployments.length > 1 && (
+                              <Button type="button" variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => removeDeploymentRow(idx)} data-testid={`button-remove-deployment-${idx}`}>
+                                <X className="w-3.5 h-3.5" />
+                              </Button>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <Label className="text-xs">Deployment Name</Label>
+                              <Input
+                                value={dep.deploymentName}
+                                onChange={e => updateDeployment(idx, "deploymentName", e.target.value)}
+                                placeholder="e.g., nebula-one"
+                                className="h-8 text-sm"
+                                data-testid={`input-deployment-name-${idx}`}
+                              />
+                              {deploymentErrors[idx] && (
+                                <p className="text-xs text-destructive">{deploymentErrors[idx]}</p>
+                              )}
+                              {dep.deploymentName && duplicateDeploymentNames.includes(dep.deploymentName) && (
+                                <p className="text-xs text-destructive">Duplicate deployment name</p>
+                              )}
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">OpenAI Model</Label>
+                              <Select value={dep.modelId} onValueChange={v => updateDeployment(idx, "modelId", v)}>
+                                <SelectTrigger className="h-8 text-sm" data-testid={`select-model-${idx}`}>
+                                  <SelectValue placeholder="Select model" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {AZURE_KNOWN_MODELS.map(m => (
+                                    <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <Label className="text-xs">Input price (cents/1M tokens)</Label>
+                              <Input
+                                type="number"
+                                value={dep.inputPricePerMTok}
+                                onChange={e => updateDeployment(idx, "inputPricePerMTok", parseInt(e.target.value) || 0)}
+                                className="h-8 text-sm"
+                                data-testid={`input-price-in-${idx}`}
+                              />
+                              <p className="text-[10px] text-muted-foreground">${(dep.inputPricePerMTok / 100).toFixed(2)}/1M tokens</p>
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Output price (cents/1M tokens)</Label>
+                              <Input
+                                type="number"
+                                value={dep.outputPricePerMTok}
+                                onChange={e => updateDeployment(idx, "outputPricePerMTok", parseInt(e.target.value) || 0)}
+                                className="h-8 text-sm"
+                                data-testid={`input-price-out-${idx}`}
+                              />
+                              <p className="text-[10px] text-muted-foreground">${(dep.outputPricePerMTok / 100).toFixed(2)}/1M tokens</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <Label>Admin API Key</Label>
+                    <Input
+                      type="password"
+                      placeholder="sk-... or similar"
+                      value={apiKey}
+                      onChange={e => setApiKey(e.target.value)}
+                      data-testid="input-api-key"
+                    />
+                    <p className="text-xs text-muted-foreground">Your key is encrypted with AES-256-GCM and never stored in plaintext.</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Display Name (optional)</Label>
+                    <Input
+                      placeholder="e.g., Production OpenAI"
+                      value={displayName}
+                      onChange={e => setDisplayName(e.target.value)}
+                      data-testid="input-display-name"
+                    />
+                  </div>
+                </>
+              )}
+
               <Button
                 className="w-full"
                 onClick={() => addMutation.mutate()}
-                disabled={!provider || !apiKey || addMutation.isPending}
+                disabled={!isFormValid || addMutation.isPending}
                 data-testid="button-submit-provider"
               >
                 {addMutation.isPending ? "Validating & Connecting..." : "Validate & Connect"}
@@ -174,7 +458,7 @@ export default function ProvidersPage() {
 
       {isLoading ? (
         <div className="space-y-4">
-          {[1, 2, 3].map(i => <Skeleton key={i} className="h-24" />)}
+          {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-24" />)}
         </div>
       ) : providers && providers.length > 0 ? (
         <div className="space-y-4">
@@ -188,9 +472,9 @@ export default function ProvidersPage() {
               isDeleting={deleteMutation.isPending}
             />
           ))}
-          {providers.length < 3 && (
+          {providers.length < 4 && (
             <p className="text-xs text-muted-foreground text-center">
-              {3 - providers.length} AI Provider connection{3 - providers.length !== 1 ? 's' : ''} remaining
+              {4 - providers.length} AI Provider connection{4 - providers.length !== 1 ? 's' : ''} remaining
             </p>
           )}
         </div>
@@ -198,7 +482,7 @@ export default function ProvidersPage() {
         <EmptyState
           icon={<Plug className="w-10 h-10 text-muted-foreground" />}
           title="Connect your first AI provider"
-          description="Connect your OpenAI, Anthropic, or Google account to start provisioning API keys for your team."
+          description="Connect your OpenAI, Anthropic, Google, or Azure OpenAI account to start provisioning API keys for your team."
           action={{ label: "Connect Provider", onClick: () => setOpen(true) }}
         />
       )}
@@ -376,6 +660,20 @@ function ProviderCard({
         </div>
       </div>
 
+      {p.provider === "AZURE_OPENAI" && (
+        <div className="flex flex-wrap items-center gap-3 mt-3 text-xs text-muted-foreground">
+          {p.azureBaseUrl && (
+            <span data-testid="text-azure-base-url"><Cloud className="w-3 h-3 inline mr-1" />{new URL(p.azureBaseUrl).hostname}</span>
+          )}
+          {p.azureEndpointMode && (
+            <span className="px-2 py-0.5 rounded-full bg-muted font-medium" data-testid="text-azure-endpoint-mode">{p.azureEndpointMode} mode</span>
+          )}
+          {p.azureDeployments && (
+            <span data-testid="text-azure-deployment-count">{(p.azureDeployments as AzureDeployment[]).length} deployment{(p.azureDeployments as AzureDeployment[]).length !== 1 ? 's' : ''}</span>
+          )}
+        </div>
+      )}
+
       {p.lastValidatedAt && (
         <p className="text-xs text-muted-foreground mt-3">
           Last validated: {new Date(p.lastValidatedAt).toLocaleString()}
@@ -496,6 +794,8 @@ function ProviderCard({
 
 function ModelAllowlist({ connection }: { connection: ProviderConnection }) {
   const { toast } = useToast();
+  const isAzure = connection.provider === "AZURE_OPENAI";
+
   const { data: models, isLoading } = useQuery<ModelPricing[]>({
     queryKey: ["/api/models", connection.provider],
     queryFn: async () => {
@@ -503,6 +803,7 @@ function ModelAllowlist({ connection }: { connection: ProviderConnection }) {
       if (!res.ok) throw new Error("Failed to load models");
       return res.json();
     },
+    enabled: !isAzure,
   });
 
   const updateMutation = useMutation({
@@ -520,8 +821,27 @@ function ModelAllowlist({ connection }: { connection: ProviderConnection }) {
     },
   });
 
-  if (isLoading) return <Skeleton className="h-24 mt-3" />;
-  if (!models || models.length === 0) return <p className="text-xs text-muted-foreground mt-3">No models found for this provider.</p>;
+  if (!isAzure && isLoading) return <Skeleton className="h-24 mt-3" />;
+
+  const azureDeployments = (connection.azureDeployments || []) as AzureDeployment[];
+  const modelList: { id: string; label: string; sublabel?: string; pricingLabel: string }[] = isAzure
+    ? azureDeployments.map(d => ({
+        id: d.deploymentName,
+        label: d.deploymentName,
+        sublabel: d.modelId,
+        pricingLabel: `$${(d.inputPricePerMTok / 100).toFixed(2)}/1M in · $${(d.outputPricePerMTok / 100).toFixed(2)}/1M out`,
+      }))
+    : (models || []).map(m => ({
+        id: m.modelId,
+        label: m.modelDisplayName,
+        pricingLabel: `$${m.inputPricePer1kTokens}/1K in · $${m.outputPricePer1kTokens}/1K out`,
+      }));
+
+  if (modelList.length === 0) {
+    return <p className="text-xs text-muted-foreground mt-3">
+      {isAzure ? "No deployments configured. Edit this connection to add deployment mappings." : "No models found for this provider."}
+    </p>;
+  }
 
   const currentAllowed = connection.orgAllowedModels || [];
   const allAllowed = currentAllowed.length === 0;
@@ -529,36 +849,41 @@ function ModelAllowlist({ connection }: { connection: ProviderConnection }) {
   const toggleModel = (modelId: string) => {
     let next: string[];
     if (allAllowed) {
-      next = models.map(m => m.modelId).filter(id => id !== modelId);
+      next = modelList.map(m => m.id).filter(id => id !== modelId);
     } else if (currentAllowed.includes(modelId)) {
       next = currentAllowed.filter(id => id !== modelId);
     } else {
       next = [...currentAllowed, modelId];
     }
-    if (next.length === models.length) next = [];
+    if (next.length === modelList.length) next = [];
     updateMutation.mutate(next);
   };
 
   return (
     <div className="mt-3 pt-3 border-t space-y-2" data-testid={`model-allowlist-${connection.provider.toLowerCase()}`}>
       <p className="text-xs text-muted-foreground mb-2">
-        {allAllowed ? "All models allowed. Toggle individual models to restrict access." : `${currentAllowed.length} of ${models.length} models allowed.`}
+        {allAllowed
+          ? `All ${isAzure ? "deployments" : "models"} allowed. Toggle individual ${isAzure ? "deployments" : "models"} to restrict access.`
+          : `${currentAllowed.length} of ${modelList.length} ${isAzure ? "deployments" : "models"} allowed.`}
       </p>
-      {models.map(m => {
-        const isEnabled = allAllowed || currentAllowed.includes(m.modelId);
+      {modelList.map(m => {
+        const isEnabled = allAllowed || currentAllowed.includes(m.id);
         return (
-          <div key={m.modelId} className="flex items-center justify-between gap-3 py-1.5">
+          <div key={m.id} className="flex items-center justify-between gap-3 py-1.5">
             <div>
-              <span className="text-sm font-medium">{m.modelDisplayName}</span>
+              <span className="text-sm font-medium" data-testid={`text-model-name-${m.id}`}>{m.label}</span>
+              {m.sublabel && (
+                <span className="text-xs text-muted-foreground ml-1.5" data-testid={`text-model-underlying-${m.id}`}>({m.sublabel})</span>
+              )}
               <span className="text-xs text-muted-foreground ml-2">
-                ${m.inputPricePer1kTokens}/1K in · ${m.outputPricePer1kTokens}/1K out
+                {m.pricingLabel}
               </span>
             </div>
             <Switch
               checked={isEnabled}
-              onCheckedChange={() => toggleModel(m.modelId)}
+              onCheckedChange={() => toggleModel(m.id)}
               disabled={updateMutation.isPending}
-              data-testid={`switch-model-${m.modelId}`}
+              data-testid={`switch-model-${m.id}`}
             />
           </div>
         );

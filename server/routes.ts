@@ -467,6 +467,12 @@ export async function registerRoutes(
       lastValidatedAt: c.lastValidatedAt,
       orgAllowedModels: c.orgAllowedModels,
       createdAt: c.createdAt,
+      ...(c.provider === "AZURE_OPENAI" && {
+        azureBaseUrl: c.azureBaseUrl,
+        azureApiVersion: c.azureApiVersion,
+        azureEndpointMode: c.azureEndpointMode,
+        azureDeployments: c.azureDeployments,
+      }),
     }));
     res.json(sanitized);
   });

@@ -29,12 +29,12 @@ import { useLocation } from "wouter";
 const PLAN_LIMITS = {
   FREE: {
     maxTeams: 1, maxTeamAdmins: 0, maxMembersPerTeam: 5,
-    maxProviders: 3, maxActiveVouchers: 1, retentionDays: 7,
+    maxProviders: 4, maxActiveVouchers: 1, retentionDays: 7,
     usageTracking: "Real-time",
   },
   TEAM: {
     maxTeams: 10, maxTeamAdmins: 10, maxMembersPerTeam: 20,
-    maxProviders: 3, maxActiveVouchers: "5/admin", retentionDays: 90,
+    maxProviders: 4, maxActiveVouchers: "5/admin", retentionDays: 90,
     usageTracking: "Real-time",
   },
 };
@@ -621,7 +621,7 @@ export default function SettingsPage() {
                   </div>
                   <ul className="space-y-1.5 text-sm text-muted-foreground mb-4">
                     <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-500" /> Up to 10 Team Admins, 20 members per team</li>
-                    <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-500" /> 3 AI Provider connections</li>
+                    <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-500" /> 4 AI Provider connections</li>
                     <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-500" /> Real-time usage tracking, 90-day retention</li>
                     <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-500" /> 5 voucher codes per admin, 50 redemptions each</li>
                     <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-500" /> AI usage analytics + audit log</li>

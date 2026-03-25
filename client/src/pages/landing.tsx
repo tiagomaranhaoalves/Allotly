@@ -164,7 +164,7 @@ function Hero() {
                   </span>
                 </h1>
                 <p className="mt-6 text-lg sm:text-xl text-muted-foreground max-w-[600px] leading-relaxed">
-                  Allotly connects to your OpenAI, Anthropic, and Gemini accounts and puts you in control — per person, per model, per dollar.
+                  Allotly connects to your OpenAI, Anthropic, Gemini, and Azure OpenAI accounts and puts you in control — per person, per model, per dollar.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-3">
@@ -206,6 +206,7 @@ function Hero() {
                       { label: "OpenAI", color: "#10A37F" },
                       { label: "Anthropic", color: "#D4A574" },
                       { label: "Google", color: "#4285F4" },
+                      { label: "Azure OpenAI", color: "#0078D4" },
                     ].map(p => (
                       <span key={p.label} className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-muted/50 border border-border/40">
                         <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }} />
@@ -318,7 +319,7 @@ function SolutionIntro() {
             One control plane. Every AI provider. Total spend visibility.
           </h2>
           <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-            Whether your team uses OpenAI for code generation, Anthropic for analysis, or Gemini for research — Allotly gives you a single pane of glass to manage budgets, distribute access, and track every dollar.
+            Whether your team uses OpenAI for code generation, Anthropic for analysis, Gemini for research, or Azure OpenAI for enterprise deployments — Allotly gives you a single pane of glass to manage budgets, distribute access, and track every dollar.
           </p>
         </FadeIn>
       </div>
@@ -350,7 +351,7 @@ function TwoFeaturesSection() {
               </div>
               <p className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 mb-2">Unified proxy with guardrails</p>
               <p className="text-muted-foreground mb-6 leading-relaxed">
-                Your team uses Allotly proxy keys to call OpenAI, Anthropic, and Gemini through one unified endpoint. Real-time budget enforcement, automatic token clamping, and per-member spend tracking — all built in.
+                Your team uses Allotly proxy keys to call OpenAI, Anthropic, Gemini, and Azure OpenAI through one unified endpoint. Real-time budget enforcement, automatic token clamping, and per-member spend tracking — all built in.
               </p>
               <ul className="space-y-3 mb-6">
                 {[
@@ -468,7 +469,7 @@ function HowItWorks() {
 
   const steps = {
     team: [
-      { icon: <Plug className="w-6 h-6" />, title: "Connect Providers", desc: "Link your OpenAI, Anthropic, and Google accounts. API keys encrypted with AES-256-GCM at rest." },
+      { icon: <Plug className="w-6 h-6" />, title: "Connect Providers", desc: "Link your OpenAI, Anthropic, Google, and Azure OpenAI accounts. API keys encrypted with AES-256-GCM at rest." },
       { icon: <Users className="w-6 h-6" />, title: "Create Teams & Set Budgets", desc: "Add members, assign per-person budgets, restrict models. Members get scoped provider keys automatically." },
       { icon: <BarChart3 className="w-6 h-6" />, title: "Monitor & Control", desc: "Unified dashboard with spend tracking. Automatic alerts at 80%, key revocation at 100% budget." },
     ],
@@ -633,7 +634,7 @@ function PricingSection() {
       features: [
         "1 Root Admin (acts as Team Admin)",
         "Up to 5 direct members",
-        "3 AI Provider connections",
+        "4 AI Provider connections",
         "Real-time usage tracking",
         "7-day data retention",
         "1 voucher code, 25 redemptions",
@@ -652,7 +653,7 @@ function PricingSection() {
         "1 Root Admin (included)",
         "$20 per each additional Team Admin, limited to 9 new teams",
         "Up to 20 members per team",
-        "3 AI Provider connections",
+        "4 AI Provider connections",
         "Real-time usage tracking",
         "90-day retention + audit log",
         "5 voucher codes per admin, 50 redemptions",
