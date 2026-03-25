@@ -505,6 +505,18 @@ export async function registerRoutes(
         if (!parsed.data.azureDeployments || parsed.data.azureDeployments.length === 0) {
           return res.status(400).json({ message: "At least one Azure deployment is required" });
         }
+
+        const BLOCKED_PREFIXES = ["gpt-", "o1", "o3", "o4", "claude-", "gemini-"];
+        for (const dep of parsed.data.azureDeployments!) {
+          const lower = dep.deploymentName.toLowerCase();
+          for (const prefix of BLOCKED_PREFIXES) {
+            if (lower.startsWith(prefix)) {
+              return res.status(400).json({
+                message: `Azure deployment name '${dep.deploymentName}' must not start with '${prefix}'. Use a custom name like 'my-gpt4o'.`,
+              });
+            }
+          }
+        }
       }
 
       const providerCheck = await checkPlanLimit(user.orgId, "provider");
@@ -632,7 +644,20 @@ export async function registerRoutes(
         if (parsed.data.azureBaseUrl !== undefined) updates.azureBaseUrl = parsed.data.azureBaseUrl;
         if (parsed.data.azureApiVersion !== undefined) updates.azureApiVersion = parsed.data.azureApiVersion;
         if (parsed.data.azureEndpointMode !== undefined) updates.azureEndpointMode = parsed.data.azureEndpointMode;
-        if (parsed.data.azureDeployments !== undefined) updates.azureDeployments = parsed.data.azureDeployments;
+        if (parsed.data.azureDeployments !== undefined) {
+          const BLOCKED_PREFIXES = ["gpt-", "o1", "o3", "o4", "claude-", "gemini-"];
+          for (const dep of parsed.data.azureDeployments) {
+            const lower = dep.deploymentName.toLowerCase();
+            for (const prefix of BLOCKED_PREFIXES) {
+              if (lower.startsWith(prefix)) {
+                return res.status(400).json({
+                  message: `Azure deployment name '${dep.deploymentName}' must not start with '${prefix}'. Use a custom name like 'my-gpt4o'.`,
+                });
+              }
+            }
+          }
+          updates.azureDeployments = parsed.data.azureDeployments;
+        }
       }
 
       const updated = await storage.updateProviderConnection(conn.id, updates);
