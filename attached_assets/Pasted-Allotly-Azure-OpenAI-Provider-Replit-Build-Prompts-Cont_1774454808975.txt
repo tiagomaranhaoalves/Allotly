@@ -1,0 +1,328 @@
+Allotly — Azure OpenAI Provider: Replit Build Prompts
+Context for the Replit Agent
+Allotly is a SaaS platform ("The AI Spend Control Plane") with a unified thin proxy at allotly.ai/api/v1. All requests from all users — Teams and Vouchers — flow through this proxy. The proxy currently supports three providers: OpenAI, Anthropic, and Google Gemini.
+A customer needs to use Azure OpenAI (they call it "Nebula One") instead of direct OpenAI. Azure OpenAI runs OpenAI's models on Azure infrastructure but uses a different endpoint format, a different auth header, and deployment names instead of model IDs.
+This work adds Azure OpenAI as a named 4th provider — not a generic endpoint. This means dedicated adapter, dedicated validation, dedicated model catalogue entries with verified pricing, and a proper connection UI card.
+Key Azure OpenAI differences from direct OpenAI
+
+Two endpoint formats exist (we must support both):
+a) Legacy versioned API (pre-August 2025, still widely used):
+
+   POST https://{base-url}/openai/deployments/{deployment-name}/chat/completions?api-version=2024-10-21
+
+Deployment name is in the URL path, NOT in the request body
+api-version query parameter is required
+model field in body is optional/ignored (deployment in URL takes precedence)
+
+b) New v1 API (August 2025+, recommended going forward):
+   POST https://{base-url}/openai/v1/chat/completions
+
+No api-version query parameter needed
+model field in the request body IS required (set to the deployment name)
+Much more OpenAI-compatible — nearly a drop-in swap
+
+
+Two hostname formats exist (we must accept both):
+
+{resource}.openai.azure.com — the original Azure OpenAI hostname
+{resource}.services.ai.azure.com — the newer Microsoft Foundry hostname
+Both work identically. The admin may have either depending on when they set up their Azure resource.
+
+
+Auth header: api-key: {key} (NOT Authorization: Bearer {key})
+Model naming: Azure uses admin-defined deployment names (e.g. my-gpt4o) that map to underlying OpenAI models (e.g. gpt-4o).
+Request/response body: Identical to OpenAI format. Same messages, max_tokens, temperature, etc. Same response shape with choices, usage, etc.
+Streaming: Identical SSE format to OpenAI.
+
+Files you will be modifying
+Refer to the existing codebase. The key files are:
+FilePurposeserver/routes.tsRegisters proxy routesserver/lib/proxy/handler.tsMain request orchestrator — handleChatCompletion()server/lib/proxy/translate.tsProvider detection (detectProvider), request/response translation, parameter sanitizationserver/lib/proxy/streaming.tsSSE stream reading, chunk translationserver/lib/proxy/safeguards.tsAuthentication, rate limiting, concurrency, budgetserver/lib/redis.tsRedis client and key definitionsserver/lib/encryption.tsAES-256-GCM encrypt/decrypt for provider API keysprisma/schema.prismaDatabase schema
+
+MILESTONE A — Backend: Schema, Adapter, Proxy Routing, Validation
+Objective
+Add Azure OpenAI as a 4th provider in the database, proxy pipeline, and provider adapter layer. After this milestone, the proxy can route requests to Azure OpenAI deployments using an admin's Azure API key.
+A1. Database Schema Changes
+File: prisma/schema.prisma
+
+Find the ProviderConnection model. It currently references a provider type. Add AZURE_OPENAI to the provider enum alongside OPENAI, ANTHROPIC, GOOGLE:
+
+prismaenum Provider {
+  OPENAI
+  ANTHROPIC
+  GOOGLE
+  AZURE_OPENAI   // NEW
+}
+
+The ProviderConnection model currently stores: provider (enum), apiKeyEncrypted, apiKeyIv, displayName, status, lastValidatedAt, and the org/team relations. Add four new nullable fields for Azure-specific configuration:
+
+prismamodel ProviderConnection {
+  // ... existing fields ...
+  
+  azureBaseUrl         String?   @map("azure_base_url")          // Full base URL, e.g. "https://contoso.openai.azure.com" or "https://contoso.services.ai.azure.com"
+  azureApiVersion      String?   @map("azure_api_version")       // e.g. "2024-10-21". Only used in legacy mode. Null = use v1 mode.
+  azureEndpointMode    String?   @map("azure_endpoint_mode")     // "v1" or "legacy". Defaults to "v1" if null.
+  azureDeployments     Json?     @map("azure_deployments")       // JSON: array of {deploymentName, modelId, inputPricePer1M, outputPricePer1M}
+}
+Why azureBaseUrl instead of azureResourceName: Azure endpoints come in two hostname formats — {resource}.openai.azure.com and the newer {resource}.services.ai.azure.com. Rather than trying to parse and reconstruct these, we store the full base URL exactly as the admin provides it. This is future-proof if Microsoft introduces more hostname variants.
+Why azureEndpointMode: The v1 API and the legacy versioned API construct URLs differently and handle the model field in the body differently. Rather than guessing, we let the admin choose (defaulting to v1 which is the recommended path going forward). In legacy mode, azureApiVersion is required.
+The azureDeployments JSON field stores the admin's deployment-to-model mapping. Example value:
+json[
+  { "deploymentName": "my-gpt4o", "modelId": "gpt-4o", "inputPricePer1M": 250, "outputPricePer1M": 1000 },
+  { "deploymentName": "my-gpt4o-mini", "modelId": "gpt-4o-mini", "inputPricePer1M": 15, "outputPricePer1M": 60 },
+  { "deploymentName": "nebula-one", "modelId": "gpt-4o", "inputPricePer1M": 250, "outputPricePer1M": 1000 }
+]
+These fields are only used when provider === AZURE_OPENAI. They remain null for other providers.
+
+Run npx prisma migrate dev --name add-azure-openai-provider to create the migration.
+Add Azure OpenAI models to the model catalog seed. Insert these into the ModelCatalog (or whatever the model seed table is called) with provider: AZURE_OPENAI. IMPORTANT: Unlike other providers, Azure OpenAI models don't have fixed model IDs that the user calls directly. Instead, the user calls their deployment name, which Allotly resolves via the azureDeployments mapping. So the model catalog for Azure serves as a reference for which underlying models Azure supports and their default pricing:
+
+Model ID (reference):  azure/gpt-4o
+Display name:          GPT-4o (Azure)
+Provider:              AZURE_OPENAI
+Input price/1M:        250 cents ($2.50)
+Output price/1M:       1000 cents ($10.00)
+
+Model ID (reference):  azure/gpt-4o-mini
+Display name:          GPT-4o Mini (Azure)
+Provider:              AZURE_OPENAI
+Input price/1M:        15 cents ($0.15)
+Output price/1M:       60 cents ($0.60)
+
+Model ID (reference):  azure/gpt-4.1
+Display name:          GPT-4.1 (Azure)
+Provider:              AZURE_OPENAI
+Input price/1M:        200 cents ($2.00)
+Output price/1M:       800 cents ($8.00)
+
+Model ID (reference):  azure/gpt-4.1-mini
+Display name:          GPT-4.1 Mini (Azure)
+Provider:              AZURE_OPENAI
+Input price/1M:        40 cents ($0.40)
+Output price/1M:       160 cents ($1.60)
+
+Model ID (reference):  azure/gpt-4.1-nano
+Display name:          GPT-4.1 Nano (Azure)
+Provider:              AZURE_OPENAI
+Input price/1M:        10 cents ($0.10)
+Output price/1M:       40 cents ($0.40)
+
+Model ID (reference):  azure/o4-mini
+Display name:          o4-mini (Azure)
+Provider:              AZURE_OPENAI
+Input price/1M:        110 cents ($1.10)
+Output price/1M:       440 cents ($4.40)
+NOTE: These prices should be verified against current Azure OpenAI pricing. Azure pricing sometimes differs slightly from direct OpenAI pricing due to Azure's own margins. Use the same prices as OpenAI as defaults unless the admin overrides them in the deployment mapping.
+A2. Provider Detection in Proxy
+File: server/lib/proxy/translate.ts — function detectProvider()
+The current routing logic uses model name prefixes:
+
+gpt-*, o1*, o3*, o4* → OPENAI
+claude-* → ANTHROPIC
+gemini-* → GOOGLE
+
+Azure OpenAI is different: the model name in the request body is the admin's deployment name (e.g. nebula-one), which doesn't have a recognisable prefix. So we cannot use prefix-based routing for Azure.
+New routing logic:
+
+First, check prefix-based routing for the three existing providers (unchanged).
+If no prefix matches, check whether the model name matches any deploymentName in any active AZURE_OPENAI provider connection's azureDeployments array for the requesting user's organisation.
+If a match is found, return AZURE_OPENAI as the provider.
+If no match is found anywhere, return the existing error ("Model not supported").
+
+Implementation approach:
+The deployment-name lookup needs to be fast (it runs on every request). Cache the org's Azure deployment mappings in Redis:
+Key:    allotly:azure-deployments:{orgId}
+Value:  JSON string of the azureDeployments array from the ProviderConnection
+TTL:    300 seconds (5 minutes)
+Invalidate this cache key whenever the admin updates their Azure provider connection or deployment mappings.
+The detectProvider() function signature needs to change. It currently only takes the model name. It now also needs the orgId (or the full membership context) so it can look up Azure deployment mappings. Update the function signature:
+typescript// OLD:
+function detectProvider(model: string): Provider
+
+// NEW:
+function detectProvider(model: string, orgId: string): Promise<{ provider: Provider; azureDeployment?: AzureDeploymentMapping }>
+Where AzureDeploymentMapping is:
+typescriptinterface AzureDeploymentMapping {
+  deploymentName: string;    // What the user sends as "model"
+  modelId: string;           // The underlying OpenAI model (for reference/logging)
+  inputPricePer1M: number;   // Cents per 1M input tokens
+  outputPricePer1M: number;  // Cents per 1M output tokens
+}
+Since this function is now async (Redis lookup), update all call sites in handler.ts to await it.
+A3. Provider Adapter — Azure OpenAI
+New functions to add in server/lib/proxy/translate.ts:
+validateAzureOpenAIKey()
+Validates the admin's Azure OpenAI API key by making a lightweight request. The simplest validation is to call the deployments list endpoint (if available) or to call the chat completions endpoint with a minimal payload against the first configured deployment.
+typescriptasync function validateAzureOpenAIKey(
+  apiKey: string, 
+  baseUrl: string,           // e.g. "https://contoso.openai.azure.com"
+  endpointMode: "v1" | "legacy",
+  apiVersion: string | null, // Only used in legacy mode
+  deployments: AzureDeploymentMapping[]
+): Promise<{ valid: boolean; error?: string }> {
+  // Use the first deployment to make a minimal test call
+  const deployment = deployments[0];
+  if (!deployment) return { valid: false, error: "No deployments configured" };
+  
+  // Construct URL based on endpoint mode
+  let url: string;
+  let body: any;
+  
+  if (endpointMode === "v1") {
+    // v1 mode: model in body, no api-version, simpler URL
+    url = `${baseUrl}/openai/v1/chat/completions`;
+    body = {
+      model: deployment.deploymentName,
+      messages: [{ role: "user", content: "test" }],
+      max_tokens: 1,
+    };
+  } else {
+    // Legacy mode: deployment in URL path, api-version required
+    const version = apiVersion || "2024-10-21";
+    url = `${baseUrl}/openai/deployments/${deployment.deploymentName}/chat/completions?api-version=${version}`;
+    body = {
+      messages: [{ role: "user", content: "test" }],
+      max_tokens: 1,
+    };
+  }
+  
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "api-key": apiKey,
+      },
+      body: JSON.stringify(body),
+    });
+    
+    if (response.status === 401 || response.status === 403) {
+      return { valid: false, error: "Invalid API key" };
+    }
+    if (response.status === 404) {
+      return { valid: false, error: `Deployment '${deployment.deploymentName}' not found. Check the deployment name and base URL.` };
+    }
+    // 200 or 429 (rate limited but key is valid) both indicate a valid key
+    return { valid: true };
+  } catch (err) {
+    return { valid: false, error: `Connection failed: ${err.message}. Check that the base URL is correct.` };
+  }
+}
+translateRequestForAzureOpenAI()
+Azure OpenAI accepts the same request body as OpenAI but:
+
+The model field in the body is optional (the deployment name is in the URL path)
+The endpoint URL is different
+Reasoning models still need max_completion_tokens instead of max_tokens
+
+typescriptfunction translateRequestForAzureOpenAI(
+  body: any, 
+  deployment: AzureDeploymentMapping,
+  baseUrl: string,            // e.g. "https://contoso.openai.azure.com"
+  endpointMode: "v1" | "legacy",
+  apiVersion: string | null,  // Only used in legacy mode
+  stream: boolean
+): { url: string; translatedBody: any } {
+  
+  // Clone body
+  const translatedBody = { ...body };
+  
+  // Construct URL and handle model field based on endpoint mode
+  let url: string;
+  
+  if (endpointMode === "v1") {
+    // v1 mode: simple URL, model field stays in body (set to deployment name)
+    url = `${baseUrl}/openai/v1/chat/completions`;
+    translatedBody.model = deployment.deploymentName;
+  } else {
+    // Legacy mode: deployment in URL path, api-version required, model removed from body
+    const version = apiVersion || "2024-10-21";
+    url = `${baseUrl}/openai/deployments/${deployment.deploymentName}/chat/completions?api-version=${version}`;
+    delete translatedBody.model;  // Deployment is in the URL, not the body
+  }
+  
+  // Handle reasoning models (o1, o3, o4 series) — same logic as OpenAI
+  const underlyingModel = deployment.modelId.toLowerCase();
+  if (underlyingModel.startsWith("o1") || underlyingModel.startsWith("o3") || underlyingModel.startsWith("o4")) {
+    if (translatedBody.max_tokens && !translatedBody.max_completion_tokens) {
+      translatedBody.max_completion_tokens = translatedBody.max_tokens;
+      delete translatedBody.max_tokens;
+    }
+  }
+  
+  // NOTE: Auth headers are NOT set here. They are injected at step 18 (setProviderAuth)
+  // in handler.ts, which adds the "api-key" header using the decrypted provider key.
+  
+  return { url, translatedBody };
+}
+Response translation
+Azure OpenAI responses are identical to OpenAI responses. No translation needed. Reuse the existing OpenAI response handling path entirely — both for streaming and non-streaming.
+Parameter sanitization
+Use the same allow-list as OpenAI (already defined in sanitizeProviderBody()). Add a case for AZURE_OPENAI that falls through to the OpenAI allow-list:
+typescript// In sanitizeProviderBody():
+case "AZURE_OPENAI":
+  // Same allowed params as OpenAI
+  allowedParams = OPENAI_ALLOWED_PARAMS;
+  break;
+A4. Proxy Request Lifecycle Changes
+File: server/lib/proxy/handler.ts — function handleChatCompletion()
+Walk through each of the 23 steps in the proxy lifecycle and note changes:
+StepChange6. detectProvider()Now async, returns { provider, azureDeployment? }. Pass orgId.7. checkAllowedProvidersAdd AZURE_OPENAI to the list of valid providers. The membership's allowedProviders JSON array must include "AZURE_OPENAI" for this to pass.9. loadProviderConnectionQuery for provider: AZURE_OPENAI connection. Load the azureBaseUrl, azureEndpointMode, azureApiVersion, and azureDeployments fields alongside the encrypted key.10. getModelPricing()For Azure, use the pricing from the azureDeployment object (returned by detectProvider() in step 6), NOT from the model catalog. The admin-configured per-deployment pricing is the source of truth. Fall back to catalog pricing if the deployment mapping doesn't include prices.15. decryptProviderKey()No change — same AES-256-GCM decryption.16. translateToProvider()Add case "AZURE_OPENAI": that calls translateRequestForAzureOpenAI() passing baseUrl, endpointMode, apiVersion.17. sanitizeProviderBody()Add case "AZURE_OPENAI": using OpenAI's allow-list.18. setProviderAuth()Add case "AZURE_OPENAI": that sets headers["api-key"] = decryptedKey instead of headers["Authorization"] = "Bearer " + decryptedKey. This is where auth injection happens — NOT in the translator.19. fetch()Use the URL returned by translateRequestForAzureOpenAI(). In v1 mode this is {baseUrl}/openai/v1/chat/completions. In legacy mode this is {baseUrl}/openai/deployments/{deployment}/chat/completions?api-version={version}.20. Response handlingReuse OpenAI response/stream handling entirely. Azure responses are identical in both endpoint modes.23. Post-processing / loggingLog provider: "AZURE_OPENAI" and model: deployment.modelId (the underlying model, not the deployment name) for analytics. Also store deploymentName in the log for admin visibility.
+A5. ProxyRequestLog Schema Update
+Add an optional deploymentName field to the ProxyRequestLog model so admins can see which Azure deployment was hit:
+prismamodel ProxyRequestLog {
+  // ... existing fields ...
+  deploymentName   String?   @map("deployment_name")   // Only for AZURE_OPENAI
+}
+Run migration: npx prisma migrate dev --name add-deployment-name-to-proxy-log
+A6. Provider Validation Job Update
+File: server/lib/jobs/scheduler.ts or wherever the provider-validation job lives.
+The daily job that re-validates admin API keys needs an Azure path:
+typescript// In the provider-validation job:
+case "AZURE_OPENAI":
+  const { azureBaseUrl, azureEndpointMode, azureApiVersion, azureDeployments } = connection;
+  const result = await validateAzureOpenAIKey(
+    decryptedKey, 
+    azureBaseUrl, 
+    (azureEndpointMode || "v1") as "v1" | "legacy",
+    azureApiVersion,
+    azureDeployments || []
+  );
+  if (!result.valid) {
+    // Mark connection as invalid, send provider-key-invalid email
+  }
+  break;
+A7. Models List Endpoint
+File: server/lib/proxy/handler.ts — function handleListModels()
+The /api/v1/models endpoint returns available models. For Azure OpenAI, return the deployment names (what users will actually call) with their underlying model info:
+typescript// When building the models list, for AZURE_OPENAI connections:
+if (connection.provider === "AZURE_OPENAI" && connection.azureDeployments) {
+  for (const deployment of connection.azureDeployments) {
+    models.push({
+      id: deployment.deploymentName,           // What the user sends as "model"
+      object: "model",
+      owned_by: "azure-openai",
+      provider: "AZURE_OPENAI",
+      underlying_model: deployment.modelId,     // Reference info
+    });
+  }
+}
+A8. Environment Variables
+No new environment variables needed. Azure connection details (resource name, API key, deployments) are stored per-org in the database, not in env vars. This is correct because different orgs may have different Azure resources.
+A9. Testing Checklist for Milestone A
+After implementing, verify:
+
+✅ npx prisma migrate dev runs clean
+✅ Can create an AZURE_OPENAI provider connection via API/direct DB insert with azureBaseUrl, azureEndpointMode, azureApiVersion, azureDeployments
+✅ detectProvider("nebula-one", orgId) returns AZURE_OPENAI when nebula-one is in the org's Azure deployments
+✅ detectProvider("gpt-4o", orgId) still returns OPENAI (prefix routing takes priority)
+✅ v1 mode: Proxy forwards model: "nebula-one" to {baseUrl}/openai/v1/chat/completions with model: "nebula-one" in the request body
+✅ Legacy mode: Proxy forwards model: "nebula-one" to {baseUrl}/openai/deployments/nebula-one/chat/completions?api-version=2024-10-21 with NO model in body
+✅ Auth header is api-key: {key} not Authorization: Bearer {key} (in both modes)
+✅ Both hostname formats work: https://contoso.openai.azure.com and https://contoso.services.ai.azure.com
+✅ Response is returned to the user in standard OpenAI format (both modes)
+✅ Budget deduction uses the pricing from azureDeployments mapping
+✅ Streaming works (same SSE format as OpenAI, both modes)
+✅ ProxyRequestLog records show provider: AZURE_OPENAI, model: gpt-4o (underlying), deploymentName: nebula-one
+✅ /api/v1/models includes Azure deployment names
+✅ Provider validation job validates Azure connections correctly (both modes)
+✅ Existing OpenAI/Anthropic/Google routing is completely unchanged

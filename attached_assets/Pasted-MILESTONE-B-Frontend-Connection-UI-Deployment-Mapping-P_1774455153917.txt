@@ -1,0 +1,199 @@
+MILESTONE B — Frontend: Connection UI, Deployment Mapping, Provider Badges
+Objective
+Add the Azure OpenAI provider card to the admin connection UI, build the deployment mapping interface, update provider badges and filters everywhere they appear.
+B1. Provider Connection Page — Azure OpenAI Card
+Location: The provider connection page where admins connect OpenAI, Anthropic, and Google.
+Add a 4th provider card:
+┌─────────────────────────────────────┐
+│  ☁️  Azure OpenAI                    │
+│                                     │
+│  OpenAI models on Azure infra       │
+│  Uses your Azure resource endpoint  │
+│                                     │
+│  [Connect]                          │
+└─────────────────────────────────────┘
+Use a cloud icon or the Azure blue colour (hex: #0078D4) for the provider badge.
+B2. Azure OpenAI Connection Form
+When the admin clicks "Connect" on the Azure OpenAI card, show a form with these fields:
+┌─ Connect Azure OpenAI ───────────────────────────┐
+│                                                    │
+│  Display Name                                      │
+│  ┌──────────────────────────────────────────┐      │
+│  │ e.g. "Nebula One - Azure"                │      │
+│  └──────────────────────────────────────────┘      │
+│                                                    │
+│  Azure Base URL                                    │
+│  ┌──────────────────────────────────────────┐      │
+│  │ https://contoso.openai.azure.com         │      │
+│  └──────────────────────────────────────────┘      │
+│  ↳ Your Azure OpenAI endpoint. Accepts both        │
+│    {name}.openai.azure.com and                     │
+│    {name}.services.ai.azure.com                    │
+│                                                    │
+│  API Key                                           │
+│  ┌──────────────────────────────────────────┐      │
+│  │ ••••••••••••••••••••••••                  │      │
+│  └──────────────────────────────────────────┘      │
+│                                                    │
+│  Endpoint Mode                                     │
+│  ○ v1 API (recommended)                            │
+│    Uses /openai/v1/chat/completions                │
+│    No api-version needed. Most OpenAI-compatible.  │
+│  ○ Legacy versioned API                            │
+│    Uses /openai/deployments/{name}/chat/completions│
+│    Requires api-version parameter.                 │
+│                                                    │
+│  API Version (only if Legacy mode selected)        │
+│  ┌──────────────────────────────────────────┐      │
+│  │ 2024-10-21                               │      │
+│  └──────────────────────────────────────────┘      │
+│  ↳ Defaults to 2024-10-21 (current GA)             │
+│                                                    │
+│  ─── Deployment Mappings ──────────────────────    │
+│                                                    │
+│  Map your Azure deployments to models so Allotly   │
+│  can route requests and calculate costs.           │
+│                                                    │
+│  ┌────────────────┬──────────────┬────────┬──────┐ │
+│  │ Deployment Name│ OpenAI Model │ In $/M │Out$/M│ │
+│  ├────────────────┼──────────────┼────────┼──────┤ │
+│  │ nebula-one     │ gpt-4o    ▼  │ $2.50  │$10.00│ │
+│  │ my-mini        │ gpt-4o-mini▼ │ $0.15  │ $0.60│ │
+│  │ [+ Add deployment]            │        │      │ │
+│  └────────────────┴──────────────┴────────┴──────┘ │
+│                                                    │
+│  The "OpenAI Model" dropdown determines default    │
+│  pricing. Override prices if your Azure contract   │
+│  differs from standard rates.                      │
+│                                                    │
+│  ┌──────────────┐  ┌────────┐                      │
+│  │ Validate & Save│  │ Cancel │                      │
+│  └──────────────┘  └────────┘                      │
+└────────────────────────────────────────────────────┘
+Behaviour:
+
+The "OpenAI Model" dropdown should list known Azure-available models: gpt-4o, gpt-4o-mini, gpt-4.1, gpt-4.1-mini, gpt-4.1-nano, o4-mini, o3, o3-mini, o1, o1-mini. When the admin selects a model, auto-fill the pricing columns with the default prices for that model.
+The admin can override prices (for enterprise Azure contracts with custom pricing).
+Base URL validation: On input, validate that the URL starts with https:// and matches one of the known Azure hostname patterns (*.openai.azure.com or *.services.ai.azure.com). Strip any trailing slashes. Show a warning (not an error) if the hostname doesn't match either pattern — the admin might have a custom endpoint or proxy in front.
+Endpoint mode defaults to v1. When Legacy is selected, show the API Version field. When v1 is selected, hide it.
+"Validate & Save" calls the backend which runs validateAzureOpenAIKey() against the first deployment using the selected endpoint mode, encrypts the API key, and stores everything.
+At least one deployment mapping is required.
+Deployment names must be unique within the connection and cannot conflict with model names used by other providers (i.e. a deployment cannot be named claude-sonnet-4-20250514 or gemini-2.5-flash as those would match prefix routing for other providers).
+
+B3. Azure OpenAI Connection API Routes
+Add these API routes (follow the pattern of existing provider connection routes):
+POST   /api/providers/azure-openai/connect
+  Body: { displayName, apiKey, baseUrl, endpointMode, apiVersion?, deployments: [...] }
+  Action: Validate key → encrypt → store ProviderConnection with provider=AZURE_OPENAI
+  
+PUT    /api/providers/azure-openai/update
+  Body: { displayName?, apiKey?, baseUrl?, endpointMode?, apiVersion?, deployments?: [...] }
+  Action: Re-validate if key/baseUrl/endpointMode changed → update connection
+  Note: When deployments change, invalidate the Redis cache key allotly:azure-deployments:{orgId}
+
+DELETE /api/providers/azure-openai/disconnect
+  Action: Remove connection → cascade: invalidate Redis cache, remove from member allowedProviders
+The connect route must:
+
+Validate input (Zod schema — require baseUrl starts with https://, endpointMode is "v1" or "legacy", apiVersion required if legacy mode, deployments array non-empty)
+Normalize baseUrl (strip trailing slashes, strip trailing /openai if present)
+Check that deployment names don't collide with other providers' prefix patterns
+Call validateAzureOpenAIKey() with the selected endpoint mode
+Encrypt API key with AES-256-GCM
+Store ProviderConnection with all Azure fields
+Invalidate Redis deployment cache
+Return success with the connection ID
+
+B4. Provider Badges
+Update the ProviderBadge component (used throughout the UI) to support AZURE_OPENAI:
+typescript// Add to the provider badge config:
+AZURE_OPENAI: {
+  label: "Azure OpenAI",
+  shortLabel: "Azure",
+  color: "#0078D4",        // Azure blue
+  icon: "cloud",           // Or use an Azure-style icon
+  bgColor: "#E6F2FF",      // Light azure blue background
+}
+This badge appears in:
+
+Provider connection page (status cards)
+Model allowlist toggles
+Member dashboard (model list)
+Team Admin → Members page (if filtering by provider)
+Usage analytics (provider breakdown)
+ProxyRequestLog table (provider column)
+
+B5. Model Allowlist UI
+The model allowlist page (where Root Admin toggles which models are available org-wide) needs to show Azure deployment names.
+When an Azure OpenAI connection exists:
+
+Show a section labelled "Azure OpenAI" with the Azure badge
+List each configured deployment as a toggleable row: nebula-one (GPT-4o), my-mini (GPT-4o Mini)
+The underlying model name is shown in parentheses for clarity
+
+B6. Member Creation — allowedProviders Update
+When admins create team members or vouchers, they can restrict which providers the member can use. The allowedProviders field (JSON array) needs AZURE_OPENAI as a valid option.
+Update the member creation form's provider checkboxes:
+
+☑ OpenAI
+☑ Anthropic
+☑ Google
+☑ Azure OpenAI ← NEW
+
+Only show Azure OpenAI as an option if an active Azure OpenAI connection exists for the org.
+B7. Member Dashboard — Model List
+The member dashboard shows "Models available" with provider badges. Azure deployments should appear with the Azure badge:
+Models available:
+  🟢 gpt-4o-mini         [OpenAI]
+  🟢 claude-sonnet-4...  [Anthropic]
+  🟢 gemini-2.5-flash    [Google]
+  🟢 nebula-one          [Azure]     ← Shows deployment name, not underlying model
+B8. Usage Analytics — Provider Breakdown
+Anywhere usage is shown broken down by provider (pie charts, tables, filters), add AZURE_OPENAI as a category with the Azure blue colour.
+B9. Landing Page / Docs
+On the landing page or documentation, update the "Connect your providers" section to show 4 provider logos/icons instead of 3:
+OpenAI  ·  Anthropic  ·  Google Gemini  ·  Azure OpenAI
+Update any copy that says "three providers" to "four providers" or just "your AI providers."
+B10. Testing Checklist for Milestone B
+After implementing, verify:
+
+✅ Azure OpenAI card appears on the provider connection page
+✅ Connection form validates: requires base URL, API key, at least 1 deployment
+✅ Base URL accepts both .openai.azure.com and .services.ai.azure.com hostnames
+✅ Endpoint mode toggle works: v1 (default) hides API Version; Legacy shows it
+✅ Deployment name collision detection works (rejects gpt-4o as a deployment name)
+✅ Price auto-fill works when selecting an OpenAI model from the dropdown
+✅ "Validate & Save" calls the backend, which validates the key against Azure using the selected endpoint mode
+✅ Connected state shows green status indicator, base URL, endpoint mode, deployment count
+✅ Azure badge appears correctly in all badge locations
+✅ Model allowlist shows Azure deployments with toggles
+✅ Member creation form shows Azure OpenAI as a provider option (only when connected)
+✅ Member dashboard shows Azure deployment names with Azure badge
+✅ Usage analytics include Azure OpenAI as a provider category
+✅ Editing a connection (changing deployments, rotating key, switching endpoint mode) works and invalidates caches
+✅ Disconnecting Azure cascades correctly (removes from member allowedProviders, clears caches)
+✅ The full end-to-end flow works: connect Azure → create member with Azure access → member calls nebula-one → request routes to Azure → budget deducted → response returned
+
+
+IMPORTANT ARCHITECTURAL NOTES
+Why deployment names live in ProviderConnection, not in the model catalog
+The model catalog is org-agnostic — it defines standard models and pricing. But Azure deployments are per-org (each customer has their own Azure resource with their own deployment names). So the mapping from deployment name → underlying model → pricing lives in the ProviderConnection.azureDeployments JSON field, not in the global catalog.
+Conflict resolution: What if a deployment name matches a prefix?
+If a customer names their Azure deployment gpt-4o-custom, the prefix routing (gpt-* → OPENAI) would catch it before the Azure deployment lookup runs. This is intentional — prefix routing for the three core providers takes priority. The deployment name collision check in B3 should warn admins if their deployment name starts with gpt-, claude-, gemini-, o1, o3, or o4, but not hard-block it. The admin might intentionally want to override the direct OpenAI route with their Azure-hosted version. In that case, document that they should use a non-conflicting name.
+ACTUALLY — on reflection, hard-block it. If the admin names their Azure deployment gpt-4o, requests for gpt-4o will route to direct OpenAI, not Azure, and the admin will be confused. Require deployment names that don't match any existing provider prefix pattern. Show a clear validation error:
+
+"Deployment name 'gpt-4o' conflicts with OpenAI's model naming convention. Azure deployment names must not start with 'gpt-', 'o1', 'o3', 'o4', 'claude-', or 'gemini-'. Use a custom name like 'my-gpt4o' or 'nebula-one'."
+
+Provider priority in detectProvider()
+The routing order is:
+
+Prefix match → OPENAI, ANTHROPIC, or GOOGLE (fast, no IO)
+Azure deployment lookup → AZURE_OPENAI (Redis cache hit, or DB fallback)
+No match → error
+
+This ensures existing provider routing is never disrupted by Azure.
+Budget accuracy for Azure
+Because the admin provides per-deployment pricing in the connection config, and Allotly uses those prices for budget estimation and adjustment, pricing accuracy depends on the admin entering correct values. The auto-fill from the OpenAI model dropdown gives good defaults, but enterprise Azure contracts may have different rates. The UI should make it clear that pricing accuracy depends on these values.
+
+SUMMARY OF CHANGES
+AreaFiles ChangedTypeSchemaprisma/schema.prismaAdd AZURE_OPENAI to enum, add 4 fields to ProviderConnection (azureBaseUrl, azureEndpointMode, azureApiVersion, azureDeployments), add field to ProxyRequestLogSeed dataModel catalog seedAdd 6+ Azure model reference entriesProvider detectiontranslate.tsMake detectProvider() async, add Azure deployment lookupRequest translationtranslate.tsAdd translateRequestForAzureOpenAI() with v1/legacy mode handling, reuse OpenAI for responseAuth injectionhandler.tsAdd AZURE_OPENAI case using api-key header (NOT Authorization: Bearer)Parameter sanitizationtranslate.tsAdd AZURE_OPENAI case using OpenAI's allow-listPricing lookuphandler.tsUse azureDeployment pricing for Azure requestsValidationtranslate.ts or new fileAdd validateAzureOpenAIKey() with v1/legacy mode supportBackground jobsscheduler.tsAdd Azure case to provider-validation jobModels endpointhandler.tsInclude Azure deployments in /api/v1/modelsRequest logginghandler.tsLog deploymentName for Azure requestsRedis cachingredis.tsAdd allotly:azure-deployments:{orgId} cache keyAPI routesNew route fileAdd connect/update/disconnect for AzureConnection UIProvider connection pageAdd Azure card + connection form with base URL, endpoint mode toggle, deployment mappingBadgesProviderBadge componentAdd AZURE_OPENAI badge configModel allowlistAllowlist pageShow Azure deploymentsMember formsMember/voucher creationAdd Azure to allowedProviders optionsMember dashboardDashboard pageShow Azure deployments in model listAnalyticsUsage viewsAdd Azure as provider categoryLanding pageLanding/docsAdd Azure to provider list
