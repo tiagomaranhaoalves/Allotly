@@ -16,7 +16,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Plug, Plus, Trash2, Shield, RefreshCw, ChevronDown, ChevronRight, RotateCw, Zap, Activity, Cloud, X, AlertTriangle } from "lucide-react";
+import { Plug, Plus, Trash2, Shield, RefreshCw, ChevronDown, ChevronRight, RotateCw, Zap, Activity, Cloud, X, AlertTriangle, Pencil } from "lucide-react";
 import { useState } from "react";
 
 interface AzureDeployment {
@@ -24,6 +24,16 @@ interface AzureDeployment {
   modelId: string;
   inputPricePerMTok: number;
   outputPricePerMTok: number;
+}
+
+function parseAzureDeployments(raw: unknown): AzureDeployment[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((d: Record<string, unknown>) => ({
+    deploymentName: String(d.deploymentName || ""),
+    modelId: String(d.modelId || ""),
+    inputPricePerMTok: Number(d.inputPricePerMTok || 0),
+    outputPricePerMTok: Number(d.outputPricePerMTok || 0),
+  }));
 }
 
 interface ProviderConnection {
@@ -137,7 +147,7 @@ export default function ProvidersPage() {
 
   const addMutation = useMutation({
     mutationFn: async () => {
-      const body: any = { provider, apiKey, displayName };
+      const body: Record<string, unknown> = { provider, apiKey, displayName };
       if (provider === "AZURE_OPENAI") {
         body.azureBaseUrl = azureBaseUrl.replace(/\/+$/, "").replace(/\/openai\/?$/, "");
         body.azureEndpointMode = azureEndpointMode;
@@ -180,14 +190,20 @@ export default function ProvidersPage() {
 
   const updateDeployment = (index: number, field: keyof AzureDeployment, value: string | number) => {
     const updated = [...azureDeployments];
-    (updated[index] as any)[field] = value;
+    const dep = { ...updated[index] };
+    if (field === "deploymentName" || field === "modelId") {
+      dep[field] = String(value);
+    } else {
+      dep[field] = Number(value);
+    }
     if (field === "modelId" && typeof value === "string") {
       const model = AZURE_KNOWN_MODELS.find(m => m.id === value);
       if (model) {
-        updated[index].inputPricePerMTok = model.inputPrice;
-        updated[index].outputPricePerMTok = model.outputPrice;
+        dep.inputPricePerMTok = model.inputPrice;
+        dep.outputPricePerMTok = model.outputPrice;
       }
     }
+    updated[index] = dep;
     setAzureDeployments(updated);
   };
 
@@ -508,6 +524,16 @@ function ProviderCard({
   const [newKey, setNewKey] = useState("");
   const [showHealth, setShowHealth] = useState(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
+  const [editAzureOpen, setEditAzureOpen] = useState(false);
+  const [editAzureBaseUrl, setEditAzureBaseUrl] = useState(p.azureBaseUrl || "");
+  const [editAzureEndpointMode, setEditAzureEndpointMode] = useState<"v1" | "legacy">((p.azureEndpointMode as "v1" | "legacy") || "v1");
+  const [editAzureApiVersion, setEditAzureApiVersion] = useState(p.azureApiVersion || "2024-10-21");
+  const [editAzureDeployments, setEditAzureDeployments] = useState<AzureDeployment[]>(
+    () => {
+      const parsed = parseAzureDeployments(p.azureDeployments);
+      return parsed.length > 0 ? parsed : [{ deploymentName: "", modelId: "", inputPricePerMTok: 0, outputPricePerMTok: 0 }];
+    }
+  );
 
   const { data: health } = useQuery<HealthData>({
     queryKey: ["/api/providers", p.id, "health"],
@@ -572,6 +598,54 @@ function ProviderCard({
       toast({ title: "Test failed", description: err.message, variant: "destructive" });
     },
   });
+
+  const editAzureMutation = useMutation({
+    mutationFn: async () => {
+      const body: Record<string, unknown> = {
+        azureBaseUrl: editAzureBaseUrl.replace(/\/+$/, "").replace(/\/openai\/?$/, ""),
+        azureEndpointMode: editAzureEndpointMode,
+        azureDeployments: editAzureDeployments.filter(d => d.deploymentName && d.modelId),
+      };
+      if (editAzureEndpointMode === "legacy") {
+        body.azureApiVersion = editAzureApiVersion;
+      }
+      await apiRequest("PATCH", `/api/providers/${p.id}`, body);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/providers"] });
+      toast({ title: "Azure connection updated" });
+      setEditAzureOpen(false);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to update", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const editUpdateDeployment = (index: number, field: keyof AzureDeployment, value: string | number) => {
+    const updated = [...editAzureDeployments];
+    const dep = { ...updated[index] };
+    if (field === "deploymentName" || field === "modelId") {
+      dep[field] = String(value);
+    } else {
+      dep[field] = Number(value);
+    }
+    if (field === "modelId" && typeof value === "string") {
+      const model = AZURE_KNOWN_MODELS.find(m => m.id === value);
+      if (model) {
+        dep.inputPricePerMTok = model.inputPrice;
+        dep.outputPricePerMTok = model.outputPrice;
+      }
+    }
+    updated[index] = dep;
+    setEditAzureDeployments(updated);
+  };
+
+  const editAzureUrlValidation = editAzureBaseUrl ? validateAzureBaseUrl(editAzureBaseUrl) : null;
+  const editDeploymentErrors = editAzureDeployments.map(d => d.deploymentName ? checkDeploymentNameConflict(d.deploymentName) : null);
+  const editHasDeploymentErrors = editDeploymentErrors.some(e => e !== null);
+  const editValidDeployments = editAzureDeployments.filter(d => d.deploymentName && d.modelId);
+  const editDuplicateNames = editAzureDeployments.map(d => d.deploymentName).filter((name, i, arr) => name && arr.indexOf(name) !== i);
+  const editFormValid = editAzureBaseUrl && editAzureUrlValidation?.valid && editValidDeployments.length > 0 && !editHasDeploymentErrors && editDuplicateNames.length === 0;
 
   const getHealthColor = () => {
     if (!health) return "bg-gray-400";
@@ -669,8 +743,119 @@ function ProviderCard({
             <span className="px-2 py-0.5 rounded-full bg-muted font-medium" data-testid="text-azure-endpoint-mode">{p.azureEndpointMode} mode</span>
           )}
           {p.azureDeployments && (
-            <span data-testid="text-azure-deployment-count">{(p.azureDeployments as AzureDeployment[]).length} deployment{(p.azureDeployments as AzureDeployment[]).length !== 1 ? 's' : ''}</span>
+            <span data-testid="text-azure-deployment-count">{parseAzureDeployments(p.azureDeployments).length} deployment{parseAzureDeployments(p.azureDeployments).length !== 1 ? 's' : ''}</span>
           )}
+          <Dialog open={editAzureOpen} onOpenChange={setEditAzureOpen}>
+            <DialogTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" data-testid="button-edit-azure">
+                <Pencil className="w-3 h-3 mr-1" /> Edit
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Edit Azure OpenAI Connection</DialogTitle>
+                <DialogDescription>
+                  Update endpoint, deployment mappings, and pricing for this Azure OpenAI connection.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 pt-2">
+                <div className="space-y-2">
+                  <Label>Azure Base URL</Label>
+                  <Input
+                    placeholder="https://contoso.openai.azure.com"
+                    value={editAzureBaseUrl}
+                    onChange={e => setEditAzureBaseUrl(e.target.value)}
+                    data-testid="input-edit-azure-base-url"
+                  />
+                  {editAzureUrlValidation && !editAzureUrlValidation.valid && (
+                    <p className="text-xs text-destructive">URL must start with https://</p>
+                  )}
+                  {editAzureUrlValidation?.warning && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3 shrink-0" /> {editAzureUrlValidation.warning}
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label>Endpoint Mode</Label>
+                  <div className="space-y-2">
+                    <label className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/30 transition-colors" data-testid="radio-edit-endpoint-v1">
+                      <input type="radio" name="editEndpointMode" checked={editAzureEndpointMode === "v1"} onChange={() => setEditAzureEndpointMode("v1")} className="mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium">v1 API (recommended)</p>
+                        <p className="text-xs text-muted-foreground">Uses /openai/v1/chat/completions. No api-version needed.</p>
+                      </div>
+                    </label>
+                    <label className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/30 transition-colors" data-testid="radio-edit-endpoint-legacy">
+                      <input type="radio" name="editEndpointMode" checked={editAzureEndpointMode === "legacy"} onChange={() => setEditAzureEndpointMode("legacy")} className="mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium">Legacy versioned API</p>
+                        <p className="text-xs text-muted-foreground">Uses /openai/deployments/{"{name}"}/chat/completions.</p>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+                {editAzureEndpointMode === "legacy" && (
+                  <div className="space-y-2">
+                    <Label>API Version</Label>
+                    <Input value={editAzureApiVersion} onChange={e => setEditAzureApiVersion(e.target.value)} placeholder="2024-10-21" data-testid="input-edit-azure-api-version" />
+                  </div>
+                )}
+                <div className="space-y-3 pt-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-semibold">Deployment Mappings</Label>
+                    <Button type="button" variant="outline" size="sm" onClick={() => setEditAzureDeployments([...editAzureDeployments, { deploymentName: "", modelId: "", inputPricePerMTok: 0, outputPricePerMTok: 0 }])} data-testid="button-edit-add-deployment">
+                      <Plus className="w-3.5 h-3.5 mr-1" /> Add deployment
+                    </Button>
+                  </div>
+                  <div className="space-y-3">
+                    {editAzureDeployments.map((dep, idx) => (
+                      <div key={idx} className="p-3 rounded-lg border bg-muted/20 space-y-3" data-testid={`edit-deployment-row-${idx}`}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-muted-foreground">Deployment #{idx + 1}</span>
+                          {editAzureDeployments.length > 1 && (
+                            <Button type="button" variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setEditAzureDeployments(editAzureDeployments.filter((_, i) => i !== idx))} data-testid={`button-edit-remove-deployment-${idx}`}>
+                              <X className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <Label className="text-xs">Deployment Name</Label>
+                            <Input value={dep.deploymentName} onChange={e => editUpdateDeployment(idx, "deploymentName", e.target.value)} placeholder="e.g., nebula-one" className="h-8 text-sm" data-testid={`input-edit-deployment-name-${idx}`} />
+                            {editDeploymentErrors[idx] && <p className="text-xs text-destructive">{editDeploymentErrors[idx]}</p>}
+                            {dep.deploymentName && editDuplicateNames.includes(dep.deploymentName) && <p className="text-xs text-destructive">Duplicate deployment name</p>}
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">OpenAI Model</Label>
+                            <Select value={dep.modelId} onValueChange={v => editUpdateDeployment(idx, "modelId", v)}>
+                              <SelectTrigger className="h-8 text-sm" data-testid={`select-edit-model-${idx}`}><SelectValue placeholder="Select model" /></SelectTrigger>
+                              <SelectContent>
+                                {AZURE_KNOWN_MODELS.map(m => <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <Label className="text-xs">Input price (cents/1M tokens)</Label>
+                            <Input type="number" value={dep.inputPricePerMTok} onChange={e => editUpdateDeployment(idx, "inputPricePerMTok", parseInt(e.target.value) || 0)} className="h-8 text-sm" data-testid={`input-edit-price-in-${idx}`} />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Output price (cents/1M tokens)</Label>
+                            <Input type="number" value={dep.outputPricePerMTok} onChange={e => editUpdateDeployment(idx, "outputPricePerMTok", parseInt(e.target.value) || 0)} className="h-8 text-sm" data-testid={`input-edit-price-out-${idx}`} />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <Button className="w-full" onClick={() => editAzureMutation.mutate()} disabled={!editFormValid || editAzureMutation.isPending} data-testid="button-save-azure-edit">
+                  {editAzureMutation.isPending ? "Saving..." : "Save Changes"}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       )}
 
@@ -823,7 +1008,7 @@ function ModelAllowlist({ connection }: { connection: ProviderConnection }) {
 
   if (!isAzure && isLoading) return <Skeleton className="h-24 mt-3" />;
 
-  const azureDeployments = (connection.azureDeployments || []) as AzureDeployment[];
+  const azureDeployments = parseAzureDeployments(connection.azureDeployments);
   const modelList: { id: string; label: string; sublabel?: string; pricingLabel: string }[] = isAzure
     ? azureDeployments.map(d => ({
         id: d.deploymentName,
