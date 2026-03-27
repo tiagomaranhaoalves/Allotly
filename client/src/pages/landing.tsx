@@ -897,7 +897,7 @@ function Footer() {
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-background" style={{ scrollBehavior: "smooth" }}>
+    <div className="min-h-screen bg-background overflow-x-hidden" style={{ scrollBehavior: "smooth" }}>
       <Header />
       <Hero />
       <ProblemStrip />
