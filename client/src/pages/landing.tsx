@@ -108,6 +108,9 @@ function Header() {
           </Link>
         </div>
         <div className="flex md:hidden items-center gap-2">
+          <Link href="/login">
+            <span className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer" data-testid="button-login-mobile-header">Log In</span>
+          </Link>
           <ThemeToggle />
           <Button size="icon" variant="ghost" onClick={() => setMobileOpen(!mobileOpen)} data-testid="button-mobile-menu">
             {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
