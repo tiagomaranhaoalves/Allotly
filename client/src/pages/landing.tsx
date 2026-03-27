@@ -90,13 +90,13 @@ function Header() {
           <Link href="/" data-testid="link-logo">
             <LogoFull size={28} />
           </Link>
-          <nav className="hidden md:flex items-center gap-6">
+          <nav className="hidden lg:flex items-center gap-6">
             <a href="#how-it-works" onClick={(e) => smoothScroll(e, "how-it-works")} className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="link-how-it-works">How It Works</a>
             <a href="#pricing" onClick={(e) => smoothScroll(e, "pricing")} className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="link-pricing">Pricing</a>
             <Link href="/docs" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="link-docs">Docs</Link>
           </nav>
         </div>
-        <div className="hidden md:flex items-center gap-3">
+        <div className="hidden lg:flex items-center gap-3">
           <ThemeToggle />
           <Link href="/login">
             <span className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer" data-testid="button-login">Log In</span>
@@ -107,7 +107,7 @@ function Header() {
             </Button>
           </Link>
         </div>
-        <div className="flex md:hidden items-center gap-2">
+        <div className="flex lg:hidden items-center gap-2">
           <Link href="/login">
             <span className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer" data-testid="button-login-mobile-header">Log In</span>
           </Link>
@@ -118,7 +118,7 @@ function Header() {
         </div>
       </div>
       <div
-        className={`md:hidden border-t border-border/50 bg-background/95 backdrop-blur-xl transition-all duration-300 ease-in-out overflow-hidden ${mobileOpen ? "max-h-80 opacity-100" : "max-h-0 opacity-0 border-t-transparent pointer-events-none"}`}
+        className={`lg:hidden border-t border-border/50 bg-background/95 backdrop-blur-xl transition-all duration-300 ease-in-out overflow-hidden ${mobileOpen ? "max-h-80 opacity-100" : "max-h-0 opacity-0 border-t-transparent pointer-events-none"}`}
         aria-hidden={!mobileOpen}
         inert={!mobileOpen ? true : undefined}
       >
