@@ -50,14 +50,6 @@ interface ProviderConnection {
   azureDeployments?: AzureDeployment[] | null;
 }
 
-interface ModelPricing {
-  id: string;
-  provider: string;
-  modelId: string;
-  displayName: string;
-  inputPricePerMTok: number;
-  outputPricePerMTok: number;
-}
 
 interface HealthData {
   lastValidated: string | null;
@@ -977,18 +969,28 @@ function ProviderCard({
   );
 }
 
+interface DiscoveredModel {
+  modelId: string;
+  displayName: string;
+  underlyingModel?: string;
+  inputPricePerMTok: number;
+  outputPricePerMTok: number;
+}
+
 function ModelAllowlist({ connection }: { connection: ProviderConnection }) {
   const { toast } = useToast();
   const isAzure = connection.provider === "AZURE_OPENAI";
 
-  const { data: models, isLoading } = useQuery<ModelPricing[]>({
-    queryKey: ["/api/models", connection.provider],
+  const { data: discoveredModels, isLoading, error } = useQuery<DiscoveredModel[]>({
+    queryKey: ["/api/providers", connection.id, "models"],
     queryFn: async () => {
-      const res = await fetch(`/api/models?provider=${connection.provider}`);
-      if (!res.ok) throw new Error("Failed to load models");
+      const res = await fetch(`/api/providers/${connection.id}/models`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ message: "Failed to load models" }));
+        throw new Error(body.message || `Error ${res.status}`);
+      }
       return res.json();
     },
-    enabled: !isAzure,
   });
 
   const updateMutation = useMutation({
@@ -1001,34 +1003,32 @@ function ModelAllowlist({ connection }: { connection: ProviderConnection }) {
       queryClient.invalidateQueries({ queryKey: ["/api/providers"] });
       toast({ title: "Model allowlist updated" });
     },
-    onError: (err: any) => {
+    onError: (err: Error) => {
       toast({ title: "Failed to update", description: err.message, variant: "destructive" });
     },
   });
 
-  if (!isAzure && isLoading) return <Skeleton className="h-24 mt-3" />;
+  if (isLoading) return <Skeleton className="h-24 mt-3" />;
 
-  const azureDeployments = parseAzureDeployments(connection.azureDeployments);
-  const modelList: { id: string; label: string; sublabel?: string; pricingLabel: string }[] = isAzure
-    ? azureDeployments.map(d => ({
-        id: d.deploymentName,
-        label: d.deploymentName,
-        sublabel: d.modelId,
-        pricingLabel: `$${(d.inputPricePerMTok / 100).toFixed(2)}/1M in · $${(d.outputPricePerMTok / 100).toFixed(2)}/1M out`,
-      }))
-    : (models || []).map(m => ({
-        id: m.modelId,
-        label: m.displayName,
-        pricingLabel: `$${(m.inputPricePerMTok / 100).toFixed(2)}/1M in · $${(m.outputPricePerMTok / 100).toFixed(2)}/1M out`,
-      }));
+  if (error) {
+    return <p className="text-xs text-destructive mt-3">Failed to load models: {error.message}</p>;
+  }
+
+  const modelList = (discoveredModels || []).map(m => ({
+    id: m.modelId,
+    label: m.displayName,
+    sublabel: m.underlyingModel,
+    pricingLabel: `$${(m.inputPricePerMTok / 100).toFixed(2)}/1M in · $${(m.outputPricePerMTok / 100).toFixed(2)}/1M out`,
+  }));
 
   if (modelList.length === 0) {
     return <p className="text-xs text-muted-foreground mt-3">
-      {isAzure ? "No deployments configured. Edit this connection to add deployment mappings." : "No models found for this provider."}
+      {isAzure ? "No deployments configured. Edit this connection to add deployment mappings." : "No models available for this API key."}
     </p>;
   }
 
-  const currentAllowed = connection.orgAllowedModels || [];
+  const discoveredIds = new Set(modelList.map(m => m.id));
+  const currentAllowed = (connection.orgAllowedModels || []).filter(id => discoveredIds.has(id));
   const allAllowed = currentAllowed.length === 0;
 
   const toggleModel = (modelId: string) => {

@@ -900,6 +900,99 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/providers/:id/models", requireRole("ROOT_ADMIN"), async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const conn = await storage.getProviderConnection(req.params.id);
+      if (!conn || conn.orgId !== user.orgId) {
+        return res.status(404).json({ message: "Not found" });
+      }
+
+      if (conn.provider === "AZURE_OPENAI") {
+        const deployments = (conn.azureDeployments || []) as Array<{ deploymentName: string; modelId: string; inputPricePerMTok: number; outputPricePerMTok: number }>;
+        return res.json(deployments.map(d => ({
+          modelId: d.deploymentName,
+          displayName: d.deploymentName,
+          underlyingModel: d.modelId,
+          inputPricePerMTok: d.inputPricePerMTok,
+          outputPricePerMTok: d.outputPricePerMTok,
+        })));
+      }
+
+      let apiKey: string;
+      try {
+        apiKey = decryptProviderKey(conn.adminApiKeyEncrypted, conn.adminApiKeyIv, conn.adminApiKeyTag);
+      } catch {
+        return res.status(500).json({ message: "Failed to decrypt API key" });
+      }
+
+      let models: Array<{ id: string; displayName: string }> = [];
+
+      if (conn.provider === "OPENAI") {
+        const r = await fetch("https://api.openai.com/v1/models", {
+          headers: { Authorization: `Bearer ${apiKey}` },
+        });
+        if (!r.ok) return res.status(502).json({ message: `OpenAI API returned ${r.status}` });
+        const data = await r.json() as { data: Array<{ id: string }> };
+        const chatPatterns = [/^gpt-/, /^o[0-9]/, /^chatgpt-/];
+        const excludePatterns = [/realtime/i, /audio/i, /whisper/i, /tts/i, /dall-e/i, /embedding/i, /moderation/i, /babbage/i, /davinci/i, /-search-/, /-instruct$/, /-vision$/];
+        models = data.data
+          .filter(m => chatPatterns.some(p => p.test(m.id)) && !excludePatterns.some(p => p.test(m.id)))
+          .map(m => ({ id: m.id, displayName: m.id.replace(/^gpt-/, "GPT-").replace(/-mini$/, " Mini").replace(/-nano$/, " Nano") }));
+      } else if (conn.provider === "ANTHROPIC") {
+        let hasMore = true;
+        let afterId: string | undefined;
+        const allAnthropicModels: Array<{ id: string; display_name?: string }> = [];
+        while (hasMore) {
+          const url = new URL("https://api.anthropic.com/v1/models");
+          url.searchParams.set("limit", "100");
+          if (afterId) url.searchParams.set("after_id", afterId);
+          const r = await fetch(url.toString(), {
+            headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+          });
+          if (!r.ok) return res.status(502).json({ message: `Anthropic API returned ${r.status}` });
+          const data = await r.json() as { data: Array<{ id: string; display_name?: string }>; has_more: boolean; last_id?: string };
+          allAnthropicModels.push(...data.data);
+          hasMore = data.has_more && !!data.last_id;
+          afterId = data.last_id;
+        }
+        models = allAnthropicModels
+          .filter(m => /^claude-/.test(m.id))
+          .map(m => ({ id: m.id, displayName: m.display_name || m.id }));
+      } else if (conn.provider === "GOOGLE") {
+        const r = await fetch("https://generativelanguage.googleapis.com/v1/models", {
+          headers: { "x-goog-api-key": apiKey },
+        });
+        if (!r.ok) return res.status(502).json({ message: `Google API returned ${r.status}` });
+        const data = await r.json() as { models: Array<{ name: string; displayName?: string; supportedGenerationMethods?: string[] }> };
+        models = data.models
+          .filter(m => m.supportedGenerationMethods?.includes("generateContent") && /^gemini-/.test(m.name.replace("models/", "")))
+          .map(m => {
+            const id = m.name.replace("models/", "");
+            return { id, displayName: m.displayName || id };
+          });
+      }
+
+      const pricingRows = await storage.getModelPricingByProvider(conn.provider);
+      const pricingMap = new Map(pricingRows.map(p => [p.modelId, p]));
+
+      const result = models.map(m => {
+        const pricing = pricingMap.get(m.id);
+        return {
+          modelId: m.id,
+          displayName: m.displayName,
+          inputPricePerMTok: pricing?.inputPricePerMTok ?? 0,
+          outputPricePerMTok: pricing?.outputPricePerMTok ?? 0,
+        };
+      });
+
+      res.json(result);
+    } catch (e: any) {
+      console.error("Provider models fetch error:", e);
+      res.status(500).json({ message: "Failed to fetch models" });
+    }
+  });
+
   app.get("/api/providers/:id/health", requireRole("ROOT_ADMIN"), async (req, res) => {
     try {
       const user = (req as any).user;
