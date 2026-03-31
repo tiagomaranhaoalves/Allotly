@@ -54,9 +54,9 @@ interface ModelPricing {
   id: string;
   provider: string;
   modelId: string;
-  modelDisplayName: string;
-  inputPricePer1kTokens: string;
-  outputPricePer1kTokens: string;
+  displayName: string;
+  inputPricePerMTok: number;
+  outputPricePerMTok: number;
 }
 
 interface HealthData {
@@ -1018,8 +1018,8 @@ function ModelAllowlist({ connection }: { connection: ProviderConnection }) {
       }))
     : (models || []).map(m => ({
         id: m.modelId,
-        label: m.modelDisplayName,
-        pricingLabel: `$${m.inputPricePer1kTokens}/1K in · $${m.outputPricePer1kTokens}/1K out`,
+        label: m.displayName,
+        pricingLabel: `$${(m.inputPricePerMTok / 100).toFixed(2)}/1M in · $${(m.outputPricePerMTok / 100).toFixed(2)}/1M out`,
       }));
 
   if (modelList.length === 0) {
