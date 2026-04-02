@@ -395,23 +395,49 @@ export async function handleChatCompletion(req: Request, res: Response) {
       await releaseConcurrency(membershipId, requestId);
       concurrencyAcquired = false;
 
-      let cleanMessage = `${provider} returned ${providerResponse.status}`;
-      try {
-        const parsed = JSON.parse(errorBody);
-        const msg = parsed?.error?.message || parsed?.message || parsed?.error?.status_message;
-        if (msg) cleanMessage += `: ${msg}`;
-      } catch {
-        const trimmed = errorBody.trim().slice(0, 200);
-        if (trimmed) cleanMessage += `: ${trimmed}`;
+      let cleanMessage: string;
+      let errorCode: string;
+      const status = providerResponse.status;
+
+      if (provider === "AZURE_OPENAI") {
+        if (status === 401 || status === 403) {
+          cleanMessage = "The provider rejected the request due to authentication or permissions.";
+          errorCode = "upstream_auth_failed";
+        } else if (status === 404) {
+          cleanMessage = `Deployment "${parsed.model}" is not available on this provider.`;
+          errorCode = "deployment_not_available";
+        } else if (status === 429) {
+          cleanMessage = "The provider is rate-limiting requests.";
+          errorCode = "provider_rate_limited";
+          const retryAfter = providerResponse.headers.get("retry-after");
+          if (retryAfter) {
+            res.setHeader("Retry-After", retryAfter);
+          }
+        } else {
+          cleanMessage = `The provider returned an error (${status}).`;
+          errorCode = "provider_error";
+        }
+        console.error(`[proxy] Azure error ${status} for deployment ${parsed.model}:`, errorBody.slice(0, 500));
+      } else {
+        cleanMessage = `${provider} returned ${status}`;
+        errorCode = status >= 400 && status < 500 ? "invalid_request" : "provider_error";
+        try {
+          const parsedErr = JSON.parse(errorBody);
+          const msg = parsedErr?.error?.message || parsedErr?.message || parsedErr?.error?.status_message;
+          if (msg) cleanMessage += `: ${msg}`;
+        } catch {
+          const trimmed = errorBody.trim().slice(0, 200);
+          if (trimmed) cleanMessage += `: ${trimmed}`;
+        }
       }
 
-      const suggestion = getProviderErrorSuggestion(providerResponse.status, cleanMessage, provider);
+      const suggestion = getProviderErrorSuggestion(status, cleanMessage, provider);
       budgetCtx = await buildBudgetCtx();
-      const isClientError = providerResponse.status >= 400 && providerResponse.status < 500;
+      const proxyStatus = status === 429 ? 429 : (status >= 400 && status < 500 ? 400 : 502);
       return sendProxyError(res, createProxyError(
-        isClientError ? 400 : 502,
-        isClientError ? "invalid_request" : "provider_error",
-        isClientError ? `Provider rejected request: ${cleanMessage}` : cleanMessage,
+        proxyStatus,
+        errorCode,
+        cleanMessage,
         suggestion
       ), budgetCtx);
     }
@@ -465,33 +491,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
     } else {
       const responseBody = await readNonStreamingResponse(providerResponse);
 
-      if (provider === "GOOGLE") {
-        console.log("=== GOOGLE RAW RESPONSE ===");
-        console.log("Model:", parsed.model);
-        console.log("Candidates count:", responseBody.candidates?.length || 0);
-        const candidate = responseBody.candidates?.[0];
-        console.log("Candidate keys:", candidate ? Object.keys(candidate) : "none");
-        console.log("Content keys:", candidate?.content ? Object.keys(candidate.content) : "none");
-        console.log("Parts count:", candidate?.content?.parts?.length || 0);
-        if (candidate?.content?.parts) {
-          for (let i = 0; i < candidate.content.parts.length; i++) {
-            const p = candidate.content.parts[i];
-            console.log(`Part[${i}]: thought=${p.thought}, hasText=${!!p.text}, textLen=${p.text?.length || 0}, keys=${Object.keys(p)}`);
-          }
-        }
-        console.log("FinishReason:", candidate?.finishReason);
-        console.log("UsageMetadata:", JSON.stringify(responseBody.usageMetadata));
-        console.log("=== END GOOGLE RAW ===");
-      }
-
       const openaiResponse = translateResponseToOpenAI(provider, responseBody, parsed.model, translated.proxyStopSequences);
-
-      if (provider === "GOOGLE") {
-        console.log("=== GOOGLE TRANSLATED ===");
-        console.log("Content:", JSON.stringify(openaiResponse.choices?.[0]?.message?.content?.slice(0, 200)));
-        console.log("Usage:", JSON.stringify(openaiResponse.usage));
-        console.log("=== END TRANSLATED ===");
-      }
 
       if (openaiResponse.usage) {
         actualInputTokens = openaiResponse.usage.prompt_tokens;

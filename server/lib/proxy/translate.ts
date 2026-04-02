@@ -65,10 +65,6 @@ export async function getAzureDeployments(orgId: string): Promise<AzureDeploymen
 }
 
 export async function detectProvider(model: string, orgId?: string): Promise<DetectProviderResult | null> {
-  if (model.startsWith("gpt-") || model.startsWith("o1") || model.startsWith("o3") || model.startsWith("o4")) return { provider: "OPENAI" };
-  if (model.startsWith("claude-")) return { provider: "ANTHROPIC" };
-  if (model.startsWith("gemini-")) return { provider: "GOOGLE" };
-
   if (orgId) {
     const deployments = await getAzureDeployments(orgId);
     const deployment = deployments.find(d => d.deploymentName === model);
@@ -76,6 +72,10 @@ export async function detectProvider(model: string, orgId?: string): Promise<Det
       return { provider: "AZURE_OPENAI", azureDeployment: deployment };
     }
   }
+
+  if (model.startsWith("gpt-") || model.startsWith("o1") || model.startsWith("o3") || model.startsWith("o4")) return { provider: "OPENAI" };
+  if (model.startsWith("claude-")) return { provider: "ANTHROPIC" };
+  if (model.startsWith("gemini-")) return { provider: "GOOGLE" };
 
   return null;
 }
@@ -157,7 +157,7 @@ export function translateToProvider(
       url = `${baseUrl}/openai/v1/chat/completions`;
       body.model = azureContext.deploymentName;
     } else {
-      url = `${baseUrl}/openai/deployments/${azureContext.deploymentName}/chat/completions?api-version=${azureContext.apiVersion || "2024-10-21"}`;
+      url = `${baseUrl}/openai/deployments/${encodeURIComponent(azureContext.deploymentName)}/chat/completions?api-version=${azureContext.apiVersion || "2024-10-21"}`;
       delete body.model;
     }
 

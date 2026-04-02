@@ -1,0 +1,160 @@
+# Replit Prompt: Azure OpenAI Provider — Review & Hardening
+
+Copy everything below this line into Replit.
+
+---
+
+## Context
+
+The Azure OpenAI provider is working — requests to `gpt-4.1-nano` and `gpt-4.1` route correctly through Allotly to Azure, streaming works, budget tracking works, and existing providers (OpenAI, Anthropic, Google) are unaffected. Nice work.
+
+This prompt is NOT asking you to fix anything. It's asking you to **audit** the implementation against a checklist of important edge cases and hardening points. For each item, check whether it's already handled. If it IS handled, confirm it. If it's NOT handled, implement it. Report back what you found.
+
+---
+
+## 1. Security: Azure API Key Leakage
+
+The Azure `api-key` is a secret that Allotly holds on behalf of the client. It must NEVER be exposed to the end user.
+
+**Check these:**
+
+- [ ] When Azure returns an error (403, 401, 429, 500), does Allotly's error response to the user contain the Azure API key anywhere? (It shouldn't — strip it from any forwarded error bodies or headers.)
+- [ ] If the proxy logs errors, are Azure API keys redacted from the logs?
+- [ ] Is the `api-key` header stripped from any debug/trace headers that might be forwarded downstream?
+- [ ] If someone sends a request to `/models` or any other endpoint, does the response ever leak the Azure configuration (baseUrl, apiKey, apiVersion)?
+
+**What to do if not handled:** Ensure all error responses from the Azure path sanitize the upstream response — never forward raw Azure error bodies that might contain request metadata or auth info. Same for logs.
+
+---
+
+## 2. Authorization Header Handling
+
+When a user sends a request to Allotly, they include `Authorization: Bearer allotly_sk_...`. When Allotly forwards to Azure, it should use `api-key: {azureApiKey}`.
+
+**Check these:**
+
+- [ ] Is the user's `Authorization: Bearer allotly_sk_...` header being stripped/replaced before forwarding to Azure? (It MUST be — never send the Allotly voucher key to Azure.)
+- [ ] Conversely, is the Azure `api-key` header being set correctly on the outbound request to Azure?
+- [ ] Are there any other headers from the user's original request that are being forwarded to Azure that shouldn't be? (e.g., cookies, custom headers, etc.)
+
+**Why this matters:** If the user's Allotly voucher key is accidentally forwarded to Azure in the `Authorization` header, Azure would reject it (since it expects `api-key`). But more importantly, it's a credential leak — the user's Allotly key would appear in Azure's request logs.
+
+---
+
+## 3. Azure Error Mapping
+
+Azure returns some errors that OpenAI doesn't. These need to be translated into clean Allotly error responses.
+
+**Check these:**
+
+- [ ] **403 DeploymentNotAllowed** — When the user requests a model that isn't deployed on Azure (e.g., `gpt-4o` on the NebulaOne key), does Allotly return a clear error message? Or does it forward Azure's raw 403 response?
+- [ ] **401 Unauthorized** — If the stored Azure API key expires or is revoked, does Allotly return a sensible error (e.g., 502 upstream_auth_failed)? Or does it forward the raw 401?
+- [ ] **429 Rate Limited** — Does Azure rate limiting get translated properly? Does Allotly forward the `Retry-After` header if Azure provides one?
+- [ ] **404 Resource Not Found** — If the Azure base URL is misconfigured, does Allotly handle it gracefully?
+- [ ] **Timeout** — If Azure is slow or unresponsive, does Allotly time out cleanly rather than hanging?
+
+**What good error responses look like:**
+```json
+{
+  "error": {
+    "message": "Model 'gpt-4o' is not available on this provider. Contact your administrator.",
+    "type": "deployment_not_available",
+    "code": 403
+  }
+}
+```
+
+NOT:
+```json
+{
+  "error": {
+    "code": "DeploymentNotFound",
+    "message": "The API deployment for this resource does not exist. If you created the deployment within the last 5 minutes, please wait a moment and try again."
+  }
+}
+```
+(The second example leaks Azure internals to the end user.)
+
+---
+
+## 4. Budget Deduction on Azure Failures
+
+**Check these:**
+
+- [ ] When Azure returns 403 (DeploymentNotAllowed), does Allotly deduct from the budget? (It should NOT — this is a routing/config error, not a successful API call.)
+- [ ] When Azure returns 401 (auth failure), does Allotly deduct from the budget? (It should NOT.)
+- [ ] When Azure returns 429 (rate limited), does Allotly deduct from the budget? (It should NOT — the request never actually ran.)
+- [ ] When Azure returns 500 (internal error), does Allotly deduct? (It should NOT.)
+- [ ] Is the behavior consistent with how OpenAI, Anthropic, and Google failures are handled? (All providers should follow the same rule: only deduct on 2xx.)
+
+---
+
+## 5. Routing Edge Cases
+
+The routing currently works: Azure-configured voucher keys route `gpt-4.1-nano` and `gpt-4.1` to Azure, while `gpt-4o` falls through to standard OpenAI.
+
+**Check these:**
+
+- [ ] What happens if an Azure-configured voucher key sends `claude-3.5-sonnet`? Does it try to send it to Azure (which would fail) or fall back to Anthropic? Document the current behavior.
+- [ ] What happens if an Azure-configured voucher key sends `gemini-2.5-flash`? Same question — Azure or Google?
+- [ ] Is the routing logic documented in a comment so future developers understand the priority order?
+- [ ] If the routing decision is: "Azure-configured keys send ALL models to Azure" — that's a valid choice, but then non-OpenAI models will fail on Azure. Consider whether models that clearly aren't OpenAI-compatible (claude-*, gemini-*) should still be routed to their native providers even for Azure-configured keys.
+
+**Recommended behavior:** For Azure-configured keys, route `gpt-*` and `o1-*`/`o3-*`/`o4-*` models to Azure. Route `claude-*` to Anthropic and `gemini-*` to Google regardless of Azure config. This gives the best user experience — Azure handles what it can, native providers handle the rest.
+
+---
+
+## 6. api-version Configurability
+
+Azure requires `?api-version=2024-10-21` in the URL. This version changes over time as Azure releases new API features.
+
+**Check these:**
+
+- [ ] Is the api-version configurable per Azure configuration? Or is it hardcoded?
+- [ ] If hardcoded, add a TODO/comment noting it should be configurable (or at least a constant at the top of the file that's easy to update).
+- [ ] Will the URL still work if Azure deprecates `2024-10-21`? (It will — Azure maintains backward compatibility — but it's worth noting.)
+
+---
+
+## 7. URL Construction Safety
+
+- [ ] Is the deployment name (model) being URL-encoded in the path? Example: if a model name contained a `/` or space, it would break the URL. Use `encodeURIComponent(model)` or equivalent.
+- [ ] Is the base URL validated? (No trailing slash, must start with https://, etc.)
+- [ ] Could a malicious model name in the request body cause URL injection? (e.g., `model: "../../admin"` — this should be sanitized.)
+
+---
+
+## 8. Admin Dashboard / Configuration UI
+
+- [ ] Is there a way for an admin to configure the Azure settings (base URL, API key, api-version, allowed deployments) through the dashboard? Or was it hardcoded for this specific client?
+- [ ] If hardcoded: that's fine for now, but flag it as tech debt. Future clients will need their own Azure configs.
+- [ ] Is the Azure API key stored encrypted at rest in the database? (Same standard as OpenAI/Anthropic/Google API keys.)
+- [ ] Is the Azure API key masked in the admin UI (show only last 4 chars)?
+
+---
+
+## 9. /models Endpoint
+
+Allotly has a `/models` endpoint that lists available models.
+
+- [ ] Does `/models` include the Azure-available models (gpt-4.1-nano, gpt-4.1) for Azure-configured voucher keys?
+- [ ] Or does it only list the standard OpenAI/Anthropic/Google catalog?
+- [ ] If it doesn't include Azure models: consider adding them, or at minimum don't return models that the voucher key can't actually use.
+
+---
+
+## 10. Streaming Error Handling
+
+- [ ] If Azure returns a non-200 error on a streaming request (`stream: true`), does Allotly handle it correctly? (Some proxies start streaming headers before checking the upstream status, then fail mid-stream.)
+- [ ] If Azure drops the connection mid-stream, does Allotly send a `data: [DONE]` to the client, or does it hang?
+
+---
+
+## Deliverable
+
+For each of the 10 sections above, report:
+1. **Status:** Already handled / Not handled / Partially handled
+2. **What you found:** Brief description of current behavior
+3. **What you changed (if anything):** Code changes made
+
+Do NOT change anything that is already working correctly. This is a review, not a rewrite.

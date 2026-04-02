@@ -21,7 +21,7 @@ export const azureOpenaiAdapter: ProviderAdapter = {
         if (!deploymentName) {
           return { valid: false, error: "Deployment name is required for legacy endpoint mode validation" };
         }
-        url = `${baseUrl.replace(/\/$/, "")}/openai/deployments/${deploymentName}/chat/completions?api-version=${apiVersion}`;
+        url = `${baseUrl.replace(/\/$/, "")}/openai/deployments/${encodeURIComponent(deploymentName)}/chat/completions?api-version=${apiVersion}`;
       }
 
       const body = {
