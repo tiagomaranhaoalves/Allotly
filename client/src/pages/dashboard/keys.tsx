@@ -5,8 +5,11 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/brand/empty-state";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Key, Copy, Shield, Clock, Search, Trash2, AlertTriangle } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Key, Copy, Shield, Clock, Search, Trash2, AlertTriangle, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -15,6 +18,13 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useState } from "react";
+
+const PROVIDERS = [
+  { id: "OPENAI", label: "OpenAI", color: "#10A37F" },
+  { id: "ANTHROPIC", label: "Anthropic", color: "#D4A574" },
+  { id: "GOOGLE", label: "Google", color: "#4285F4" },
+  { id: "AZURE_OPENAI", label: "Azure OpenAI", color: "#0078D4" },
+];
 
 interface ApiKeyAudit {
   id: string;
@@ -30,6 +40,7 @@ interface ApiKeyAudit {
   membershipId: string;
   projectId: string | null;
   projectName: string | null;
+  allowedProviders: string[] | null;
 }
 
 interface Team {
@@ -55,6 +66,9 @@ function KeyAuditView() {
   const [teamFilter, setTeamFilter] = useState("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmBulkRevoke, setConfirmBulkRevoke] = useState(false);
+
+  const [editProvidersKey, setEditProvidersKey] = useState<ApiKeyAudit | null>(null);
+  const [editProviders, setEditProviders] = useState<string[]>([]);
 
   const { data: teams } = useQuery<Team[]>({ queryKey: ["/api/teams"] });
 
@@ -87,6 +101,31 @@ function KeyAuditView() {
       toast({ title: "Bulk revoke failed", description: err.message, variant: "destructive" });
     },
   });
+
+  const updateProvidersMutation = useMutation({
+    mutationFn: async ({ membershipId, providers }: { membershipId: string; providers: string[] }) => {
+      await apiRequest("PATCH", `/api/members/${membershipId}/budget`, {
+        allowedProviders: providers.length > 0 ? providers : null,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/keys"] });
+      toast({ title: "Providers updated" });
+      setEditProvidersKey(null);
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to update providers", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const openEditProviders = (k: ApiKeyAudit) => {
+    setEditProvidersKey(k);
+    setEditProviders(k.allowedProviders || []);
+  };
+
+  const toggleEditProvider = (p: string) => {
+    setEditProviders(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]);
+  };
 
   const toggleSelect = (id: string) => {
     const next = new Set(selected);
@@ -214,9 +253,11 @@ function KeyAuditView() {
                   <th className="p-3 text-left font-medium">Type</th>
                   <th className="p-3 text-left font-medium">Team</th>
                   <th className="p-3 text-left font-medium">Project</th>
+                  <th className="p-3 text-left font-medium">Providers</th>
                   <th className="p-3 text-left font-medium">Status</th>
                   <th className="p-3 text-left font-medium">Created</th>
                   <th className="p-3 text-left font-medium">Last Used</th>
+                  <th className="p-3 text-left font-medium w-10"></th>
                 </tr>
               </thead>
               <tbody>
@@ -262,6 +303,27 @@ function KeyAuditView() {
                     <td className="p-3 text-xs text-muted-foreground" data-testid={`text-key-project-${k.id}`}>
                       {k.projectName || <span className="text-muted-foreground/50">—</span>}
                     </td>
+                    <td className="p-3" data-testid={`cell-key-providers-${k.id}`}>
+                      <div className="flex flex-wrap gap-1">
+                        {k.allowedProviders && k.allowedProviders.length > 0 ? (
+                          k.allowedProviders.map(p => {
+                            const provider = PROVIDERS.find(pr => pr.id === p);
+                            return (
+                              <span
+                                key={p}
+                                className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-muted"
+                                data-testid={`badge-provider-${p}-${k.id}`}
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: provider?.color || "#888" }} />
+                                {provider?.label || p}
+                              </span>
+                            );
+                          })
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground/50">All</span>
+                        )}
+                      </div>
+                    </td>
                     <td className="p-3">
                       <Badge
                         variant="secondary"
@@ -280,6 +342,19 @@ function KeyAuditView() {
                     </td>
                     <td className="p-3 text-xs text-muted-foreground">
                       {k.lastUsed ? new Date(k.lastUsed).toLocaleDateString() : "Never"}
+                    </td>
+                    <td className="p-3">
+                      {k.status === "ACTIVE" && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0"
+                          onClick={() => openEditProviders(k)}
+                          data-testid={`button-edit-providers-${k.id}`}
+                        >
+                          <Settings2 className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -315,6 +390,59 @@ function KeyAuditView() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={!!editProvidersKey} onOpenChange={(open) => { if (!open) setEditProvidersKey(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Providers</DialogTitle>
+            <DialogDescription>
+              Select which AI providers this key ({editProvidersKey?.keyPrefix}) can access. Changes apply to all keys under this membership.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label>Allowed Providers</Label>
+              <div className="space-y-2">
+                {PROVIDERS.map(p => (
+                  <label key={p.id} className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-muted/50" data-testid={`label-provider-${p.id.toLowerCase()}`}>
+                    <Checkbox
+                      checked={editProviders.includes(p.id)}
+                      onCheckedChange={() => toggleEditProvider(p.id)}
+                      data-testid={`checkbox-provider-${p.id.toLowerCase()}`}
+                    />
+                    <span className="flex items-center gap-2 text-sm">
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: p.color }} />
+                      {p.label}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              {editProviders.length === 0 && (
+                <p className="text-xs text-muted-foreground">No providers selected means all providers will be accessible.</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditProvidersKey(null)} data-testid="button-cancel-edit-providers">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (editProvidersKey) {
+                  updateProvidersMutation.mutate({
+                    membershipId: editProvidersKey.membershipId,
+                    providers: editProviders,
+                  });
+                }
+              }}
+              disabled={updateProvidersMutation.isPending}
+              data-testid="button-save-providers"
+            >
+              {updateProvidersMutation.isPending ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

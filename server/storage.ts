@@ -822,6 +822,7 @@ export class DrizzleStorage implements IStorage {
           membershipId: m.id,
           projectId: key.projectId,
           projectName,
+          allowedProviders: m.allowedProviders,
         });
       }
     }

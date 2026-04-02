@@ -28,6 +28,7 @@ const PROVIDERS = [
   { id: "OPENAI", label: "OpenAI", color: "#10A37F" },
   { id: "ANTHROPIC", label: "Anthropic", color: "#D4A574" },
   { id: "GOOGLE", label: "Google", color: "#4285F4" },
+  { id: "AZURE_OPENAI", label: "Azure OpenAI", color: "#0078D4" },
 ];
 
 export default function VouchersPage() {
@@ -56,6 +57,7 @@ export default function VouchersPage() {
   const [topUpAmount, setTopUpAmount] = useState("5");
 
   const [exportStatus, setExportStatus] = useState("all");
+  const [listFilter, setListFilter] = useState("all");
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -372,7 +374,11 @@ export default function VouchersPage() {
     });
   };
 
-  const revokableVouchers = vouchers?.filter((v: any) => v.status === "ACTIVE" || v.status === "FULLY_REDEEMED") || [];
+  const filteredVouchers = listFilter === "all"
+    ? vouchers
+    : vouchers?.filter((v: any) => v.status === listFilter);
+
+  const revokableVouchers = filteredVouchers?.filter((v: any) => v.status === "ACTIVE" || v.status === "FULLY_REDEEMED") || [];
   const allRevokableSelected = revokableVouchers.length > 0 && revokableVouchers.every((v: any) => selectedIds.has(v.id));
 
   const toggleSelectAll = () => {
@@ -837,9 +843,27 @@ export default function VouchersPage() {
         </DialogContent>
       </Dialog>
 
+      {vouchers && vouchers.length > 0 && (
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-muted-foreground">Filter:</span>
+          <Select value={listFilter} onValueChange={(val) => { setListFilter(val); setSelectedIds(new Set()); }}>
+            <SelectTrigger className="w-[160px] h-9" data-testid="select-voucher-list-filter">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Vouchers ({vouchers.length})</SelectItem>
+              <SelectItem value="ACTIVE">Active ({vouchers.filter((v: any) => v.status === "ACTIVE").length})</SelectItem>
+              <SelectItem value="FULLY_REDEEMED">Redeemed ({vouchers.filter((v: any) => v.status === "FULLY_REDEEMED").length})</SelectItem>
+              <SelectItem value="EXPIRED">Expired ({vouchers.filter((v: any) => v.status === "EXPIRED").length})</SelectItem>
+              <SelectItem value="REVOKED">Revoked ({vouchers.filter((v: any) => v.status === "REVOKED").length})</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       {isLoading ? (
         <div className="grid sm:grid-cols-2 gap-4">{[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-40" />)}</div>
-      ) : vouchers && vouchers.length > 0 ? (
+      ) : filteredVouchers && filteredVouchers.length > 0 ? (
         <div className="space-y-2">
           {revokableVouchers.length > 0 && (
             <div className="flex items-center gap-2 px-1">
@@ -852,7 +876,7 @@ export default function VouchersPage() {
             </div>
           )}
           <div className="grid sm:grid-cols-2 gap-4">
-            {vouchers.map((v: any) => (
+            {filteredVouchers.map((v: any) => (
               <div key={v.id} className="relative">
                 <div className="flex items-start gap-2">
                   {canRevoke(v) && (
@@ -1010,6 +1034,12 @@ export default function VouchersPage() {
             ))}
           </div>
         </div>
+      ) : vouchers && vouchers.length > 0 && filteredVouchers?.length === 0 ? (
+        <EmptyState
+          icon={<Ticket className="w-10 h-10 text-muted-foreground" />}
+          title="No vouchers match this filter"
+          description={`No ${listFilter === "FULLY_REDEEMED" ? "redeemed" : listFilter.toLowerCase()} vouchers found. Try a different filter.`}
+        />
       ) : (
         <EmptyState
           icon={<Ticket className="w-10 h-10 text-muted-foreground" />}
