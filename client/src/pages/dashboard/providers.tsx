@@ -81,17 +81,6 @@ const AZURE_KNOWN_MODELS = [
   { id: "o1-mini", label: "o1-mini", inputPrice: 300, outputPrice: 1200 },
 ];
 
-const CONFLICT_PREFIXES = ["gpt-", "o1", "o3", "o4", "claude-", "gemini-"];
-
-function checkDeploymentNameConflict(name: string): string | null {
-  const lower = name.toLowerCase();
-  for (const prefix of CONFLICT_PREFIXES) {
-    if (lower.startsWith(prefix)) {
-      return `Deployment name '${name}' conflicts with existing provider model naming. Azure deployment names must not start with '${prefix}'. Use a custom name like 'my-gpt4o' or 'nebula-one'.`;
-    }
-  }
-  return null;
-}
 
 function validateAzureBaseUrl(url: string): { valid: boolean; warning?: string } {
   if (!url.startsWith("https://")) {
@@ -200,13 +189,11 @@ export default function ProvidersPage() {
   };
 
   const azureUrlValidation = azureBaseUrl ? validateAzureBaseUrl(azureBaseUrl) : null;
-  const deploymentErrors = azureDeployments.map(d => d.deploymentName ? checkDeploymentNameConflict(d.deploymentName) : null);
-  const hasDeploymentErrors = deploymentErrors.some(e => e !== null);
   const validDeployments = azureDeployments.filter(d => d.deploymentName && d.modelId);
   const duplicateDeploymentNames = azureDeployments.map(d => d.deploymentName).filter((name, i, arr) => name && arr.indexOf(name) !== i);
 
   const isAzureFormValid = provider === "AZURE_OPENAI"
-    ? apiKey && azureBaseUrl && azureUrlValidation?.valid && validDeployments.length > 0 && !hasDeploymentErrors && duplicateDeploymentNames.length === 0
+    ? apiKey && azureBaseUrl && azureUrlValidation?.valid && validDeployments.length > 0 && duplicateDeploymentNames.length === 0
     : true;
 
   const isFormValid = provider && apiKey && isAzureFormValid;
@@ -376,9 +363,6 @@ export default function ProvidersPage() {
                                 className="h-8 text-sm"
                                 data-testid={`input-deployment-name-${idx}`}
                               />
-                              {deploymentErrors[idx] && (
-                                <p className="text-xs text-destructive">{deploymentErrors[idx]}</p>
-                              )}
                               {dep.deploymentName && duplicateDeploymentNames.includes(dep.deploymentName) && (
                                 <p className="text-xs text-destructive">Duplicate deployment name</p>
                               )}
@@ -633,11 +617,9 @@ function ProviderCard({
   };
 
   const editAzureUrlValidation = editAzureBaseUrl ? validateAzureBaseUrl(editAzureBaseUrl) : null;
-  const editDeploymentErrors = editAzureDeployments.map(d => d.deploymentName ? checkDeploymentNameConflict(d.deploymentName) : null);
-  const editHasDeploymentErrors = editDeploymentErrors.some(e => e !== null);
   const editValidDeployments = editAzureDeployments.filter(d => d.deploymentName && d.modelId);
   const editDuplicateNames = editAzureDeployments.map(d => d.deploymentName).filter((name, i, arr) => name && arr.indexOf(name) !== i);
-  const editFormValid = editAzureBaseUrl && editAzureUrlValidation?.valid && editValidDeployments.length > 0 && !editHasDeploymentErrors && editDuplicateNames.length === 0;
+  const editFormValid = editAzureBaseUrl && editAzureUrlValidation?.valid && editValidDeployments.length > 0 && editDuplicateNames.length === 0;
 
   const getHealthColor = () => {
     if (!health) return "bg-gray-400";
@@ -815,7 +797,6 @@ function ProviderCard({
                           <div className="space-y-1">
                             <Label className="text-xs">Deployment Name</Label>
                             <Input value={dep.deploymentName} onChange={e => editUpdateDeployment(idx, "deploymentName", e.target.value)} placeholder="e.g., nebula-one" className="h-8 text-sm" data-testid={`input-edit-deployment-name-${idx}`} />
-                            {editDeploymentErrors[idx] && <p className="text-xs text-destructive">{editDeploymentErrors[idx]}</p>}
                             {dep.deploymentName && editDuplicateNames.includes(dep.deploymentName) && <p className="text-xs text-destructive">Duplicate deployment name</p>}
                           </div>
                           <div className="space-y-1">
