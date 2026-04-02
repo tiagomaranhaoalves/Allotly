@@ -1,0 +1,90 @@
+What Happened
+Azure OpenAI routing was working perfectly — we ran 12 tests and all passed (basic requests, streaming, stop sequences, system messages, multi-turn, budget tracking). Then I asked you to perform a review/hardening audit (checking error handling, key leakage, auth headers, etc.). After that review, Azure stopped working.
+Before the review: gpt-4.1-nano and gpt-4.1 both routed to Azure and returned 200 OK.
+After the review: gpt-4.1-nano returns 400 upstream_auth_failed. gpt-4.1 routes to standard OpenAI instead of Azure.
+The error response:
+json{
+  "code": "upstream_auth_failed",
+  "message": "The provider rejected the request due to authentication or permissions.",
+  "suggestion": "There may be an issue with the provider API key. Contact your admin.",
+  "type": "allotly_error"
+}
+This means Allotly is reaching the Azure routing path (good) but the request to Azure is being rejected (bad). Something in the hardening review broke the actual Azure call.
+
+Most Likely Root Causes
+The review asked you to check auth header handling and key security. The most likely things that broke:
+1. Auth Header Was Changed Incorrectly
+Azure requires this exact header: api-key: 456eccb2a4cb43e1a35c7d2f4a86b1da
+If the review caused any of these changes, it would break:
+
+Header name changed from api-key to Api-Key, API-KEY, apiKey, x-api-key, or Authorization
+Key value is being encrypted/hashed before sending (it should be sent as plain text in the header)
+Key value has extra whitespace, quotes, or encoding added
+Key is being prefixed with Bearer  (Azure does NOT use Bearer auth)
+
+Fix: Check the exact HTTP headers being sent to Azure. The outbound request to Azure must have exactly:
+api-key: 456eccb2a4cb43e1a35c7d2f4a86b1da
+Content-Type: application/json
+2. The Azure API Key Was Redacted/Sanitized in Storage
+The review asked about key leakage. If the key was masked, redacted, or partially removed from the database/config (e.g., stored as ****b1da or hashed), it would fail auth.
+Fix: Verify the full Azure API key is stored intact in the database/config. It must be the raw value: 456eccb2a4cb43e1a35c7d2f4a86b1da
+3. URL Construction Was Modified
+The review asked about URL safety and encoding. If the URL was changed, Azure would reject it.
+Working URL:
+https://apim-n1ai-uks-f31ee48d7.azure-api.net/openai/deployments/gpt-4.1-nano/chat/completions?api-version=2024-10-21
+Things that could break it:
+
+Double-encoding the deployment name (gpt-4.1-nano → gpt-4.1-nano is fine, but gpt-4%2E1-nano would fail)
+Missing ?api-version=2024-10-21
+Trailing slash before openai (e.g., .net//openai/...)
+Base URL changed or sanitized
+
+4. Request Headers Are Being Stripped Too Aggressively
+The review asked about not forwarding the user's Allotly auth header to Azure. If the fix stripped ALL auth headers but didn't add back the Azure api-key header, the request would go to Azure with no auth at all.
+Fix: The logic should be:
+
+Remove the user's Authorization: Bearer allotly_sk_... header (correct — don't forward this)
+Add api-key: {azureApiKey} header (this MUST be added)
+
+If step 2 was accidentally removed or placed inside an else branch, the request goes out without auth.
+5. Routing Only Catches gpt-4.1-nano But Not gpt-4.1
+We observed that gpt-4.1 now routes to standard OpenAI (model: gpt-4.1-2025-04-14) instead of Azure. This means the routing logic is only sending some models to Azure. Both gpt-4.1-nano AND gpt-4.1 should route to Azure for Azure-configured voucher keys.
+Fix: For Azure-configured voucher keys, ALL gpt-* models should route to Azure (not just specific deployment names). The Azure endpoint will return 403 if a deployment doesn't exist — that's fine and expected. Don't try to pre-filter at the routing level based on deployment names.
+
+How to Debug
+Add a temporary console.log right before the Azure fetch call:
+javascriptconsole.log('Azure request:', {
+  url: azureUrl,
+  headers: Object.keys(requestHeaders),  // Log header NAMES only, not values
+  hasApiKey: !!requestHeaders['api-key'],  // Verify api-key is present
+  apiKeyLength: requestHeaders['api-key']?.length,  // Should be 32
+  model: requestBody.model
+});
+This will tell you:
+
+Is the URL correct?
+Is the api-key header present?
+Is the key the right length (32 characters)?
+What model is being sent?
+
+Then check the Azure response:
+javascriptconsole.log('Azure response:', {
+  status: azureResponse.status,
+  statusText: azureResponse.statusText,
+  headers: Object.fromEntries(azureResponse.headers.entries())
+});
+
+Expected Behavior After Fix
+gpt-4.1-nano (Azure key) → routes to Azure → 200 OK, model: gpt-4.1-nano-2025-04-14
+gpt-4.1      (Azure key) → routes to Azure → 200 OK, model: gpt-4.1-2025-04-14
+gpt-4o       (Azure key) → routes to Azure → 403 deployment not available (this is correct)
+claude-*     (Azure key) → routes to Anthropic (not Azure)
+gemini-*     (Azure key) → routes to Google (not Azure)
+
+Important: Don't Over-Engineer the Fix
+The review was meant to harden, not rewrite. Go back to what was working before the review and reapply only the changes that don't break the core auth flow. Specifically:
+
+Error messages should NOT leak the Azure API key (keep this from the review)
+Budget should NOT be deducted on Azure failures (keep this from the review)
+Provider allowlist per voucher key (keep this from the review)
+But the actual outbound request to Azure must send api-key header with the raw key value — don't sanitize the key itself, only sanitize it in logs and error responses
