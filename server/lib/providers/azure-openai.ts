@@ -35,6 +35,7 @@ export const azureOpenaiAdapter: ProviderAdapter = {
         headers: {
           "Content-Type": "application/json",
           "api-key": apiKey,
+          "Ocp-Apim-Subscription-Key": apiKey,
         },
         body: JSON.stringify(body),
       });

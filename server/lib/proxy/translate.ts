@@ -277,6 +277,7 @@ export function setProviderAuth(
     url = `${url}${separator}key=${apiKey}`;
   } else if (provider === "AZURE_OPENAI") {
     headers["api-key"] = apiKey;
+    headers["Ocp-Apim-Subscription-Key"] = apiKey;
   }
   return { headers, url };
 }
