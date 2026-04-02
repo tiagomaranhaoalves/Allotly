@@ -3289,7 +3289,7 @@ export async function registerRoutes(
         teamId: targetTeamId!,
         createdById: user.id,
         budgetCents,
-        allowedProviders: allowedProviders || ["OPENAI", "ANTHROPIC", "GOOGLE"],
+        allowedProviders: allowedProviders || ["OPENAI", "ANTHROPIC", "GOOGLE", "AZURE_OPENAI"],
         allowedModels: allowedModels || null,
         expiresAt: expiryDate,
         maxRedemptions: 1,

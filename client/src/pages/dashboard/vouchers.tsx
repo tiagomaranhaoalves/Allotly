@@ -38,7 +38,7 @@ export default function VouchersPage() {
   const [budgetDollars, setBudgetDollars] = useState("5");
   const [maxRedemptions, setMaxRedemptions] = useState("5");
   const [expiryDays, setExpiryDays] = useState("1");
-  const [providers, setProviders] = useState<string[]>(["OPENAI", "ANTHROPIC", "GOOGLE"]);
+  const [providers, setProviders] = useState<string[]>(["OPENAI", "ANTHROPIC", "GOOGLE", "AZURE_OPENAI"]);
   const [createdCode, setCreatedCode] = useState("");
   const [selectedBundleId, setSelectedBundleId] = useState("");
 
@@ -46,7 +46,7 @@ export default function VouchersPage() {
   const [bulkCount, setBulkCount] = useState("10");
   const [bulkBudget, setBulkBudget] = useState("5");
   const [bulkExpiryDays, setBulkExpiryDays] = useState("7");
-  const [bulkProviders, setBulkProviders] = useState<string[]>(["OPENAI", "ANTHROPIC", "GOOGLE"]);
+  const [bulkProviders, setBulkProviders] = useState<string[]>(["OPENAI", "ANTHROPIC", "GOOGLE", "AZURE_OPENAI"]);
   const [bulkLabel, setBulkLabel] = useState("");
   const [bulkCreatedCodes, setBulkCreatedCodes] = useState<{ id: string; code: string; budgetCents: number; expiresAt: string }[]>([]);
 
@@ -324,7 +324,7 @@ export default function VouchersPage() {
     setBudgetDollars(selectedBundleId ? "25" : String((limits.maxBudgetPerRecipientCents || 500) / 100));
     setMaxRedemptions("5");
     setExpiryDays(String(limits.maxExpiryDays || 1));
-    setProviders(["OPENAI", "ANTHROPIC"]);
+    setProviders(["OPENAI", "ANTHROPIC", "GOOGLE", "AZURE_OPENAI"]);
     setSelectedBundleId("");
     setCreatedCode("");
   };
@@ -333,7 +333,7 @@ export default function VouchersPage() {
     setBulkCount("10");
     setBulkBudget("5");
     setBulkExpiryDays("7");
-    setBulkProviders(["OPENAI", "ANTHROPIC"]);
+    setBulkProviders(["OPENAI", "ANTHROPIC", "GOOGLE", "AZURE_OPENAI"]);
     setBulkLabel("");
     setBulkCreatedCodes([]);
   };
