@@ -11,7 +11,7 @@ export const azureOpenaiAdapter: ProviderAdapter = {
       }
 
       const apiVersion = options?.apiVersion || "2024-10-21";
-      const cleanBase = baseUrl.replace(/\/+$/, "");
+      const cleanBase = baseUrl.replace(/\/+$/, "").replace(/\/openai\/?$/, "");
       const isApim = cleanBase.includes("azure-api.net");
       const endpointMode = options?.endpointMode || "legacy";
       const deploymentName = options?.deploymentName || "gpt-4o";
@@ -70,10 +70,8 @@ export const azureOpenaiAdapter: ProviderAdapter = {
       }
 
       if (chatRes.status === 404) {
-        if (isApim) {
-          return { valid: false, error: `Deployment '${deploymentName}' not found on your APIM gateway. Ensure the deployment exists and is exposed through the gateway.` };
-        }
-        return { valid: false, error: `Deployment '${deploymentName}' not found. Verify your endpoint URL and that the deployment exists.` };
+        console.log(`[azure-validate] 404 on deployment '${deploymentName}' — key is valid (deployment may not exist)`);
+        return { valid: true };
       }
 
       if (chatRes.status === 429) {
