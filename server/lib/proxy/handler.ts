@@ -377,10 +377,14 @@ export async function handleChatCompletion(req: Request, res: Response) {
 
     let azureContext: AzureContext | undefined;
     if (provider === "AZURE_OPENAI" && azureDeployment && connection.azureBaseUrl) {
+      let endpointMode = (connection.azureEndpointMode as "v1" | "legacy") || "legacy";
+      if (endpointMode === "v1" && connection.azureBaseUrl.includes("azure-api.net")) {
+        endpointMode = "legacy";
+      }
       azureContext = {
         baseUrl: connection.azureBaseUrl,
-        endpointMode: (connection.azureEndpointMode as "v1" | "legacy") || "v1",
-        apiVersion: connection.azureApiVersion || undefined,
+        endpointMode,
+        apiVersion: connection.azureApiVersion || "2024-10-21",
         deploymentName: azureDeployment.deploymentName,
         modelId: azureDeployment.modelId,
       };

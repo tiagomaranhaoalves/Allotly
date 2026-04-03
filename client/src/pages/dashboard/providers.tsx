@@ -108,7 +108,7 @@ export default function ProvidersPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const [azureBaseUrl, setAzureBaseUrl] = useState("");
-  const [azureEndpointMode, setAzureEndpointMode] = useState<"v1" | "legacy">("v1");
+  const [azureEndpointMode, setAzureEndpointMode] = useState<"v1" | "legacy">("legacy");
   const [azureApiVersion, setAzureApiVersion] = useState("2024-10-21");
   const [azureDeployments, setAzureDeployments] = useState<AzureDeployment[]>([
     { deploymentName: "", modelId: "", inputPricePerMTok: 0, outputPricePerMTok: 0 },

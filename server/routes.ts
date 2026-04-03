@@ -544,7 +544,7 @@ export async function registerRoutes(
         ...(provider === "AZURE_OPENAI" && {
           azureBaseUrl: parsed.data.azureBaseUrl,
           azureApiVersion: parsed.data.azureApiVersion || null,
-          azureEndpointMode: parsed.data.azureEndpointMode || "v1",
+          azureEndpointMode: parsed.data.azureEndpointMode || "legacy",
           azureDeployments: parsed.data.azureDeployments,
         }),
       });
@@ -731,8 +731,8 @@ export async function registerRoutes(
       const validationOptions = conn.provider === "AZURE_OPENAI" ? {
         baseUrl: conn.azureBaseUrl || undefined,
         deploymentName: ((conn.azureDeployments as any[])?.[0])?.deploymentName,
-        apiVersion: conn.azureApiVersion || undefined,
-        endpointMode: conn.azureEndpointMode || undefined,
+        apiVersion: conn.azureApiVersion || "2024-10-21",
+        endpointMode: (conn.azureEndpointMode === "v1" && conn.azureBaseUrl?.includes("azure-api.net")) ? "legacy" : (conn.azureEndpointMode || "legacy"),
       } : undefined;
 
       const validation = await adapter.validateAdminKey(newApiKey, validationOptions);
