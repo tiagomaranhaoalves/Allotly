@@ -289,8 +289,14 @@ export async function handleChatCompletion(req: Request, res: Response) {
         };
       } else {
         pricing = await getModelPricing("OPENAI", effectiveModel);
+        if (!pricing && azureDeployment.modelId !== effectiveModel) {
+          pricing = await getModelPricing("OPENAI", azureDeployment.modelId);
+        }
         if (!pricing) {
           pricing = await getModelPricing("AZURE_OPENAI", effectiveModel);
+        }
+        if (!pricing && azureDeployment.modelId !== effectiveModel) {
+          pricing = await getModelPricing("AZURE_OPENAI", azureDeployment.modelId);
         }
       }
     } else {
