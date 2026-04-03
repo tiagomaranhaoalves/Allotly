@@ -392,6 +392,8 @@ export async function handleChatCompletion(req: Request, res: Response) {
       console.log(`[proxy-azure-debug] URL: ${authInfo.url}`);
       console.log(`[proxy-azure-debug] Headers: ${Object.keys(authInfo.headers).join(", ")}`);
       console.log(`[proxy-azure-debug] Body keys: ${Object.keys(translated.body).join(", ")}`);
+      console.log(`[proxy-azure-debug] Key length: ${adminApiKey.length}, prefix: ${adminApiKey.substring(0, 8)}, suffix: ${adminApiKey.substring(adminApiKey.length - 4)}`);
+      console.log(`[proxy-azure-debug] Key has whitespace: ${adminApiKey !== adminApiKey.trim()}, has quotes: ${adminApiKey.includes('"') || adminApiKey.includes("'")}`);
     }
 
     let providerResponse: globalThis.Response;
