@@ -20,9 +20,6 @@ export const azureOpenaiAdapter: ProviderAdapter = {
         "Content-Type": "application/json",
         "api-key": apiKey,
       };
-      if (isApim) {
-        headers["Ocp-Apim-Subscription-Key"] = apiKey;
-      }
 
       if (!isApim) {
         const modelsUrl = `${cleanBase}/openai/models?api-version=${apiVersion}`;

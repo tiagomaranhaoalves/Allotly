@@ -382,6 +382,12 @@ export async function handleChatCompletion(req: Request, res: Response) {
     translated.body = sanitizeProviderBody(translated.body, provider);
     const authInfo = setProviderAuth(translated.headers, provider, adminApiKey, translated.url);
 
+    if (provider === "AZURE_OPENAI") {
+      console.log(`[proxy-azure-debug] URL: ${authInfo.url}`);
+      console.log(`[proxy-azure-debug] Headers: ${Object.keys(authInfo.headers).join(", ")}`);
+      console.log(`[proxy-azure-debug] Body keys: ${Object.keys(translated.body).join(", ")}`);
+    }
+
     let providerResponse: globalThis.Response;
     try {
       providerResponse = await fetch(authInfo.url, {

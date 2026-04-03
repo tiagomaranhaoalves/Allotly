@@ -64,17 +64,6 @@ export async function getAzureDeployments(orgId: string): Promise<AzureDeploymen
   return allDeployments;
 }
 
-export async function hasActiveAzureConnection(orgId: string): Promise<boolean> {
-  const cacheKey = `azure_active:${orgId}`;
-  const cached = await redisGet(cacheKey);
-  if (cached !== null) return cached === "1";
-
-  const connections = await storage.getProviderConnectionsByOrg(orgId);
-  const hasAzure = connections.some(c => c.provider === "AZURE_OPENAI" && c.status === "ACTIVE");
-  await redisSet(cacheKey, hasAzure ? "1" : "0", 300);
-  return hasAzure;
-}
-
 const OPENAI_COMPATIBLE_MODEL = /^(gpt-|o1|o3|o4)/;
 
 export async function detectProvider(model: string, orgId?: string): Promise<DetectProviderResult & { strippedModel?: string } | null> {
@@ -104,18 +93,6 @@ export async function detectProvider(model: string, orgId?: string): Promise<Det
     const deployment = deployments.find(d => d.deploymentName === model);
     if (deployment) {
       return { provider: "AZURE_OPENAI", azureDeployment: deployment };
-    }
-
-    if (OPENAI_COMPATIBLE_MODEL.test(model) && await hasActiveAzureConnection(orgId)) {
-      return {
-        provider: "AZURE_OPENAI",
-        azureDeployment: {
-          deploymentName: model,
-          modelId: model,
-          inputPricePerMTok: 0,
-          outputPricePerMTok: 0,
-        },
-      };
     }
   }
 
@@ -323,7 +300,6 @@ export function setProviderAuth(
     url = `${url}${separator}key=${apiKey}`;
   } else if (provider === "AZURE_OPENAI") {
     headers["api-key"] = apiKey;
-    headers["Ocp-Apim-Subscription-Key"] = apiKey;
   }
   return { headers, url };
 }
