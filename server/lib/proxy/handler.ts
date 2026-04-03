@@ -28,7 +28,6 @@ import {
 } from "./safeguards";
 import {
   detectProvider,
-  getAzureDeployments,
   translateToProvider,
   setProviderAuth,
   translateResponseToOpenAI,
@@ -219,29 +218,9 @@ export async function handleChatCompletion(req: Request, res: Response) {
     }
 
     const parsed = parseResult.data;
-    let detectResult = await detectProvider(parsed.model, team.orgId);
+    const detectResult = await detectProvider(parsed.model, team.orgId);
 
     const allowedProviders = membership.allowedProviders as string[] | null;
-
-    if (detectResult && allowedProviders && allowedProviders.length > 0 && !allowedProviders.includes(detectResult.provider)) {
-      if (allowedProviders.includes("AZURE_OPENAI") && !detectResult.azureDeployment) {
-        const deployments = await getAzureDeployments(team.orgId);
-        const deployment = deployments.find(d => d.deploymentName === parsed.model);
-        if (deployment) {
-          detectResult = { provider: "AZURE_OPENAI", azureDeployment: deployment };
-        } else if (deployments.length > 0) {
-          detectResult = {
-            provider: "AZURE_OPENAI",
-            azureDeployment: {
-              deploymentName: parsed.model,
-              modelId: parsed.model,
-              inputPricePerMTok: deployments[0].inputPricePerMTok,
-              outputPricePerMTok: deployments[0].outputPricePerMTok,
-            },
-          };
-        }
-      }
-    }
 
     if (!detectResult) {
       await releaseRateLimit(membershipId);
@@ -296,16 +275,23 @@ export async function handleChatCompletion(req: Request, res: Response) {
 
     let pricing: ModelPricing | null;
     if (provider === "AZURE_OPENAI" && azureDeployment) {
-      pricing = {
-        id: "azure-deployment",
-        provider: "AZURE_OPENAI",
-        modelId: azureDeployment.modelId,
-        displayName: azureDeployment.deploymentName,
-        inputPricePerMTok: azureDeployment.inputPricePerMTok,
-        outputPricePerMTok: azureDeployment.outputPricePerMTok,
-        isActive: true,
-        updatedAt: new Date(),
-      };
+      if (azureDeployment.inputPricePerMTok > 0 || azureDeployment.outputPricePerMTok > 0) {
+        pricing = {
+          id: "azure-deployment",
+          provider: "AZURE_OPENAI",
+          modelId: azureDeployment.modelId,
+          displayName: azureDeployment.deploymentName,
+          inputPricePerMTok: azureDeployment.inputPricePerMTok,
+          outputPricePerMTok: azureDeployment.outputPricePerMTok,
+          isActive: true,
+          updatedAt: new Date(),
+        };
+      } else {
+        pricing = await getModelPricing("OPENAI", parsed.model);
+        if (!pricing) {
+          pricing = await getModelPricing("AZURE_OPENAI", parsed.model);
+        }
+      }
     } else {
       pricing = await getModelPricing(provider, parsed.model);
     }
@@ -394,21 +380,6 @@ export async function handleChatCompletion(req: Request, res: Response) {
     translated.body = sanitizeProviderBody(translated.body, provider);
     const authInfo = setProviderAuth(translated.headers, provider, adminApiKey, translated.url);
 
-    if (provider === "AZURE_OPENAI") {
-      console.log("[AZURE DEBUG] Outbound request:", {
-        url: authInfo.url,
-        headerNames: Object.keys(authInfo.headers),
-        hasApiKey: !!authInfo.headers["api-key"],
-        apiKeyLength: authInfo.headers["api-key"]?.length,
-        hasOcpKey: !!authInfo.headers["Ocp-Apim-Subscription-Key"],
-        model: parsed.model,
-        deploymentName: azureContext?.deploymentName,
-        endpointMode: azureContext?.endpointMode,
-        bodyModel: translated.body.model,
-        bodyHasModel: "model" in translated.body,
-      });
-    }
-
     let providerResponse: globalThis.Response;
     try {
       providerResponse = await fetch(authInfo.url, {
@@ -429,19 +400,8 @@ export async function handleChatCompletion(req: Request, res: Response) {
       ), budgetCtx);
     }
 
-    if (provider === "AZURE_OPENAI") {
-      console.log("[AZURE DEBUG] Response:", {
-        status: providerResponse.status,
-        statusText: providerResponse.statusText,
-        ok: providerResponse.ok,
-      });
-    }
-
     if (!providerResponse.ok) {
       const errorBody = await providerResponse.text();
-      if (provider === "AZURE_OPENAI") {
-        console.log("[AZURE DEBUG] Error body:", errorBody.substring(0, 500));
-      }
       await refundBudget(membershipId, reservedCostCents);
       reservedCostCents = 0;
       await releaseRateLimit(membershipId);

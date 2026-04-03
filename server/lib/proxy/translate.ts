@@ -64,6 +64,19 @@ export async function getAzureDeployments(orgId: string): Promise<AzureDeploymen
   return allDeployments;
 }
 
+export async function hasActiveAzureConnection(orgId: string): Promise<boolean> {
+  const cacheKey = `azure_active:${orgId}`;
+  const cached = await redisGet(cacheKey);
+  if (cached !== null) return cached === "1";
+
+  const connections = await storage.getProviderConnectionsByOrg(orgId);
+  const hasAzure = connections.some(c => c.provider === "AZURE_OPENAI" && c.status === "ACTIVE");
+  await redisSet(cacheKey, hasAzure ? "1" : "0", 300);
+  return hasAzure;
+}
+
+const OPENAI_COMPATIBLE_MODEL = /^(gpt-|o1|o3|o4)/;
+
 export async function detectProvider(model: string, orgId?: string): Promise<DetectProviderResult | null> {
   if (orgId) {
     const deployments = await getAzureDeployments(orgId);
@@ -71,9 +84,21 @@ export async function detectProvider(model: string, orgId?: string): Promise<Det
     if (deployment) {
       return { provider: "AZURE_OPENAI", azureDeployment: deployment };
     }
+
+    if (OPENAI_COMPATIBLE_MODEL.test(model) && await hasActiveAzureConnection(orgId)) {
+      return {
+        provider: "AZURE_OPENAI",
+        azureDeployment: {
+          deploymentName: model,
+          modelId: model,
+          inputPricePerMTok: 0,
+          outputPricePerMTok: 0,
+        },
+      };
+    }
   }
 
-  if (model.startsWith("gpt-") || model.startsWith("o1") || model.startsWith("o3") || model.startsWith("o4")) return { provider: "OPENAI" };
+  if (OPENAI_COMPATIBLE_MODEL.test(model)) return { provider: "OPENAI" };
   if (model.startsWith("claude-")) return { provider: "ANTHROPIC" };
   if (model.startsWith("gemini-")) return { provider: "GOOGLE" };
 

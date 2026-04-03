@@ -551,6 +551,7 @@ export async function registerRoutes(
 
       if (provider === "AZURE_OPENAI") {
         await redisDel(REDIS_KEYS.azureDeployments(user.orgId));
+        await redisDel(`azure_active:${user.orgId}`);
       }
 
       await storage.createAuditLog({
@@ -586,6 +587,7 @@ export async function registerRoutes(
     await storage.deleteProviderConnection(conn.id);
     if (conn.provider === "AZURE_OPENAI") {
       await redisDel(REDIS_KEYS.azureDeployments(user.orgId));
+      await redisDel(`azure_active:${user.orgId}`);
     }
     await storage.createAuditLog({
       orgId: user.orgId,
@@ -642,6 +644,7 @@ export async function registerRoutes(
 
       if (conn.provider === "AZURE_OPENAI") {
         await redisDel(REDIS_KEYS.azureDeployments(user.orgId));
+        await redisDel(`azure_active:${user.orgId}`);
       }
 
       await storage.createAuditLog({
@@ -752,6 +755,7 @@ export async function registerRoutes(
 
       if (conn.provider === "AZURE_OPENAI") {
         await redisDel(REDIS_KEYS.azureDeployments(user.orgId));
+        await redisDel(`azure_active:${user.orgId}`);
       }
 
       await storage.createAuditLog({
