@@ -9,7 +9,7 @@ const PROVIDER_NAMES: Record<string, string> = {
   OPENAI: "OpenAI",
   ANTHROPIC: "Anthropic",
   GOOGLE: "Google",
-  AZURE_OPENAI: "Azure OpenAI",
+  AZURE_OPENAI: "Azure",
 };
 
 export function ProviderBadge({ provider, className = "" }: { provider: string; className?: string }) {

@@ -20,7 +20,7 @@ export async function runProviderValidation(): Promise<void> {
 
         const validationOptions = conn.provider === "AZURE_OPENAI" ? {
           baseUrl: conn.azureBaseUrl || undefined,
-          deploymentName: ((conn.azureDeployments as any[])?.[0])?.deploymentName,
+          deploymentName: ((conn.azureDeployments as any[])?.[0])?.deploymentName || "gpt-4o",
           apiVersion: conn.azureApiVersion || "2024-10-21",
           endpointMode: (conn.azureEndpointMode === "v1" && conn.azureBaseUrl?.includes("azure-api.net")) ? "legacy" : (conn.azureEndpointMode || "legacy"),
         } : undefined;

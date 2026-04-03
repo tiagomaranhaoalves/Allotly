@@ -1,0 +1,99 @@
+Two Issues to Fix
+Issue 1: Azure auth is broken (regression from the hardening review)
+After the review/hardening pass, Azure requests now return:
+json{
+  "code": "upstream_auth_failed",
+  "message": "The provider rejected the request due to authentication or permissions.",
+  "suggestion": "There may be an issue with the provider API key. Contact your admin.",
+  "type": "allotly_error"
+}
+Before the review, Azure was working perfectly (12/12 tests passed). Something in the hardening broke the outbound auth to Azure.
+Debug this by logging the exact outbound request to Azure:
+javascriptconsole.log('AZURE DEBUG - outbound request:', {
+  url: azureUrl,
+  headerNames: Object.keys(outboundHeaders),
+  hasApiKey: 'api-key' in outboundHeaders,
+  apiKeyLength: outboundHeaders['api-key']?.length,
+  apiKeyFirst4: outboundHeaders['api-key']?.substring(0, 4),
+  hasAuthHeader: 'Authorization' in outboundHeaders,
+  method: 'POST'
+});
+The outbound request to Azure MUST have:
+
+Header api-key (exactly this name, lowercase with hyphen) with the raw API key value
+NO Authorization header (strip the user's Allotly Bearer token — don't forward it)
+URL: https://apim-n1ai-uks-f31ee48d7.azure-api.net/openai/deployments/{model}/chat/completions?api-version=2024-10-21
+
+Most likely causes from the review:
+
+The api-key header name was changed (e.g., to Api-Key or x-api-key)
+The API key value was accidentally sanitized/masked in storage
+The user's Authorization: Bearer allotly_sk_... is being forwarded to Azure instead of replaced with api-key
+Headers are being stripped too aggressively — removing ALL auth headers including the one meant for Azure
+
+Find what changed and revert the auth flow to what was working before, while keeping the non-breaking hardening improvements (error message cleanup, key redaction in logs, budget deduction fixes).
+Issue 2: Routing — gpt-4.1 goes to OpenAI instead of Azure
+We observed:
+
+gpt-4.1-nano → routed to Azure (correct, but auth fails due to Issue 1)
+gpt-4.1 → routed to standard OpenAI (incorrect — should go to Azure for Azure-configured keys)
+
+For Azure-configured voucher keys, ALL gpt-* and o1-*/o3-*/o4-* models should route to Azure. The Azure endpoint decides which deployments exist — not Allotly. If a deployment doesn't exist, Azure returns 403 and Allotly translates that to a clear error.
+
+Issue 3 (Architecture): Simplify Azure to "One Key, All Models"
+The current architecture may require listing specific deployment names. This is wrong — it should work like every other provider.
+How Anthropic works today:
+
+Admin adds Anthropic API key
+User sends model: "claude-sonnet-4-20250514" → Allotly uses the key → works
+User sends model: "claude-3-haiku-20240307" → same key → works
+User sends a model that doesn't exist → Anthropic returns an error → Allotly forwards it
+
+How Azure should work identically:
+
+Admin adds Azure config: base URL + API key + api-version. That's it. No deployment list.
+User sends model: "gpt-4.1-nano" → Allotly builds Azure URL with this as deployment name → works
+User sends model: "gpt-4.1" → same key, different deployment name in URL → works
+User sends model: "gpt-4o" → Allotly tries Azure → Azure returns 403 DeploymentNotAllowed → Allotly returns clear error
+
+The Azure API key is per-gateway, not per-model. One key works for ALL deployments on that gateway. We confirmed this by testing — the same key worked for both gpt-4.1-nano and gpt-4.1 when we tested Azure directly.
+What to change:
+
+Remove any required allowedDeployments or deployment list from the Azure config. It can remain as an optional field for pre-validation, but it must NOT be required.
+The Azure config should only require: baseUrl, apiKey, apiVersion
+When a request comes in for an Azure-configured key, take the model field from the request body, use it as the deployment name in the URL, and let Azure decide if it's valid.
+
+Admin UI / config schema should be:
+json{
+  "provider": "azure_openai",
+  "config": {
+    "baseUrl": "https://apim-n1ai-uks-f31ee48d7.azure-api.net",
+    "apiKey": "456eccb2a4cb43e1a35c7d2f4a86b1da",
+    "apiVersion": "2024-10-21"
+  }
+}
+No deployment list. No model mapping. Just like Anthropic — add the key and it works for whatever the account has access to.
+
+Routing Logic for Azure-Configured Keys
+For a voucher key that has Azure configured:
+Request comes in with model name
+  → Is model claude-* ?  → Route to Anthropic (not Azure)
+  → Is model gemini-* ?  → Route to Google (not Azure)
+  → Otherwise            → Route to Azure (gpt-*, o1-*, o3-*, o4-*, or anything else)
+This way:
+
+OpenAI-family models go to Azure (because that's what Azure hosts)
+Anthropic and Google models still route to their native providers
+If Azure has Anthropic models exposed via OpenAI-compatible format, they'd be accessed with whatever deployment name Azure gives them (not with claude-* names)
+
+For a voucher key WITHOUT Azure configured, routing stays exactly as before: gpt-* → OpenAI, claude-* → Anthropic, gemini-* → Google.
+
+Testing After Fix
+Verify with voucher key allotly_sk_tWS6AJK0TJQUmxuXu-ne0raw6VC2XGsI2lgZ9q3_o7BwEYS3:
+
+gpt-4.1-nano → should route to Azure → 200 OK
+gpt-4.1 → should route to Azure → 200 OK
+gpt-4o → should route to Azure → error (deployment not available on this Azure account)
+Streaming with gpt-4.1-nano → should work
+claude-sonnet-4-20250514 → should route to Anthropic (NOT Azure)
+gemini-2.5-flash → should route to Google (NOT Azure)

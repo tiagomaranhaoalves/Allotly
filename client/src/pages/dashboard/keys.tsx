@@ -23,7 +23,7 @@ const PROVIDERS = [
   { id: "OPENAI", label: "OpenAI", color: "#10A37F" },
   { id: "ANTHROPIC", label: "Anthropic", color: "#D4A574" },
   { id: "GOOGLE", label: "Google", color: "#4285F4" },
-  { id: "AZURE_OPENAI", label: "Azure OpenAI", color: "#0078D4" },
+  { id: "AZURE_OPENAI", label: "Azure", color: "#0078D4" },
 ];
 
 interface ApiKeyAudit {

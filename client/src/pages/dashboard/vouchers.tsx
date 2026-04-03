@@ -28,7 +28,7 @@ const PROVIDERS = [
   { id: "OPENAI", label: "OpenAI", color: "#10A37F" },
   { id: "ANTHROPIC", label: "Anthropic", color: "#D4A574" },
   { id: "GOOGLE", label: "Google", color: "#4285F4" },
-  { id: "AZURE_OPENAI", label: "Azure OpenAI", color: "#0078D4" },
+  { id: "AZURE_OPENAI", label: "Azure", color: "#0078D4" },
 ];
 
 export default function VouchersPage() {
@@ -446,7 +446,7 @@ export default function VouchersPage() {
                 Bulk Create
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-lg">
+            <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>{bulkCreatedCodes.length > 0 ? `${bulkCreatedCodes.length} Vouchers Created!` : "Bulk Create Vouchers"}</DialogTitle>
                 <DialogDescription>
@@ -540,7 +540,7 @@ export default function VouchersPage() {
                 Create Voucher
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>{createdCode ? "Voucher Created!" : "Create Voucher"}</DialogTitle>
                 <DialogDescription>
@@ -760,7 +760,7 @@ export default function VouchersPage() {
       )}
 
       <Dialog open={!!editVoucherId} onOpenChange={(o) => { if (!o) setEditVoucherId(null); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Voucher</DialogTitle>
             <DialogDescription>Update this voucher's settings. Only unredeemed vouchers can be edited.</DialogDescription>

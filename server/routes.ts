@@ -500,12 +500,8 @@ export async function registerRoutes(
 
       if (provider === "AZURE_OPENAI") {
         if (!parsed.data.azureBaseUrl) {
-          return res.status(400).json({ message: "azureBaseUrl is required for Azure OpenAI" });
+          return res.status(400).json({ message: "azureBaseUrl is required for Azure" });
         }
-        if (!parsed.data.azureDeployments || parsed.data.azureDeployments.length === 0) {
-          return res.status(400).json({ message: "At least one Azure deployment is required" });
-        }
-
       }
 
       const providerCheck = await checkPlanLimit(user.orgId, "provider");
@@ -520,7 +516,7 @@ export async function registerRoutes(
 
       const validationOptions = provider === "AZURE_OPENAI" ? {
         baseUrl: parsed.data.azureBaseUrl,
-        deploymentName: parsed.data.azureDeployments?.[0]?.deploymentName,
+        deploymentName: parsed.data.azureDeployments?.[0]?.deploymentName || "gpt-4o",
         apiVersion: parsed.data.azureApiVersion,
         endpointMode: parsed.data.azureEndpointMode,
       } : undefined;
@@ -733,7 +729,7 @@ export async function registerRoutes(
 
       const validationOptions = conn.provider === "AZURE_OPENAI" ? {
         baseUrl: conn.azureBaseUrl || undefined,
-        deploymentName: ((conn.azureDeployments as any[])?.[0])?.deploymentName,
+        deploymentName: ((conn.azureDeployments as any[])?.[0])?.deploymentName || "gpt-4o",
         apiVersion: conn.azureApiVersion || "2024-10-21",
         endpointMode: (conn.azureEndpointMode === "v1" && conn.azureBaseUrl?.includes("azure-api.net")) ? "legacy" : (conn.azureEndpointMode || "legacy"),
       } : undefined;
