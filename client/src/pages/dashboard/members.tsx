@@ -29,7 +29,7 @@ import {
   AlertTriangle, Trash2, Pencil,
   RefreshCw, ShieldOff, ArrowRightLeft, Shield, Send,
   Activity, RotateCcw, CreditCard, Zap, Key, Bell, ClipboardList,
-  FolderOpen, ChevronDown, ChevronUp,
+  FolderOpen, ChevronDown, ChevronUp, Filter,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -1314,6 +1314,14 @@ export default function MembersPage() {
   const hasProviders = connectedProviders.length > 0;
   const isRootAdmin = user?.orgRole === "ROOT_ADMIN";
 
+  const filterTeamId = selectedTeam || "";
+  const filteredMembers = members
+    ? filterTeamId
+      ? members.filter(m => m.teamId === filterTeamId)
+      : members
+    : undefined;
+  const filterTeamName = teams?.find(t => t.id === filterTeamId)?.name;
+
   const orgAllowedModels: { modelId: string; provider: string }[] = [];
   if (providerConnections) {
     for (const conn of providerConnections) {
@@ -1399,8 +1407,8 @@ export default function MembersPage() {
   };
 
   const selectAll = () => {
-    if (members) {
-      setSelectedMemberIds(new Set(members.map(m => m.id)));
+    if (filteredMembers) {
+      setSelectedMemberIds(new Set(filteredMembers.map(m => m.id)));
     }
   };
 
@@ -1410,9 +1418,9 @@ export default function MembersPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight" data-testid="text-members-heading">Members</h1>
           <p className="text-muted-foreground mt-1">
-            Manage team members and their budgets
-            {members && members.length > 0 && (
-              <span className="ml-1">· {members.length} member{members.length !== 1 ? "s" : ""}</span>
+            {filterTeamName ? `${filterTeamName} — ` : ""}Manage team members and their budgets
+            {filteredMembers && filteredMembers.length > 0 && (
+              <span className="ml-1">· {filteredMembers.length} member{filteredMembers.length !== 1 ? "s" : ""}{filterTeamId && members ? ` (${members.length} total)` : ""}</span>
             )}
           </p>
         </div>
@@ -1539,6 +1547,37 @@ export default function MembersPage() {
         )}
       </div>
 
+      {isRootAdmin && teams && teams.length > 1 && (
+        <div className="flex items-center gap-3" data-testid="team-filter-bar">
+          <Filter className="w-4 h-4 text-muted-foreground shrink-0" />
+          <Select
+            value={filterTeamId || "__all__"}
+            onValueChange={(v) => { setSelectedTeam(v === "__all__" ? "" : v); setSelectedMemberIds(new Set()); }}
+          >
+            <SelectTrigger className="w-[240px]" data-testid="select-team-filter">
+              <SelectValue placeholder="All Teams" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">All Teams</SelectItem>
+              {teams.map(t => (
+                <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {filterTeamId && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground"
+              onClick={() => { setSelectedTeam(""); setSelectedMemberIds(new Set()); }}
+              data-testid="button-clear-team-filter"
+            >
+              Clear filter
+            </Button>
+          )}
+        </div>
+      )}
+
       {!hasProviders && user?.orgRole !== "MEMBER" && (
         <Card className="p-4 border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20" data-testid="warning-no-providers">
           <div className="flex items-center gap-3">
@@ -1551,7 +1590,7 @@ export default function MembersPage() {
         </Card>
       )}
 
-      {selectedMemberIds.size > 0 && members && user?.orgRole !== "MEMBER" && (
+      {selectedMemberIds.size > 0 && filteredMembers && user?.orgRole !== "MEMBER" && (
         <BulkActionBar
           selectedIds={selectedMemberIds}
           members={members}
@@ -1565,12 +1604,12 @@ export default function MembersPage() {
 
       {isLoading ? (
         <div className="space-y-4">{[1, 2, 3].map(i => <Skeleton key={i} className="h-32" />)}</div>
-      ) : members && members.length > 0 ? (
+      ) : filteredMembers && filteredMembers.length > 0 ? (
         <div className="space-y-3" data-testid="members-list">
-          {members.length > 1 && user?.orgRole !== "MEMBER" && (
+          {filteredMembers.length > 1 && user?.orgRole !== "MEMBER" && (
             <div className="flex items-center gap-2 px-1">
               <Checkbox
-                checked={selectedMemberIds.size === members.length}
+                checked={selectedMemberIds.size === filteredMembers.length}
                 onCheckedChange={(checked) => {
                   if (checked) selectAll();
                   else setSelectedMemberIds(new Set());
@@ -1580,7 +1619,7 @@ export default function MembersPage() {
               <span className="text-xs text-muted-foreground">Select all</span>
             </div>
           )}
-          {members.map(m => (
+          {filteredMembers.map(m => (
             <MemberCard
               key={m.id}
               member={m}
@@ -1592,6 +1631,13 @@ export default function MembersPage() {
             />
           ))}
         </div>
+      ) : filterTeamId && members && members.length > 0 ? (
+        <EmptyState
+          icon={<Users className="w-10 h-10 text-muted-foreground" />}
+          title="No members in this team"
+          description={`${filterTeamName || "This team"} has no members yet. Add one or select a different team.`}
+          action={user?.orgRole !== "MEMBER" && hasProviders ? { label: "Add Member", onClick: () => setOpen(true) } : undefined}
+        />
       ) : (
         <EmptyState
           icon={<Users className="w-10 h-10 text-muted-foreground" />}
