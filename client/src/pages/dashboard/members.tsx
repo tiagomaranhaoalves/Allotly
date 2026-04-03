@@ -1598,8 +1598,8 @@ export default function MembersPage() {
         />
       )}
 
-      {user?.orgRole !== "MEMBER" && (selectedTeam || teams?.[0]?.id) && (
-        <ProjectsSection teamId={selectedTeam || teams?.[0]?.id} />
+      {user?.orgRole !== "MEMBER" && (isRootAdmin ? selectedTeam : (selectedTeam || teams?.[0]?.id)) && (
+        <ProjectsSection teamId={isRootAdmin ? selectedTeam : (selectedTeam || teams?.[0]?.id)} />
       )}
 
       {isLoading ? (
