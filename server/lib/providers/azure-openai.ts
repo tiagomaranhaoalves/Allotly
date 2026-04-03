@@ -59,23 +59,20 @@ export const azureOpenaiAdapter: ProviderAdapter = {
 
       console.log(`[azure-validate] Chat response: ${chatRes.status}`);
 
-      if (chatRes.ok) {
+      if (chatRes.ok || chatRes.status === 429 || chatRes.status === 404) {
         return { valid: true };
       }
 
       if (chatRes.status === 401 || chatRes.status === 403) {
         const body = await chatRes.text();
         console.log(`[azure-validate] Auth failure body: ${body.slice(0, 500)}`);
+
+        if (isApim) {
+          console.log(`[azure-validate] APIM gateway — allowing connection despite auth failure (gateway config may differ from validation probe)`);
+          return { valid: true };
+        }
+
         return { valid: false, error: "Invalid API key or insufficient permissions" };
-      }
-
-      if (chatRes.status === 404) {
-        console.log(`[azure-validate] 404 on deployment '${deploymentName}' — key is valid (deployment may not exist)`);
-        return { valid: true };
-      }
-
-      if (chatRes.status === 429) {
-        return { valid: true };
       }
 
       const errorBody = await chatRes.text();
@@ -89,6 +86,12 @@ export const azureOpenaiAdapter: ProviderAdapter = {
       } catch {
         errorMsg += `: ${errorBody.slice(0, 200)}`;
       }
+
+      if (isApim) {
+        console.log(`[azure-validate] APIM gateway — allowing connection despite error: ${errorMsg}`);
+        return { valid: true };
+      }
+
       return { valid: false, error: errorMsg };
     } catch (e: any) {
       return { valid: false, error: `Connection error: ${e.message}` };
