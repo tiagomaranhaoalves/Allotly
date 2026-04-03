@@ -288,15 +288,15 @@ export async function handleChatCompletion(req: Request, res: Response) {
           updatedAt: new Date(),
         };
       } else {
-        pricing = await getModelPricing("OPENAI", effectiveModel);
-        if (!pricing && azureDeployment.modelId !== effectiveModel) {
-          pricing = await getModelPricing("OPENAI", azureDeployment.modelId);
-        }
-        if (!pricing) {
-          pricing = await getModelPricing("AZURE_OPENAI", effectiveModel);
-        }
-        if (!pricing && azureDeployment.modelId !== effectiveModel) {
-          pricing = await getModelPricing("AZURE_OPENAI", azureDeployment.modelId);
+        const lookupModel = effectiveModel;
+        const altModel = azureDeployment.modelId !== effectiveModel ? azureDeployment.modelId : null;
+        for (const p of ["OPENAI", "AZURE_OPENAI", "ANTHROPIC", "GOOGLE"] as const) {
+          pricing = await getModelPricing(p, lookupModel);
+          if (pricing) break;
+          if (altModel) {
+            pricing = await getModelPricing(p, altModel);
+            if (pricing) break;
+          }
         }
       }
     } else {
