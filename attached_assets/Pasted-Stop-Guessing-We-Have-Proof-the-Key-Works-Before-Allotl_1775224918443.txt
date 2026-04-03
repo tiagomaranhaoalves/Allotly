@@ -1,0 +1,135 @@
+Stop Guessing — We Have Proof the Key Works
+Before Allotly was involved, we tested this exact Azure APIM key by calling Azure directly from a browser. It worked perfectly. Here is the exact request that returned 200 OK:
+javascriptconst response = await fetch(
+  'https://apim-n1ai-uks-f31ee48d7.azure-api.net/openai/deployments/gpt-4.1-nano/chat/completions?api-version=2024-10-21',
+  {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'api-key': '456eccb2a4cb43e1a35c7d2f4a86b1da'
+    },
+    body: JSON.stringify({
+      messages: [{ role: 'user', content: 'Say OK' }],
+      max_tokens: 5
+    })
+  }
+);
+// → 200 OK, model: "gpt-4.1-nano-2025-04-14", content: "OK"
+This is not a guess. This is a confirmed working request. The key is valid, the path is correct, the header name is correct. We also confirmed:
+
+gpt-4.1-nano deployment → 200 OK
+gpt-4.1 deployment → 200 OK
+gpt-4o deployment → 403 DeploymentNotAllowed (key works, deployment doesn't exist)
+Streaming → works (SSE with [DONE])
+System messages → work
+Stop sequences → work
+
+So the question is NOT "is the key valid?" — it IS valid. The question is: what is Allotly's outbound request doing differently from the working request above?
+
+How to Find the Bug
+Add a temporary debug log that captures the EXACT outbound request Allotly sends to Azure. Put this RIGHT BEFORE the fetch call:
+javascript// TEMPORARY DEBUG — remove after fixing
+console.log('=== AZURE OUTBOUND REQUEST ===');
+console.log('URL:', outboundUrl);
+console.log('Method:', 'POST');
+console.log('Headers:', JSON.stringify(Object.fromEntries(
+  Object.entries(outboundHeaders).map(([k, v]) => [k, k === 'api-key' ? v.substring(0, 8) + '...' : v])
+)));
+console.log('Body keys:', Object.keys(JSON.parse(outboundBody)));
+console.log('==============================');
+Then compare against the working request. The differences will reveal the bug.
+
+The Most Likely Causes (in order of probability)
+Cause 1: Wrong header name
+The header MUST be exactly api-key (lowercase, with hyphen). Not Api-Key, not API-KEY, not apiKey, not x-api-key, not Authorization.
+javascript// WRONG — any of these will get 401
+headers['Api-Key'] = key;
+headers['API-KEY'] = key;
+headers['apiKey'] = key;
+headers['x-api-key'] = key;
+headers['Authorization'] = 'Bearer ' + key;
+
+// CORRECT — exactly this
+headers['api-key'] = key;
+Note: HTTP headers are technically case-insensitive per the spec, but Azure APIM gateways are known to be case-sensitive in some configurations. Use lowercase api-key to be safe.
+Cause 2: User's Authorization header is being forwarded
+When the user sends Authorization: Bearer allotly_sk_... to Allotly, that header must be REMOVED before calling Azure. If it's forwarded alongside api-key, Azure APIM may reject the request because:
+
+It sees a Bearer token it doesn't recognize
+APIM prioritizes Authorization over api-key
+
+The fix:
+javascript// Build a CLEAN headers object for Azure — don't copy from the user's request
+const azureHeaders = {
+  'Content-Type': 'application/json',
+  'api-key': azureConfig.apiKey
+};
+// That's it. No other headers. Don't spread ...userHeaders or anything like that.
+Cause 3: URL is wrong
+The working URL is:
+https://apim-n1ai-uks-f31ee48d7.azure-api.net/openai/deployments/gpt-4.1-nano/chat/completions?api-version=2024-10-21
+Common URL bugs:
+
+Double slash: https://...net//openai/... (if baseUrl has trailing slash)
+Missing api-version: https://...net/openai/deployments/gpt-4.1-nano/chat/completions (no query param)
+Wrong path: https://...net/v1/chat/completions (OpenAI path, not Azure path)
+Deployment name not stripped: https://...net/openai/deployments/azure/gpt-4.1-nano/... (didn't strip azure/ prefix)
+Encoded slashes: https://...net/openai/deployments/azure%2Fgpt-4.1-nano/...
+
+Build the URL explicitly:
+javascriptfunction buildAzureUrl(baseUrl, deploymentName, apiVersion) {
+  // Remove trailing slash from baseUrl
+  const base = baseUrl.replace(/\/+$/, '');
+  // deploymentName should NOT have the azure/ prefix — strip it before calling this
+  return `${base}/openai/deployments/${deploymentName}/chat/completions?api-version=${apiVersion}`;
+}
+Cause 4: API key was corrupted in storage
+The raw key is: 456eccb2a4cb43e1a35c7d2f4a86b1da (32 characters, hex only)
+If the key was:
+
+URL-encoded: 456eccb2a4cb43e1a35c7d2f4a86b1da → shouldn't change, but check
+Base64-encoded: would be completely different
+Encrypted at rest and not decrypted before use
+Trimmed/truncated
+Stored with surrounding quotes: "456eccb2..." (extra quote characters)
+Stored with a prefix: Bearer 456eccb2...
+
+Log the key length and first 8 chars to verify: console.log(apiKey.length, apiKey.substring(0,8)) → should be 32, "456eccb2"
+Cause 5: Extra headers confusing APIM
+APIM gateways can be picky about unexpected headers. If Allotly is forwarding headers like X-Forwarded-For, X-Request-ID, cookies, or other proxy headers, APIM might reject the request.
+Send ONLY these headers to Azure:
+javascript{
+  'Content-Type': 'application/json',
+  'api-key': azureConfig.apiKey
+}
+Nothing else. No trace headers, no forwarded headers, no custom headers.
+
+Validation on Dashboard: Skip It for APIM
+Your Attempt 4 (allow APIM connections without validation) is the correct approach. Keep it. APIM gateways are too variable to validate with probes. Let the connection be saved, and let actual proxy usage surface any real issues with clear error messages.
+
+The azure/ Prefix Routing
+When a user sends model: "azure/gpt-4.1-nano":
+
+Routing detects azure/ prefix
+Strip prefix: deploymentName = "gpt-4.1-nano"
+Look up Azure config for this voucher key
+Build URL: buildAzureUrl(azureConfig.baseUrl, deploymentName, azureConfig.apiVersion)
+Build headers: { 'Content-Type': 'application/json', 'api-key': azureConfig.apiKey }
+Forward request body as-is (OpenAI-compatible, no translation needed)
+Return Azure's response through the existing OpenAI response adapter
+
+This routing check must come BEFORE the gpt-* prefix check in the routing chain.
+
+Verification
+After fixing, this exact request must return 200:
+bashcurl -X POST https://allotly.ai/api/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer allotly_sk_tWS6AJK0TJQUmxuXu-ne0raw6VC2XGsI2lgZ9q3_o7BwEYS3" \
+  -d '{"model":"azure/gpt-4.1-nano","messages":[{"role":"user","content":"Say OK"}],"max_tokens":5}'
+Expected response:
+json{
+  "id": "chatcmpl-...",
+  "model": "gpt-4.1-nano-2025-04-14",
+  "choices": [{ "message": { "content": "OK" } }]
+}
+If it still fails, paste the debug log output from the console and compare it to the working request at the top of this document. The difference IS the bug.
