@@ -77,7 +77,28 @@ export async function hasActiveAzureConnection(orgId: string): Promise<boolean> 
 
 const OPENAI_COMPATIBLE_MODEL = /^(gpt-|o1|o3|o4)/;
 
-export async function detectProvider(model: string, orgId?: string): Promise<DetectProviderResult | null> {
+export async function detectProvider(model: string, orgId?: string): Promise<DetectProviderResult & { strippedModel?: string } | null> {
+  if (model.startsWith("azure/")) {
+    const deploymentName = model.slice(6);
+    if (orgId) {
+      const deployments = await getAzureDeployments(orgId);
+      const deployment = deployments.find(d => d.deploymentName === deploymentName);
+      if (deployment) {
+        return { provider: "AZURE_OPENAI", azureDeployment: deployment, strippedModel: deploymentName };
+      }
+    }
+    return {
+      provider: "AZURE_OPENAI",
+      azureDeployment: {
+        deploymentName,
+        modelId: deploymentName,
+        inputPricePerMTok: 0,
+        outputPricePerMTok: 0,
+      },
+      strippedModel: deploymentName,
+    };
+  }
+
   if (orgId) {
     const deployments = await getAzureDeployments(orgId);
     const deployment = deployments.find(d => d.deploymentName === model);

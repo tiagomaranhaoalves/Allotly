@@ -1,0 +1,159 @@
+# Replit Prompt: Fix Azure OpenAI — Three Specific Bugs
+
+Copy everything below this line into Replit.
+
+---
+
+## Current State
+
+Azure OpenAI was working perfectly before the hardening review (12/12 tests passed). After the review, it broke. We've been trying to fix it but three bugs remain. These are the ONLY three things that need to change.
+
+---
+
+## Bug 1: `azure/` prefix rejected by routing
+
+**What happens:**
+```
+POST /api/v1/chat/completions
+{ "model": "azure/gpt-4.1-nano", ... }
+
+→ 400: "Model 'azure/gpt-4.1-nano' is not supported"
+→ "Supported prefixes: gpt-*, o1*, o3*, o4* (OpenAI), claude-* (Anthropic), gemini-* (Google)"
+```
+
+**What should happen:**
+The `azure/` prefix should be recognized by the routing logic. When the model starts with `azure/`, strip the prefix and use the remainder as the Azure deployment name.
+
+`azure/gpt-4.1-nano` → strip prefix → deployment name `gpt-4.1-nano` → route to Azure.
+
+**The fix:**
+In the routing logic where model prefixes are checked, add a check for the `azure/` prefix BEFORE the `gpt-*` check:
+
+```javascript
+if (model.startsWith('azure/')) {
+  const deploymentName = model.slice('azure/'.length);  // "gpt-4.1-nano"
+  // Route to Azure using deploymentName
+}
+else if (model.startsWith('gpt-') || model.startsWith('o1') || model.startsWith('o3') || model.startsWith('o4')) {
+  // Route to OpenAI (existing logic)
+}
+else if (model.startsWith('claude-')) {
+  // Route to Anthropic (existing logic)
+}
+else if (model.startsWith('gemini-')) {
+  // Route to Google (existing logic)
+}
+```
+
+The `azure/` check must come FIRST because `azure/gpt-4.1-nano` also starts with... nothing matching `gpt-*`, but `azure/o4-mini` could be confused if ordering is wrong.
+
+---
+
+## Bug 2: Azure auth is broken — `api-key` header not being sent correctly
+
+**What happens:**
+When a request does reach the Azure path (e.g., `gpt-4.1-nano` without prefix on certain keys), Azure returns auth failure:
+```json
+{
+  "code": "upstream_auth_failed",
+  "message": "The provider rejected the request due to authentication or permissions."
+}
+```
+
+This was working before the hardening review. The review asked you to check auth header handling, and something broke.
+
+**What should happen:**
+The outbound request to Azure must have exactly this header:
+```
+api-key: 456eccb2a4cb43e1a35c7d2f4a86b1da
+```
+
+**How to debug — add this temporary log:**
+```javascript
+// Add this RIGHT BEFORE the fetch() call to Azure
+console.log('AZURE OUTBOUND:', JSON.stringify({
+  url: azureUrl,
+  headers: Object.keys(outboundHeaders),
+  hasApiKeyHeader: 'api-key' in outboundHeaders,
+  apiKeyLength: outboundHeaders['api-key']?.length,
+  hasAuthorizationHeader: 'Authorization' in outboundHeaders
+}));
+```
+
+**Common causes from hardening reviews:**
+1. Header name changed from `api-key` to something else (`Api-Key`, `x-api-key`, `apiKey`)
+2. API key value was masked/encrypted in storage (should be stored as raw plaintext)
+3. User's `Authorization: Bearer allotly_sk_...` is being forwarded instead of replaced
+4. All auth headers stripped but `api-key` not added back
+
+**The correct outbound request to Azure:**
+```javascript
+const response = await fetch(azureUrl, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'api-key': azureConfig.apiKey    // Raw key value, header name is literally "api-key"
+    // NO Authorization header — do NOT forward the user's Bearer token
+  },
+  body: JSON.stringify(requestBody)
+});
+```
+
+---
+
+## Bug 3: URL construction — verify deployment name is in the URL path
+
+The Azure URL must be:
+```
+https://apim-n1ai-uks-f31ee48d7.azure-api.net/openai/deployments/{deploymentName}/chat/completions?api-version=2024-10-21
+```
+
+Where `{deploymentName}` comes from stripping the `azure/` prefix from the model name.
+
+**Example:**
+- User sends: `model: "azure/gpt-4.1-nano"`
+- Strip prefix: `deploymentName = "gpt-4.1-nano"`
+- URL: `https://apim-n1ai-uks-f31ee48d7.azure-api.net/openai/deployments/gpt-4.1-nano/chat/completions?api-version=2024-10-21`
+
+Make sure:
+- No double slashes (`//openai`)
+- No double-encoding of the deployment name
+- `api-version` query param is present
+- Base URL has no trailing slash
+
+---
+
+## What NOT to change
+
+- OpenAI routing (gpt-* without azure/ prefix → OpenAI)
+- Anthropic routing (claude-* → Anthropic)
+- Google routing (gemini-* → Google)
+- Budget/counter logic
+- Error message formatting (the hardening improvements are fine, keep them)
+- Key redaction in logs (keep this from hardening)
+
+---
+
+## Test After Fix
+
+Use voucher key: `allotly_sk_tWS6AJK0TJQUmxuXu-ne0raw6VC2XGsI2lgZ9q3_o7BwEYS3`
+
+These should all return 200:
+```
+azure/gpt-4.1-nano  → "Say OK"       → 200, content: "OK"
+azure/gpt-4.1       → "2+2?"         → 200, content: "4"
+azure/gpt-4o        → "Say OK"       → 200 (if deployed) or clear Azure error (if not deployed)
+azure/o4-mini       → "Say OK"       → 200 (if deployed) or clear Azure error (if not deployed)
+```
+
+These should still work as before (no regression):
+```
+gpt-4o              → OpenAI         → 200
+claude-sonnet-4-20250514 → Anthropic → 200
+gemini-2.5-flash    → Google         → 200
+```
+
+Stream test:
+```
+azure/gpt-4.1-nano, stream: true → SSE chunks + [DONE]
+```

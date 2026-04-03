@@ -228,11 +228,12 @@ export async function handleChatCompletion(req: Request, res: Response) {
       budgetCtx = await buildBudgetCtx();
       return sendProxyError(res, createProxyError(400, "unsupported_model",
         `Model "${parsed.model}" is not supported`,
-        "Supported prefixes: gpt-*, o1*, o3*, o4* (OpenAI), claude-* (Anthropic), gemini-* (Google). Azure deployments are matched by deployment name."
+        "Supported prefixes: azure/* (Azure OpenAI), gpt-*, o1*, o3*, o4* (OpenAI), claude-* (Anthropic), gemini-* (Google)."
       ), budgetCtx);
     }
     const provider = detectResult.provider;
     const azureDeployment = detectResult.azureDeployment;
+    const effectiveModel = detectResult.strippedModel || parsed.model;
 
     if (allowedProviders && allowedProviders.length > 0 && !allowedProviders.includes(provider)) {
       await releaseRateLimit(membershipId);
@@ -245,7 +246,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
     }
 
     const allowedModels = membership.allowedModels as string[] | null;
-    if (allowedModels && allowedModels.length > 0 && !allowedModels.includes(parsed.model)) {
+    if (allowedModels && allowedModels.length > 0 && !allowedModels.includes(effectiveModel) && !allowedModels.includes(parsed.model)) {
       await releaseRateLimit(membershipId);
       await releaseConcurrency(membershipId, requestId);
       budgetCtx = await buildBudgetCtx();
@@ -287,13 +288,13 @@ export async function handleChatCompletion(req: Request, res: Response) {
           updatedAt: new Date(),
         };
       } else {
-        pricing = await getModelPricing("OPENAI", parsed.model);
+        pricing = await getModelPricing("OPENAI", effectiveModel);
         if (!pricing) {
-          pricing = await getModelPricing("AZURE_OPENAI", parsed.model);
+          pricing = await getModelPricing("AZURE_OPENAI", effectiveModel);
         }
       }
     } else {
-      pricing = await getModelPricing(provider, parsed.model);
+      pricing = await getModelPricing(provider, effectiveModel);
     }
     if (!pricing) {
       await releaseRateLimit(membershipId);
@@ -315,12 +316,12 @@ export async function handleChatCompletion(req: Request, res: Response) {
           "gemini-1.5-pro": "gemini-2.5-pro",
         },
       };
-      const alt = alternatives[provider]?.[parsed.model];
+      const alt = alternatives[provider]?.[effectiveModel];
       const suggestion = alt
         ? `This model is not available. Try ${alt} instead.`
         : "This model may not be supported yet. Check the /models endpoint for available models.";
       return sendProxyError(res, createProxyError(400, "model_not_found",
-        `Pricing for model "${parsed.model}" not found`,
+        `Pricing for model "${effectiveModel}" not found`,
         suggestion
       ), budgetCtx);
     }
@@ -376,7 +377,8 @@ export async function handleChatCompletion(req: Request, res: Response) {
       };
     }
 
-    const translated = translateToProvider(parsed, provider, effectiveMaxTokens, azureContext);
+    const translatedInput = detectResult.strippedModel ? { ...parsed, model: effectiveModel } : parsed;
+    const translated = translateToProvider(translatedInput, provider, effectiveMaxTokens, azureContext);
     translated.body = sanitizeProviderBody(translated.body, provider);
     const authInfo = setProviderAuth(translated.headers, provider, adminApiKey, translated.url);
 
@@ -417,7 +419,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
           cleanMessage = "The provider rejected the request due to authentication or permissions.";
           errorCode = "upstream_auth_failed";
         } else if (status === 404) {
-          cleanMessage = `Deployment "${parsed.model}" is not available on this provider.`;
+          cleanMessage = `Deployment "${effectiveModel}" is not available on this provider.`;
           errorCode = "deployment_not_available";
         } else if (status === 429) {
           cleanMessage = "The provider is rate-limiting requests.";
@@ -430,7 +432,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
           cleanMessage = `The provider returned an error (${status}).`;
           errorCode = "provider_error";
         }
-        console.error(`[proxy] Azure error ${status} for deployment ${parsed.model}:`, errorBody.slice(0, 500));
+        console.error(`[proxy] Azure error ${status} for deployment ${effectiveModel}:`, errorBody.slice(0, 500));
       } else {
         cleanMessage = `${provider} returned ${status}`;
         errorCode = status >= 400 && status < 500 ? "invalid_request" : "provider_error";
@@ -472,7 +474,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
     let actualCostCents = 0;
 
     if (parsed.stream) {
-      const streamResult = await streamProviderResponse(providerResponse, provider, parsed.model, res, translated.proxyStopSequences);
+      const streamResult = await streamProviderResponse(providerResponse, provider, effectiveModel, res, translated.proxyStopSequences);
 
       if (streamResult.usage) {
         actualInputTokens = streamResult.usage.prompt_tokens || inputTokens;
@@ -504,7 +506,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
     } else {
       const responseBody = await readNonStreamingResponse(providerResponse);
 
-      const openaiResponse = translateResponseToOpenAI(provider, responseBody, parsed.model, translated.proxyStopSequences);
+      const openaiResponse = translateResponseToOpenAI(provider, responseBody, effectiveModel, translated.proxyStopSequences);
 
       if (openaiResponse.usage) {
         actualInputTokens = openaiResponse.usage.prompt_tokens;
