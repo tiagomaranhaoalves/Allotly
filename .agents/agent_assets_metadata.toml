@@ -24,3 +24,9 @@ id = "tq538ahMbUT5RkCf-CBLV"
 uri = "file://docs/proxy-architecture.md"
 type = "text"
 title = "Allotly Proxy — Technical Architecture"
+
+[[outputs]]
+id = "jgrUeYw5pt2X1ND_GX0Gl"
+uri = "file://azure-apim-debugging.md"
+type = "text"
+title = "Azure APIM Connection — Debugging Timeline"
