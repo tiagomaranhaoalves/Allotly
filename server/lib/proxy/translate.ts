@@ -88,14 +88,6 @@ export async function detectProvider(model: string, orgId?: string): Promise<Det
     };
   }
 
-  if (orgId) {
-    const deployments = await getAzureDeployments(orgId);
-    const deployment = deployments.find(d => d.deploymentName === model);
-    if (deployment) {
-      return { provider: "AZURE_OPENAI", azureDeployment: deployment };
-    }
-  }
-
   if (OPENAI_COMPATIBLE_MODEL.test(model)) return { provider: "OPENAI" };
   if (model.startsWith("claude-")) return { provider: "ANTHROPIC" };
   if (model.startsWith("gemini-")) return { provider: "GOOGLE" };
