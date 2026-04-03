@@ -120,7 +120,6 @@ function Header() {
       <div
         className={`lg:hidden border-t border-border/50 bg-background/95 backdrop-blur-xl transition-all duration-300 ease-in-out overflow-hidden ${mobileOpen ? "max-h-80 opacity-100" : "max-h-0 opacity-0 border-t-transparent pointer-events-none"}`}
         aria-hidden={!mobileOpen}
-        inert={!mobileOpen ? true : undefined}
       >
         <div className="px-4 py-4 space-y-3">
           <a href="#how-it-works" onClick={(e) => smoothScroll(e, "how-it-works")} className="block text-sm font-medium text-muted-foreground" data-testid="link-how-it-works-mobile">How It Works</a>
