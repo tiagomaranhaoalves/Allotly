@@ -105,10 +105,6 @@ REDIS_KEYS.apiKeyCache(keyHash)
 // etc.
 ```
 
-### 7. Never register middleware before the Stripe webhook route
-
-The webhook route at `POST /api/stripe/webhook` must be registered BEFORE `express.json()` middleware. It uses `express.raw({ type: 'application/json' })` for Stripe signature verification. If `express.json()` parses the body first, signature verification fails silently.
-
 ---
 
 ## Important Patterns & Conventions
@@ -139,24 +135,10 @@ await sendEmail({ to: user.email, subject: "...", html: "..." });
 
 ### Foreign Key Deletion Policies
 
-These FK relationships use `ON DELETE SET NULL` in production but are NOT yet declared in `schema.ts` (set via direct SQL). **These should be added to schema.ts** to prevent `db:push` drift:
-
-```typescript
-// RECOMMENDED — add { onDelete: "set null" } to these three references:
-apiKeyId: varchar("api_key_id").references(() => allotlyApiKeys.id, { onDelete: "set null" }),
-projectId: varchar("project_id").references(() => projects.id, { onDelete: "set null" }),
-createdById: varchar("created_by_id").references(() => users.id, { onDelete: "set null" }),
-```
-
-Until fixed, verify FK policies after any `db:push` with:
-```sql
-SELECT tc.constraint_name, tc.table_name, kcu.column_name, rc.delete_rule
-FROM information_schema.table_constraints tc
-JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
-JOIN information_schema.referential_constraints rc ON tc.constraint_name = rc.constraint_name
-WHERE tc.constraint_type = 'FOREIGN KEY'
-AND kcu.column_name IN ('api_key_id', 'project_id', 'created_by_id');
-```
+These specific FK relationships use `ON DELETE SET NULL` in production (even though schema.ts doesn't declare it explicitly — they were set via direct SQL). Do not change this behavior:
+- `proxy_request_logs.api_key_id` → SET NULL (so logs survive key deletion)
+- `allotly_api_keys.project_id` → SET NULL (so keys survive project deletion)
+- `projects.created_by_id` → SET NULL (so projects survive user deletion)
 
 ### The `effectiveModel` Variable
 
@@ -194,166 +176,6 @@ Tiered by access type:
 - ENTERPRISE: 120 rpm / 10 concurrent
 
 Rate limit checks happen early (DDoS protection). Bundle pool checks are deferred until after full validation.
-
----
-
-## Proxy Error Response Format
-
-All proxy errors follow a consistent JSON structure returned by `sendProxyError()` in `handler.ts`:
-
-```json
-{
-  "error": {
-    "code": "rate_limit",
-    "message": "Rate limit exceeded (60 requests per minute)",
-    "suggestion": "Slow down your request rate.",
-    "type": "allotly_error"
-  }
-}
-```
-
-**Fields:**
-- `code` — Machine-readable error identifier (e.g., `invalid_auth`, `insufficient_budget`, `provider_error`)
-- `message` — Human-readable description of what went wrong
-- `suggestion` — Optional actionable advice for the API consumer
-- `type` — Always `"allotly_error"` to distinguish from upstream provider errors
-
-**HTTP Status Codes:**
-
-| Status | Codes | Meaning |
-|--------|-------|---------|
-| 400 | `invalid_request`, `unsupported_model`, `model_not_found` | Bad request or unsupported model |
-| 401 | `invalid_auth`, `invalid_key_format`, `invalid_key`, `key_revoked`, `membership_not_found` | Authentication failure |
-| 402 | `budget_exhausted`, `insufficient_budget`, `requests_exhausted` | Budget or request pool depleted |
-| 403 | `account_suspended`, `account_expired`, `period_expired`, `provider_not_allowed`, `model_not_allowed` | Access forbidden |
-| 429 | `rate_limit`, `concurrency_limit`, `provider_rate_limited` | Rate or concurrency limit hit |
-| 502 | `provider_error`, `provider_not_configured`, `empty_response` | Upstream provider failure |
-| 503 | `provider_unavailable` | Provider temporarily unreachable |
-| 500 | `internal_error` | Unexpected server error |
-
-**Budget Headers:** Error responses include when available:
-- `X-Allotly-Budget-Remaining` — Remaining budget in cents
-- `X-Allotly-Budget-Total` — Total budget in cents
-- `X-Allotly-Expires` — ISO 8601 period end date
-- `X-Allotly-Requests-Remaining` — Remaining requests in current window
-
-**Convention:** All error codes use `snake_case`. Never introduce `camelCase` or `kebab-case` codes.
-
----
-
-## Upstream Provider Error Handling
-
-When an upstream provider returns a non-OK response, the proxy sanitizes and wraps it — raw errors are never forwarded to users.
-
-**Azure OpenAI:** Status codes are mapped to clean messages:
-- 401/403 → `upstream_auth_failed`
-- 404 → `deployment_not_available`
-- 429 → `provider_rate_limited` (forwards `Retry-After` header if present)
-- Other → `provider_error`
-
-Raw Azure error bodies are logged server-side (truncated to 500 chars) but never sent to the client.
-
-**OpenAI / Anthropic / Google:** The proxy extracts a meaningful message from the provider's JSON error body, prefixed with `"{PROVIDER} returned {status}: "`. Falls back to first 200 chars of raw body if parsing fails.
-
-**Status Mapping:** Upstream codes are remapped:
-- 429 from provider → 429 to client
-- 4xx from provider → 400 to client (`invalid_request`)
-- 5xx from provider → 502 to client (`provider_error`)
-
-**Budget cleanup:** On any provider error, the proxy refunds reserved budget, releases the rate limit counter, and releases the concurrency slot before returning.
-
----
-
-## CORS Configuration
-
-**No CORS middleware is configured.** The application does not use `cors()` or set any `Access-Control-*` headers.
-
-This works because:
-- Frontend and backend are served from the same origin (Vite proxies in dev, Express serves static files in prod)
-- The proxy endpoint is called by backend API consumers (SDKs, curl, server-side code), not from browsers
-
-If CORS is ever needed (e.g., for a browser-based API playground), add it with a restrictive `Access-Control-Allow-Origin` — not a wildcard. Exclude credentials since the proxy uses Bearer token auth, not cookies.
-
----
-
-## Session Security
-
-Session management is configured in `server/auth.ts`:
-
-| Setting | Value | Notes |
-|---------|-------|-------|
-| Store | PostgreSQL (`connect-pg-simple`), table `session` | Auto-created |
-| Cookie maxAge | 30 days | |
-| httpOnly | `true` | XSS protection — cookie not accessible via JavaScript |
-| secure | `false` | See note below |
-| sameSite | `"lax"` | CSRF mitigation |
-| CSRF | No dedicated middleware | Relies on `sameSite: "lax"` + session-based auth on all mutating endpoints |
-| Session data | `userId`, `orgId`, `orgRole`, `isAdmin` | |
-
-**`secure: false` note:** Replit's reverse proxy terminates TLS, and `app.set("trust proxy", 1)` is set in `index.ts`. Setting `secure: true` would be more correct for production — test that login still works in the Replit deployment environment before changing.
-
----
-
-## Background Jobs
-
-All jobs run via `setInterval` in `server/lib/jobs/scheduler.ts`, started at server boot. No persistence — if the server restarts, timers restart from zero.
-
-| Job | Interval | Purpose | If it stops... |
-|-----|----------|---------|----------------|
-| Budget Reset | 1 hour | Resets monthly budgets, reactivates exhausted members, re-enables revoked keys | Members stay locked out permanently after period expiry |
-| Concurrency Self-Heal | 30 seconds | Resets stale concurrency counters after crashes | Users get permanently stuck at "Too many concurrent requests" |
-| Voucher Expiry | 1 hour | Marks expired vouchers, revokes associated keys | Expired vouchers keep working indefinitely |
-| Bundle Expiry | 1 hour | Marks expired bundles, cascades to child vouchers | Expired bundles keep working indefinitely |
-| Redis Reconciliation | 1 minute | Corrects Redis/PG budget drift >$1.00, restores missing keys | Budget drift grows unbounded |
-| Provider Validation | 24 hours | Tests provider API keys, marks invalid ones, emails admins | Broken keys stay marked ACTIVE, causing proxy errors |
-| Snapshot Cleanup | 7 days | Deletes old usage snapshots and proxy logs per retention tier | Database grows unbounded |
-| Spend Anomaly | 1 hour | Alerts if daily spend >3x the 7-day average | Spend spikes go unnoticed |
-| Model Sync | 6 hours (+10s after boot) | Queries provider APIs for available models, upserts pricing | Stale model catalog, wrong pricing |
-
-**Reentrancy:** Budget reset, voucher expiry, bundle expiry, redis reconciliation, and snapshot cleanup have `running` flags to prevent overlapping executions.
-
----
-
-## Webhook Security
-
-### Stripe Webhook — `POST /api/stripe/webhook`
-
-**Signature validation:** When `STRIPE_WEBHOOK_SECRET` is set, the handler uses `stripe.webhooks.constructEvent()` to verify the `stripe-signature` header against the raw payload. When the secret is NOT set, it falls back to parsing JSON without verification (dev-only behavior — **must set `STRIPE_WEBHOOK_SECRET` in production**).
-
-**Events handled:**
-- `checkout.session.completed` — Plan upgrades
-- `customer.subscription.updated` — Subscription changes
-- `customer.subscription.deleted` — Cancellations (triggers grace period)
-- `invoice.payment_failed` — Payment failure notifications
-
-**Dual processing:** Events pass through `stripe-replit-sync` first (data sync), then through custom handlers.
-
-**Webhook URL:** Auto-registered via `stripeSync.findOrCreateManagedWebhook()` using the first domain from `REPLIT_DOMAINS`.
-
----
-
-## Logging
-
-### What Gets Logged
-
-- **API requests** (`server/index.ts`): Method, path, status, duration, and full JSON response body for every `/api/*` request. Response body logging may expose PII — review for production if regulations apply.
-- **Proxy errors** (`handler.ts`): Azure errors logged at `console.error` (body truncated to 500 chars). Handler errors at `console.error`.
-- **Background jobs**: Each job logs at start/completion with bracketed prefixes: `[scheduler]`, `[budget-reset]`, `[voucher-expiry]`, etc.
-- **Webhooks**: `[webhook]` prefix for Stripe events.
-
-### Log Format
-
-Plain `console.log`/`console.warn`/`console.error` with bracketed prefixes. No structured logging library.
-
-### What Must NOT Be Logged
-
-- Full API keys or provider keys (partial prefix/suffix is acceptable)
-- Full request bodies to the proxy (may contain user prompts/data)
-- Full provider error bodies in user-facing responses (log server-side only, truncated)
-
-### Known Issue
-
-`[proxy-azure-debug]` lines in `handler.ts` log API key length, prefix (8 chars), and suffix (4 chars). These were added during Azure APIM debugging and should be removed or gated behind `process.env.DEBUG_PROXY` in production.
 
 ---
 
@@ -432,7 +254,6 @@ CSS variables are defined in `:root` and `.dark` classes. Use `dark:` Tailwind v
 | `REDIS_URL` | Upstash Redis connection | Secret (shared env) |
 | `ENCRYPTION_KEY` | AES-256-GCM key for provider API keys | Secret (shared env) — NEVER rotate |
 | `SESSION_SECRET` | Express session signing | Secret |
-| `STRIPE_WEBHOOK_SECRET` | Stripe webhook signature verification | Secret — **must be set in production** |
 | Stripe credentials | Payment processing | Managed by Replit connector |
 | Resend API key | Email delivery | Managed by Replit connector |
 
@@ -466,8 +287,8 @@ These areas have minimal dependencies and can be modified without risk:
 - Production is deployed via Replit's deployment system
 - The app auto-detects production via `REPLIT_DEPLOYMENT === '1'`
 - Stripe uses the `production` connection in prod, `development` in dev (dev connection is intentionally absent)
-- Schema changes require `npm run db:push --force` — back up the database first, and verify FK policies after (see Foreign Key Deletion Policies above)
-- Never write manual SQL migrations
+- Schema changes require `npm run db:push --force` — never write manual SQL migrations
+- The `Z` folder and `Y` file should not be modified (per user preference)
 
 ---
 
@@ -483,7 +304,6 @@ client/src/
 server/
   routes.ts        — All API endpoints
   storage.ts       — Database CRUD (IStorage interface)
-  auth.ts          — Session config, login/register, scrypt hashing
   db.ts            — Drizzle DB instance
   stripeClient.ts  — Stripe connector
   webhookHandlers.ts — Stripe webhook handlers
@@ -497,15 +317,6 @@ server/
     plan-limits.ts — Plan tier enforcement
     seed-models.ts — Model catalog seeding
     jobs/          — Background scheduler jobs
-      scheduler.ts       — Job orchestrator (setInterval-based)
-      budget-reset.ts    — Monthly budget reset + member reactivation
-      voucher-expiry.ts  — Voucher expiration + key revocation
-      bundle-expiry.ts   — Bundle expiration cascade
-      redis-reconciliation.ts — Redis/PG budget drift correction
-      provider-validation.ts  — Provider key health checks
-      snapshot-cleanup.ts     — Usage data retention enforcement
-      spend-anomaly.ts        — Spend spike detection + alerts
-      model-sync.ts           — Live model catalog sync from providers
 
 shared/
   schema.ts        — Database schema, enums, Zod schemas, types
