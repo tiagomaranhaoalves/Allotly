@@ -90,9 +90,11 @@ app.post(
   }
 );
 
-// Block CORS preflight on proxy endpoints (return 204 with no CORS headers)
-app.options("/api/v1/*", (_req, res) => {
-  res.status(204).end();
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS' && req.path.startsWith('/api/v1/')) {
+    return res.sendStatus(204);
+  }
+  next();
 });
 
 app.use(
@@ -152,13 +154,11 @@ app.use((req, res, next) => {
       return next(err);
     }
 
-    // Wrap JSON parse errors in allotly_error format
-    if (err instanceof SyntaxError && 'body' in err) {
+    if (err.type === 'entity.parse.failed' || (err instanceof SyntaxError && 'body' in err)) {
       return res.status(400).json({
         error: {
-          code: "invalid_json",
-          message: "Request body contains invalid JSON.",
-          suggestion: "Check that your request body is valid JSON.",
+          code: "invalid_request",
+          message: "Invalid JSON in request body",
           type: "allotly_error",
         },
       });

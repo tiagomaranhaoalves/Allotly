@@ -21,7 +21,7 @@ export function setupAuth(app: Express) {
       cookie: {
         maxAge: 30 * 24 * 60 * 60 * 1000,
         httpOnly: true,
-        secure: true,
+        secure: process.env.REPLIT_DEPLOYMENT === '1',
         sameSite: "lax",
       },
     })
