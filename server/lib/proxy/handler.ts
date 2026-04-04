@@ -602,11 +602,11 @@ export async function handleChatCompletion(req: Request, res: Response) {
 
               if (memberEmail) {
                 const tmpl = emailTemplates.budgetExhausted(memberName, budgetDollars, adminUser?.email || "your admin");
-                try { await sendEmail(memberEmail, tmpl.subject, tmpl.html); } catch (e) { console.error('[budget-email] Failed to send exhausted email to member:', e); }
+                try { await sendEmail(memberEmail, tmpl.subject, tmpl.html); } catch (e: any) { console.error("[proxy] budget-exhausted email failed:", e.message); }
               }
               if (teamAdminUser?.email && teamAdminUser.email !== memberEmail) {
                 const tmpl = emailTemplates.budgetExhausted(memberName, budgetDollars, teamAdminUser.email);
-                try { await sendEmail(teamAdminUser.email, tmpl.subject, tmpl.html); } catch (e) { console.error('[budget-email] Failed to send exhausted email to admin:', e); }
+                try { await sendEmail(teamAdminUser.email, tmpl.subject, tmpl.html); } catch (e: any) { console.error("[proxy] budget-exhausted admin email failed:", e.message); }
               }
             }
           } else if (spendPercent >= 90) {
@@ -619,13 +619,13 @@ export async function handleChatCompletion(req: Request, res: Response) {
               });
               if (memberEmail) {
                 const tmpl = emailTemplates.budgetWarning90(memberName, Math.round(spendPercent), budgetDollars, "/dashboard");
-                try { await sendEmail(memberEmail, tmpl.subject, tmpl.html); } catch (e) { console.error('[budget-email] Failed to send 90% warning to member:', e); }
+                try { await sendEmail(memberEmail, tmpl.subject, tmpl.html); } catch (e: any) { console.error("[proxy] budget-90 email failed:", e.message); }
               }
               const mTeam90 = await storage.getTeam(freshMembership.teamId);
               const teamAdmin90 = mTeam90 ? await storage.getUser(mTeam90.adminId) : null;
               if (teamAdmin90?.email && teamAdmin90.email !== memberEmail) {
                 const tmpl = emailTemplates.budgetWarning90(memberName, Math.round(spendPercent), budgetDollars, "/dashboard");
-                try { await sendEmail(teamAdmin90.email, tmpl.subject, tmpl.html); } catch (e) { console.error('[budget-email] Failed to send 90% warning to admin:', e); }
+                try { await sendEmail(teamAdmin90.email, tmpl.subject, tmpl.html); } catch (e: any) { console.error("[proxy] budget-90 admin email failed:", e.message); }
               }
             }
           } else if (spendPercent >= 80) {
@@ -638,7 +638,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
               });
               if (memberEmail) {
                 const tmpl = emailTemplates.budgetWarning80(memberName, Math.round(spendPercent), budgetDollars, "/dashboard");
-                try { await sendEmail(memberEmail, tmpl.subject, tmpl.html); } catch (e) { console.error('[budget-email] Failed to send 80% warning:', e); }
+                try { await sendEmail(memberEmail, tmpl.subject, tmpl.html); } catch (e: any) { console.error("[proxy] budget-80 email failed:", e.message); }
               }
             }
           }
@@ -654,13 +654,13 @@ export async function handleChatCompletion(req: Request, res: Response) {
     console.error("[proxy] handler error:", err);
 
     if (membershipId && reservedCostCents > 0) {
-      try { await refundBudget(membershipId, reservedCostCents); } catch (e) { console.error('[proxy-cleanup] Failed to refund budget:', e); }
+      try { await refundBudget(membershipId, reservedCostCents); } catch (e: any) { console.error("[proxy] budget refund failed:", e.message); }
     }
     if (membershipId) {
-      try { await releaseRateLimit(membershipId); } catch (e) { console.error('[proxy-cleanup] Failed to release rate limit:', e); }
+      try { await releaseRateLimit(membershipId); } catch (e: any) { console.error("[proxy] rate limit release failed:", e.message); }
     }
     if (membershipId && concurrencyAcquired) {
-      try { await releaseConcurrency(membershipId, requestId); } catch (e) { console.error('[proxy-cleanup] Failed to release concurrency:', e); }
+      try { await releaseConcurrency(membershipId, requestId); } catch (e: any) { console.error("[proxy] concurrency release failed:", e.message); }
     }
 
     if (!res.headersSent) {
@@ -681,7 +681,8 @@ export async function handleChatCompletion(req: Request, res: Response) {
           } else {
             sendProxyError(res, createProxyError(500, "internal_error", "An internal error occurred"));
           }
-        } catch {
+        } catch (e: any) {
+          console.error("[proxy] error building budget context for error response:", e.message);
           sendProxyError(res, createProxyError(500, "internal_error", "An internal error occurred"));
         }
       } else {
