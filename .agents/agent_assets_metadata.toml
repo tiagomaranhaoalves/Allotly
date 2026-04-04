@@ -30,3 +30,9 @@ id = "jgrUeYw5pt2X1ND_GX0Gl"
 uri = "file://azure-apim-debugging.md"
 type = "text"
 title = "Azure APIM Connection — Debugging Timeline"
+
+[[outputs]]
+id = "yKrm-Aa9UmT93m9Mh3FEj"
+uri = "file://.local/audit-report.md"
+type = "text"
+title = "Allotly Security & Performance Audit Report"
