@@ -26,6 +26,7 @@ import { checkPlanLimit, PLAN_LIMITS } from "./lib/plan-limits";
 import { sendEmail, emailTemplates } from "./lib/email";
 import { getCostPerModel, getTopSpenders, getSpendForecast, getAnomalies, getOptimizationRecommendations } from "./lib/analytics";
 import { loginLimiter, redeemLimiter, regenerateKeyLimiter } from "./lib/rate-limiter";
+import crypto from "crypto";
 import { z } from "zod";
 import { cascadeDeleteOrganization, cascadeDeleteTeam, cascadeDeleteMember, cascadeDeleteVoucher } from "./lib/cascade-delete";
 
@@ -5070,7 +5071,17 @@ export async function registerRoutes(
 
   // ── Admin Control Center Routes ──
 
-  app.post("/api/admin/login", async (req, res) => {
+  const adminLoginLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: (_req: any, res: any) => {
+      res.status(429).json({ message: "Too many admin login attempts. Please try again in a minute." });
+    },
+  });
+
+  app.post("/api/admin/login", adminLoginLimiter, async (req, res) => {
     try {
       const schema = z.object({ email: z.string().email(), password: z.string().min(1) });
       const { email, password } = schema.parse(req.body);
@@ -5081,7 +5092,12 @@ export async function registerRoutes(
         return res.status(500).json({ message: "Admin credentials not configured" });
       }
 
-      if (email !== adminEmail || password !== adminPassword) {
+      const emailMatch = email.length === adminEmail.length &&
+        crypto.timingSafeEqual(Buffer.from(email), Buffer.from(adminEmail));
+      const passwordMatch = password.length === adminPassword.length &&
+        crypto.timingSafeEqual(Buffer.from(password), Buffer.from(adminPassword));
+
+      if (!emailMatch || !passwordMatch) {
         return res.status(401).json({ message: "Invalid credentials" });
       }
 

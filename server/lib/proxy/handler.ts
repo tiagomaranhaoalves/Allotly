@@ -388,14 +388,6 @@ export async function handleChatCompletion(req: Request, res: Response) {
     translated.body = sanitizeProviderBody(translated.body, provider);
     const authInfo = setProviderAuth(translated.headers, provider, adminApiKey, translated.url);
 
-    if (provider === "AZURE_OPENAI") {
-      console.log(`[proxy-azure-debug] URL: ${authInfo.url}`);
-      console.log(`[proxy-azure-debug] Headers: ${Object.keys(authInfo.headers).join(", ")}`);
-      console.log(`[proxy-azure-debug] Body keys: ${Object.keys(translated.body).join(", ")}`);
-      console.log(`[proxy-azure-debug] Key length: ${adminApiKey.length}, prefix: ${adminApiKey.substring(0, 8)}, suffix: ${adminApiKey.substring(adminApiKey.length - 4)}`);
-      console.log(`[proxy-azure-debug] Key has whitespace: ${adminApiKey !== adminApiKey.trim()}, has quotes: ${adminApiKey.includes('"') || adminApiKey.includes("'")}`);
-    }
-
     let providerResponse: globalThis.Response;
     try {
       providerResponse = await fetch(authInfo.url, {
@@ -610,11 +602,11 @@ export async function handleChatCompletion(req: Request, res: Response) {
 
               if (memberEmail) {
                 const tmpl = emailTemplates.budgetExhausted(memberName, budgetDollars, adminUser?.email || "your admin");
-                try { await sendEmail(memberEmail, tmpl.subject, tmpl.html); } catch {}
+                try { await sendEmail(memberEmail, tmpl.subject, tmpl.html); } catch (e) { console.error('[budget-email] Failed to send exhausted email to member:', e); }
               }
               if (teamAdminUser?.email && teamAdminUser.email !== memberEmail) {
                 const tmpl = emailTemplates.budgetExhausted(memberName, budgetDollars, teamAdminUser.email);
-                try { await sendEmail(teamAdminUser.email, tmpl.subject, tmpl.html); } catch {}
+                try { await sendEmail(teamAdminUser.email, tmpl.subject, tmpl.html); } catch (e) { console.error('[budget-email] Failed to send exhausted email to admin:', e); }
               }
             }
           } else if (spendPercent >= 90) {
@@ -627,13 +619,13 @@ export async function handleChatCompletion(req: Request, res: Response) {
               });
               if (memberEmail) {
                 const tmpl = emailTemplates.budgetWarning90(memberName, Math.round(spendPercent), budgetDollars, "/dashboard");
-                try { await sendEmail(memberEmail, tmpl.subject, tmpl.html); } catch {}
+                try { await sendEmail(memberEmail, tmpl.subject, tmpl.html); } catch (e) { console.error('[budget-email] Failed to send 90% warning to member:', e); }
               }
               const mTeam90 = await storage.getTeam(freshMembership.teamId);
               const teamAdmin90 = mTeam90 ? await storage.getUser(mTeam90.adminId) : null;
               if (teamAdmin90?.email && teamAdmin90.email !== memberEmail) {
                 const tmpl = emailTemplates.budgetWarning90(memberName, Math.round(spendPercent), budgetDollars, "/dashboard");
-                try { await sendEmail(teamAdmin90.email, tmpl.subject, tmpl.html); } catch {}
+                try { await sendEmail(teamAdmin90.email, tmpl.subject, tmpl.html); } catch (e) { console.error('[budget-email] Failed to send 90% warning to admin:', e); }
               }
             }
           } else if (spendPercent >= 80) {
@@ -646,7 +638,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
               });
               if (memberEmail) {
                 const tmpl = emailTemplates.budgetWarning80(memberName, Math.round(spendPercent), budgetDollars, "/dashboard");
-                try { await sendEmail(memberEmail, tmpl.subject, tmpl.html); } catch {}
+                try { await sendEmail(memberEmail, tmpl.subject, tmpl.html); } catch (e) { console.error('[budget-email] Failed to send 80% warning:', e); }
               }
             }
           }
@@ -662,13 +654,13 @@ export async function handleChatCompletion(req: Request, res: Response) {
     console.error("[proxy] handler error:", err);
 
     if (membershipId && reservedCostCents > 0) {
-      try { await refundBudget(membershipId, reservedCostCents); } catch {}
+      try { await refundBudget(membershipId, reservedCostCents); } catch (e) { console.error('[proxy-cleanup] Failed to refund budget:', e); }
     }
     if (membershipId) {
-      try { await releaseRateLimit(membershipId); } catch {}
+      try { await releaseRateLimit(membershipId); } catch (e) { console.error('[proxy-cleanup] Failed to release rate limit:', e); }
     }
     if (membershipId && concurrencyAcquired) {
-      try { await releaseConcurrency(membershipId, requestId); } catch {}
+      try { await releaseConcurrency(membershipId, requestId); } catch (e) { console.error('[proxy-cleanup] Failed to release concurrency:', e); }
     }
 
     if (!res.headersSent) {

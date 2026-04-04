@@ -90,6 +90,11 @@ app.post(
   }
 );
 
+// Block CORS preflight on proxy endpoints (return 204 with no CORS headers)
+app.options("/api/v1/*", (_req, res) => {
+  res.status(204).end();
+});
+
 app.use(
   express.json({
     verify: (req, _res, buf) => {
@@ -143,14 +148,26 @@ app.use((req, res, next) => {
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+    if (res.headersSent) {
+      return next(err);
+    }
+
+    // Wrap JSON parse errors in allotly_error format
+    if (err instanceof SyntaxError && 'body' in err) {
+      return res.status(400).json({
+        error: {
+          code: "invalid_json",
+          message: "Request body contains invalid JSON.",
+          suggestion: "Check that your request body is valid JSON.",
+          type: "allotly_error",
+        },
+      });
+    }
+
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
     console.error("Internal Server Error:", err);
-
-    if (res.headersSent) {
-      return next(err);
-    }
 
     return res.status(status).json({ message });
   });
