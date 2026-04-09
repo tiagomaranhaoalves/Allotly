@@ -2,7 +2,7 @@ import { storage } from "../../storage";
 import { getProviderAdapter } from "../providers";
 import { decryptProviderKey } from "../encryption";
 import { sendEmail, emailTemplates } from "../email";
-import { DEFAULT_AZURE_API_VERSION } from "../providers/azure-openai";
+import { effectiveAzureApiVersion } from "../providers/azure-openai";
 
 export async function runProviderValidation(): Promise<void> {
   const orgs = await storage.getAllOrganizations();
@@ -22,7 +22,7 @@ export async function runProviderValidation(): Promise<void> {
         const validationOptions = conn.provider === "AZURE_OPENAI" ? {
           baseUrl: conn.azureBaseUrl || undefined,
           deploymentName: ((conn.azureDeployments as any[])?.[0])?.deploymentName || "gpt-4o",
-          apiVersion: conn.azureApiVersion || DEFAULT_AZURE_API_VERSION,
+          apiVersion: effectiveAzureApiVersion("gpt-4o", conn.azureApiVersion),
           endpointMode: (conn.azureEndpointMode === "v1" && conn.azureBaseUrl?.includes("azure-api.net")) ? "legacy" : (conn.azureEndpointMode || "legacy"),
         } : undefined;
 

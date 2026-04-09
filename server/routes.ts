@@ -10,7 +10,7 @@ import { encryptProviderKey, decryptProviderKey } from "./lib/encryption";
 import { generateVoucherCode } from "./lib/voucher-codes";
 import { generateAllotlyKey, hashKey } from "./lib/keys";
 import { getProviderAdapter } from "./lib/providers";
-import { DEFAULT_AZURE_API_VERSION } from "./lib/providers/azure-openai";
+import { effectiveAzureApiVersion } from "./lib/providers/azure-openai";
 import { stripeService } from "./stripeService";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
 import { runBudgetReset } from "./lib/jobs/budget-reset";
@@ -732,7 +732,7 @@ export async function registerRoutes(
       const validationOptions = conn.provider === "AZURE_OPENAI" ? {
         baseUrl: conn.azureBaseUrl || undefined,
         deploymentName: ((conn.azureDeployments as any[])?.[0])?.deploymentName || "gpt-4o",
-        apiVersion: conn.azureApiVersion || DEFAULT_AZURE_API_VERSION,
+        apiVersion: effectiveAzureApiVersion("gpt-4o", conn.azureApiVersion),
         endpointMode: (conn.azureEndpointMode === "v1" && conn.azureBaseUrl?.includes("azure-api.net")) ? "legacy" : (conn.azureEndpointMode || "legacy"),
       } : undefined;
 

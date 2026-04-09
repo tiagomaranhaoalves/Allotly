@@ -6,6 +6,7 @@ import {
   setProviderAuth,
   sanitizeProviderBody,
 } from "../server/lib/proxy/translate";
+import { effectiveAzureApiVersion } from "../server/lib/providers/azure-openai";
 
 const openaiRequest = {
   model: "gpt-4o",
@@ -412,5 +413,49 @@ describe("translateResponseToOpenAI — Azure OpenAI", () => {
     };
     const result = translateResponseToOpenAI("AZURE_OPENAI", azureResponse, "nebula-gpt4o");
     expect(result).toBe(azureResponse);
+  });
+});
+
+describe("effectiveAzureApiVersion", () => {
+  it("returns 2024-12-01-preview for o3 with no user value", () => {
+    expect(effectiveAzureApiVersion("o3", null)).toBe("2024-12-01-preview");
+  });
+
+  it("overrides old user-pinned value for o3", () => {
+    expect(effectiveAzureApiVersion("o3", "2024-10-21")).toBe("2024-12-01-preview");
+  });
+
+  it("respects newer user value for o3", () => {
+    expect(effectiveAzureApiVersion("o3", "2025-04-01-preview")).toBe("2025-04-01-preview");
+  });
+
+  it("returns 2024-12-01-preview for gpt-5 with no user value", () => {
+    expect(effectiveAzureApiVersion("gpt-5", null)).toBe("2024-12-01-preview");
+  });
+
+  it("returns 2024-12-01-preview for gpt-4o with no user value (default floor)", () => {
+    expect(effectiveAzureApiVersion("gpt-4o", null)).toBe("2024-12-01-preview");
+  });
+
+  it("floors gpt-4o at default even when user pinned older", () => {
+    expect(effectiveAzureApiVersion("gpt-4o", "2024-10-21")).toBe("2024-12-01-preview");
+  });
+
+  it("end-to-end: azure/o3 with stored 2024-10-21 produces correct URL", () => {
+    const azureCtx = {
+      baseUrl: "https://mygateway.azure-api.net",
+      endpointMode: "legacy" as const,
+      apiVersion: effectiveAzureApiVersion("o3", "2024-10-21"),
+      deploymentName: "o3",
+      modelId: "o3",
+    };
+    const result = translateToProvider(
+      { ...openaiRequest, model: "o3" },
+      "AZURE_OPENAI",
+      100,
+      azureCtx,
+    );
+    expect(result.url).toContain("api-version=2024-12-01-preview");
+    expect(result.url).not.toContain("2024-10-21");
   });
 });

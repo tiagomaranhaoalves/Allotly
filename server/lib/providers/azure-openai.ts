@@ -2,6 +2,17 @@ import type { ProviderAdapter, ValidationResult } from "./types";
 
 export const DEFAULT_AZURE_API_VERSION = "2024-12-01-preview";
 
+const REASONING_MODEL_PATTERN = /^(o1|o3|o4|gpt-5)/i;
+const REASONING_MIN_API_VERSION = "2024-12-01-preview";
+
+export function effectiveAzureApiVersion(modelId: string, userValue?: string | null): string {
+  const candidates = [userValue, DEFAULT_AZURE_API_VERSION].filter(Boolean) as string[];
+  if (REASONING_MODEL_PATTERN.test(modelId)) {
+    candidates.push(REASONING_MIN_API_VERSION);
+  }
+  return candidates.sort().reverse()[0];
+}
+
 export const azureOpenaiAdapter: ProviderAdapter = {
   provider: "AZURE_OPENAI",
 

@@ -1,0 +1,103 @@
+The previous fix landed (gpt-5 family now works), but the o-series fix didn't take effect in production. Cause: the database stores azureApiVersion="2024-10-21" on the user's existing Azure connection, which short-circuits the new default via `connection.azureApiVersion || DEFAULT`. The bumped default never kicks in for existing connections.
+
+This patch fixes that AND improves the UX so users don't have to know what api-version means.
+
+CONTEXT — DO-NOTS (from CONTRIBUTING.md):
+- Do NOT re-introduce Azure auto-routing. The azure/ prefix is the only routing mechanism.
+- Do NOT change the api-key header convention.
+- Do NOT broaden parameter sanitization to passthrough.
+- Do NOT touch claude-sonnet-4-6 routing — separate APIM config issue.
+- Do NOT amend the previous commit. Make this a fresh commit.
+
+================================================================
+PART A — Per-model minimum api-version (the actual fix)
+================================================================
+
+In server/lib/providers/azure-openai.ts (or wherever DEFAULT_AZURE_API_VERSION lives — create the file if needed), add:
+
+  export const DEFAULT_AZURE_API_VERSION = "2024-12-01-preview";
+
+  // Models that require api-version >= 2024-12-01-preview
+  const REASONING_MODEL_PATTERN = /^(o1|o3|o4|gpt-5)/i;
+  const REASONING_MIN_API_VERSION = "2024-12-01-preview";
+
+  // Returns the effective api-version for a given model, taking the
+  // newer of (user-stored value, model-required minimum, default).
+  export function effectiveAzureApiVersion(modelId: string, userValue?: string | null): string {
+    const candidates = [userValue, DEFAULT_AZURE_API_VERSION].filter(Boolean) as string[];
+    if (REASONING_MODEL_PATTERN.test(modelId)) {
+      candidates.push(REASONING_MIN_API_VERSION);
+    }
+    // Date strings sort lexically; pick the newest
+    return candidates.sort().reverse()[0];
+  }
+
+Then update server/lib/proxy/handler.ts:380 to use this helper when constructing azureContext:
+
+  apiVersion: effectiveAzureApiVersion(modelId, connection.azureApiVersion),
+
+(modelId here is the model from the request after the "azure/" prefix is stripped — the same value that flows into translate.ts's azureContext.modelId.)
+
+Same change in:
+- server/routes.ts:734 (azure connection test on save) — for the test, use a placeholder model like "gpt-4o" since we don't know which model will be called
+- server/lib/jobs/provider-validation.ts:24 — same, use a placeholder
+
+Leave server/lib/proxy/translate.ts:175 alone — it just consumes azureContext.apiVersion which is now always correct.
+
+================================================================
+PART B — Dashboard UX improvements
+================================================================
+
+File: client/src/pages/dashboard/providers.tsx
+
+1. Update the create form (around line 88):
+   - Change `useState("2024-10-21")` → `useState("")` (empty by default)
+   - Change placeholder from "2024-10-21" → "Auto (recommended)"
+   - Change label from "API Version" → "API Version (advanced)"
+   - Update help text from "Defaults to 2024-10-21 (current GA)" to:
+     "Leave empty for Allotly to auto-pick the right version per model. Override only if you have a specific compatibility need."
+
+2. Update the edit form (around line 380, 619):
+   - Same placeholder + label + help-text changes
+   - useState initial value: keep `p.azureApiVersion || ""` (empty when nothing stored)
+
+3. When submitting the form (both create and edit), if the api-version field is empty string, send `null` to the backend (not ""). The backend should store NULL, not "".
+
+================================================================
+PART C — One-time migration for existing connections
+================================================================
+
+Add a migration (or a one-time on-startup cleanup, your call — migration is cleaner) that does:
+
+  UPDATE provider_connections
+     SET azure_api_version = NULL
+   WHERE provider = 'azure_openai'
+     AND azure_api_version = '2024-10-21';
+
+This unblocks the user's existing connection without requiring them to re-edit it. The reasoning: 2024-10-21 was the old auto-default — no user explicitly chose it as a compliance pin. Anyone who genuinely needs that exact version can re-set it after the migration runs.
+
+If you're uncomfortable with a destructive migration, alternative: just rely on the per-model override from PART A (which already works — the migration is convenience, not correctness).
+
+================================================================
+TESTS REQUIRED
+================================================================
+Add to tests/request-translation.test.ts:
+1. effectiveAzureApiVersion("o3", null) === "2024-12-01-preview"
+2. effectiveAzureApiVersion("o3", "2024-10-21") === "2024-12-01-preview"  // override even when user pinned older
+3. effectiveAzureApiVersion("o3", "2025-04-01-preview") === "2025-04-01-preview"  // respect newer user value
+4. effectiveAzureApiVersion("gpt-5", null) === "2024-12-01-preview"
+5. effectiveAzureApiVersion("gpt-4o", null) === "2024-12-01-preview"  // default is now 2024-12-01-preview
+6. effectiveAzureApiVersion("gpt-4o", "2024-10-21") === "2024-12-01-preview"  // floor at default
+7. End-to-end: translation of azure/o3 via handler (with mock connection { azureApiVersion: "2024-10-21" }) produces a URL containing api-version=2024-12-01-preview — the regression test for the actual user-facing bug.
+
+Run all existing tests after the change. The previous run reported 68 passing; expect 68 + 7 = 75.
+
+================================================================
+DO NOT PUBLISH YET
+================================================================
+1. Confirm build runs and app starts.
+2. Confirm all tests pass (75).
+3. Report back: which files changed, what the migration looks like, and how to verify the user's existing connection got updated.
+4. Wait for explicit "publish" instruction.
+
+If you hit a blocker — especially around the migration or where to compute modelId for the helper — stop and ask.

@@ -8,6 +8,7 @@ import { getStripeSync } from './stripeClient';
 import { WebhookHandlers } from './webhookHandlers';
 import { startJobScheduler } from './lib/jobs/scheduler';
 import { seedModelPricing } from './lib/seed-models';
+import { pool } from './db';
 
 const app = express();
 app.set("trust proxy", 1);
@@ -145,6 +146,17 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  try {
+    const migResult = await (pool as any).query(
+      `UPDATE provider_connections SET azure_api_version = NULL WHERE provider = 'AZURE_OPENAI' AND azure_api_version = '2024-10-21'`
+    );
+    if (migResult.rowCount > 0) {
+      console.log(`[migration] Cleared stale azure_api_version='2024-10-21' on ${migResult.rowCount} connection(s)`);
+    }
+  } catch (e: any) {
+    console.error("[migration] azure api-version cleanup failed:", e.message);
+  }
+
   await initStripe();
   await seedModelPricing();
   await registerRoutes(httpServer, app);

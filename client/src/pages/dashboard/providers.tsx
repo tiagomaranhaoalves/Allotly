@@ -85,7 +85,7 @@ export default function ProvidersPage() {
 
   const [azureBaseUrl, setAzureBaseUrl] = useState("");
   const [azureEndpointMode, setAzureEndpointMode] = useState<"v1" | "legacy">("legacy");
-  const [azureApiVersion, setAzureApiVersion] = useState("2024-10-21");
+  const [azureApiVersion, setAzureApiVersion] = useState("");
   const { data: providers, isLoading } = useQuery<ProviderConnection[]>({ queryKey: ["/api/providers"] });
 
   const resetForm = () => {
@@ -94,7 +94,7 @@ export default function ProvidersPage() {
     setDisplayName("");
     setAzureBaseUrl("");
     setAzureEndpointMode("legacy");
-    setAzureApiVersion("2024-10-21");
+    setAzureApiVersion("");
   };
 
   const addMutation = useMutation({
@@ -104,7 +104,7 @@ export default function ProvidersPage() {
         body.azureBaseUrl = azureBaseUrl.replace(/\/+$/, "").replace(/\/openai\/?$/, "");
         body.azureEndpointMode = azureEndpointMode;
         if (azureEndpointMode === "legacy") {
-          body.azureApiVersion = azureApiVersion;
+          body.azureApiVersion = azureApiVersion || null;
         }
         body.azureDeployments = [];
       }
@@ -264,14 +264,14 @@ export default function ProvidersPage() {
                   </div>
                   {azureEndpointMode === "legacy" && (
                     <div className="space-y-2">
-                      <Label>API Version</Label>
+                      <Label>API Version (advanced)</Label>
                       <Input
                         value={azureApiVersion}
                         onChange={e => setAzureApiVersion(e.target.value)}
-                        placeholder="2024-10-21"
+                        placeholder="Auto (recommended)"
                         data-testid="input-azure-api-version"
                       />
-                      <p className="text-xs text-muted-foreground">Defaults to 2024-10-21 (current GA)</p>
+                      <p className="text-xs text-muted-foreground">Leave empty for Allotly to auto-pick the right version per model. Override only if you have a specific compatibility need.</p>
                     </div>
                   )}
                   <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 text-sm flex items-start gap-2">
@@ -377,7 +377,7 @@ function ProviderCard({
   const [editAzureOpen, setEditAzureOpen] = useState(false);
   const [editAzureBaseUrl, setEditAzureBaseUrl] = useState(p.azureBaseUrl || "");
   const [editAzureEndpointMode, setEditAzureEndpointMode] = useState<"v1" | "legacy">((p.azureEndpointMode as "v1" | "legacy") || "legacy");
-  const [editAzureApiVersion, setEditAzureApiVersion] = useState(p.azureApiVersion || "2024-10-21");
+  const [editAzureApiVersion, setEditAzureApiVersion] = useState(p.azureApiVersion || "");
 
   const { data: health } = useQuery<HealthData>({
     queryKey: ["/api/providers", p.id, "health"],
@@ -450,7 +450,7 @@ function ProviderCard({
         azureEndpointMode: editAzureEndpointMode,
       };
       if (editAzureEndpointMode === "legacy") {
-        body.azureApiVersion = editAzureApiVersion;
+        body.azureApiVersion = editAzureApiVersion || null;
       }
       await apiRequest("PATCH", `/api/providers/${p.id}`, body);
     },
@@ -615,8 +615,9 @@ function ProviderCard({
                 </div>
                 {editAzureEndpointMode === "legacy" && (
                   <div className="space-y-2">
-                    <Label>API Version</Label>
-                    <Input value={editAzureApiVersion} onChange={e => setEditAzureApiVersion(e.target.value)} placeholder="2024-10-21" data-testid="input-edit-azure-api-version" />
+                    <Label>API Version (advanced)</Label>
+                    <Input value={editAzureApiVersion} onChange={e => setEditAzureApiVersion(e.target.value)} placeholder="Auto (recommended)" data-testid="input-edit-azure-api-version" />
+                    <p className="text-xs text-muted-foreground">Leave empty for Allotly to auto-pick the right version per model. Override only if you have a specific compatibility need.</p>
                   </div>
                 )}
                 <Button className="w-full" onClick={() => editAzureMutation.mutate()} disabled={!editFormValid || editAzureMutation.isPending} data-testid="button-save-azure-edit">
