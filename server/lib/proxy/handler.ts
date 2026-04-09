@@ -36,6 +36,8 @@ import {
   type DetectProviderResult,
 } from "./translate";
 import { streamProviderResponse, readNonStreamingResponse } from "./streaming";
+import { buildUpstreamError, formatUpstreamLogLine } from "./upstream-errors";
+import { redact } from "./redactor";
 import type { ModelPricing, AzureDeploymentMapping } from "@shared/schema";
 import { z } from "zod";
 
@@ -416,51 +418,35 @@ export async function handleChatCompletion(req: Request, res: Response) {
       await releaseConcurrency(membershipId, requestId);
       concurrencyAcquired = false;
 
-      let cleanMessage: string;
-      let errorCode: string;
       const status = providerResponse.status;
-
-      if (provider === "AZURE_OPENAI") {
-        if (status === 401 || status === 403) {
-          cleanMessage = "The provider rejected the request due to authentication or permissions.";
-          errorCode = "upstream_auth_failed";
-        } else if (status === 404) {
-          cleanMessage = `Deployment "${effectiveModel}" is not available on this provider.`;
-          errorCode = "deployment_not_available";
-        } else if (status === 429) {
-          cleanMessage = "The provider is rate-limiting requests.";
-          errorCode = "provider_rate_limited";
-          const retryAfter = providerResponse.headers.get("retry-after");
-          if (retryAfter) {
-            res.setHeader("Retry-After", retryAfter);
-          }
-        } else {
-          cleanMessage = `The provider returned an error (${status}).`;
-          errorCode = "provider_error";
-        }
-        console.error(`[proxy] Azure error ${status} for deployment ${effectiveModel}:`, errorBody.slice(0, 500));
-      } else {
-        cleanMessage = `${provider} returned ${status}`;
-        errorCode = status >= 400 && status < 500 ? "invalid_request" : "provider_error";
-        try {
-          const parsedErr = JSON.parse(errorBody);
-          const msg = parsedErr?.error?.message || parsedErr?.message || parsedErr?.error?.status_message;
-          if (msg) cleanMessage += `: ${msg}`;
-        } catch {
-          const trimmed = errorBody.trim().slice(0, 200);
-          if (trimmed) cleanMessage += `: ${trimmed}`;
-        }
+      if (status === 429) {
+        const retryAfter = providerResponse.headers.get("retry-after");
+        if (retryAfter) res.setHeader("Retry-After", retryAfter);
       }
 
-      const suggestion = getProviderErrorSuggestion(status, cleanMessage, provider);
+      const upstreamErr = buildUpstreamError(provider, status, errorBody, [adminApiKey]);
+      const logLine = formatUpstreamLogLine(provider, req.headers.authorization, parsed.model, upstreamErr.upstream);
+      console.error(`[proxy] ${logLine}`);
+
       budgetCtx = await buildBudgetCtx();
-      const proxyStatus = status === 429 ? 429 : (status >= 400 && status < 500 ? 400 : 502);
-      return sendProxyError(res, createProxyError(
-        proxyStatus,
-        errorCode,
-        cleanMessage,
-        suggestion
-      ), budgetCtx);
+      if (res.headersSent) return;
+
+      res.status(upstreamErr.allotlyStatus);
+      if (budgetCtx) {
+        res.setHeader("X-Allotly-Budget-Remaining", String(budgetCtx.remaining));
+        res.setHeader("X-Allotly-Budget-Total", String(budgetCtx.total));
+        res.setHeader("X-Allotly-Expires", budgetCtx.expires);
+        res.setHeader("X-Allotly-Requests-Remaining", String(budgetCtx.requestsRemaining));
+      }
+
+      return res.json({
+        error: {
+          type: upstreamErr.errorType,
+          message: upstreamErr.friendlyMessage,
+          provider: provider.toLowerCase(),
+          upstream: upstreamErr.upstream,
+        },
+      });
     }
 
     if (clamped) {

@@ -1,0 +1,126 @@
+# Replit Prompt — Surface Upstream Azure Error Bodies (Redacted)
+
+## Context
+
+Allotly currently collapses Azure (and other provider) error responses into generic strings like:
+
+- `"The provider returned an error (400)."`
+- `"The provider rejected the request due to authentication or permissions."`
+
+This makes debugging Azure APIM routing impossible. Different Azure 400s mean very different things:
+- `DeploymentNotFound` → deployment name wrong / not provisioned on this subscription
+- `invalid_request_error` → bad parameter (e.g. `max_tokens` vs `max_completion_tokens`)
+- `content_filter` → policy block
+- `OperationNotAllowed` → subscription/product entitlement issue
+- Quota / rate limit errors
+
+We need to surface the real upstream error so customers (and we) can tell these apart — **without leaking secrets**.
+
+## Goal
+
+When an upstream provider call (Azure, OpenAI, Anthropic, Google) returns a non-2xx response, Allotly should return a structured error to the client that includes the upstream status, upstream error code, and upstream error message, with a redaction pass applied.
+
+## Requirements
+
+### 1. Capture upstream response
+For every provider call, on non-2xx:
+- Capture `upstream.status`
+- Capture response body (text, then try JSON parse)
+- Extract, where present:
+  - `error.code` (Azure/OpenAI) or `type` (Anthropic) or `error.status` (Google)
+  - `error.message`
+  - `error.param` (if present)
+
+### 2. Redaction pass (MANDATORY)
+Before returning or logging the upstream message, run it through a redactor that strips:
+- Any occurrence of the Azure subscription key (configured per-provider) — replace with `***AZURE_KEY***`
+- Any occurrence of the OpenAI / Anthropic / Google API keys — replace with `***PROVIDER_KEY***`
+- `Bearer <token>` patterns → `Bearer ***`
+- `api-key: <value>` patterns → `api-key: ***`
+- Any `sk-...`, `sk-ant-...` style tokens (regex `sk-[A-Za-z0-9_\-]{16,}`) → `***`
+- The Allotly voucher key if it ever appears (regex `allotly_sk_[A-Za-z0-9_\-]+`) → `***`
+- Full URLs containing query params with `api-key=` or `key=` → strip the value
+
+Redaction must run on BOTH the client response AND any server-side logs.
+
+### 3. Client response shape
+Return a 4xx/5xx with a JSON body like:
+
+```json
+{
+  "error": {
+    "type": "upstream_error",
+    "message": "Allotly: upstream provider returned an error.",
+    "provider": "azure_openai",
+    "upstream": {
+      "status": 404,
+      "code": "DeploymentNotFound",
+      "message": "The API deployment for this resource does not exist. If you created the deployment within the last 5 minutes, please wait a moment and try again.",
+      "param": null
+    }
+  }
+}
+```
+
+Map HTTP status:
+- Upstream 400/404 → Allotly 400
+- Upstream 401/403 → Allotly 502 with `type: "upstream_auth_failed"` (don't return 401 to the client — that would confuse it with Allotly's own auth)
+- Upstream 429 → Allotly 429
+- Upstream 5xx → Allotly 502
+
+Keep the existing top-level friendly `message`, but add the `upstream` object so developers can debug.
+
+### 4. Server-side log line
+For every non-2xx upstream response, log (after redaction):
+```
+[provider=azure_openai] [voucher=allotly_sk_***abcd] [model=azure/gpt-5] upstream_status=404 upstream_code=DeploymentNotFound msg="..."
+```
+Only the last 4 chars of the voucher key — never the full key.
+
+### 5. Apply to all providers
+Not just Azure — do this uniformly for OpenAI, Anthropic, Google, and Azure OpenAI. Each provider's error body shape differs; write a small per-provider extractor:
+
+- **Azure/OpenAI**: `body.error.{code,message,param}`
+- **Anthropic**: `body.error.{type,message}`
+- **Google**: `body.error.{status,message}` (or `body[0].error...` for some endpoints)
+
+Fall back to raw (redacted) text if JSON parse fails or shape is unexpected — truncate to 500 chars.
+
+### 6. Tests
+Add unit tests covering:
+- Azure `DeploymentNotFound` 404 → Allotly 400 with upstream.code populated
+- Azure 401 with subscription key echoed in message → key is redacted in both response and log
+- OpenAI 400 `invalid_request_error` with `param: "max_tokens"` → param passed through
+- Anthropic 400 `invalid_request_error` → type + message extracted
+- Non-JSON upstream body → raw text returned truncated and redacted
+- Redactor test: feed a string containing the Azure key, a `Bearer sk-...`, and a voucher key → assert all three are masked
+
+### 7. Do NOT
+- Do NOT change the successful-response path.
+- Do NOT change voucher enforcement, budgets, or provider allowlist logic.
+- Do NOT expose upstream response headers (they can contain request IDs tied to the customer's Azure tenant — optional to pass through `x-request-id` only).
+- Do NOT log full voucher keys or provider keys, ever.
+
+## Acceptance
+
+After deploy, calling:
+```
+POST /api/v1/chat/completions
+{ "model": "azure/gpt-5", "messages":[{"role":"user","content":"hi"}], "max_tokens": 5 }
+```
+with an allowed voucher should return something like:
+```json
+{
+  "error": {
+    "type": "upstream_error",
+    "provider": "azure_openai",
+    "message": "Allotly: upstream provider returned an error.",
+    "upstream": {
+      "status": 404,
+      "code": "DeploymentNotFound",
+      "message": "The API deployment for this resource does not exist..."
+    }
+  }
+}
+```
+instead of the current generic `"The provider returned an error (400)."`.
