@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import crypto from "crypto";
 import { storage } from "../../storage";
 import { decryptProviderKey } from "../encryption";
+import { DEFAULT_AZURE_API_VERSION } from "../providers/azure-openai";
 import { redisGet, redisSet, redisDel, REDIS_KEYS } from "../redis";
 import { sendEmail, emailTemplates } from "../email";
 import { db } from "../../db";
@@ -379,7 +380,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
       azureContext = {
         baseUrl: connection.azureBaseUrl,
         endpointMode,
-        apiVersion: connection.azureApiVersion || "2024-10-21",
+        apiVersion: connection.azureApiVersion || DEFAULT_AZURE_API_VERSION,
         deploymentName: azureDeployment.deploymentName,
         modelId: azureDeployment.modelId,
       };

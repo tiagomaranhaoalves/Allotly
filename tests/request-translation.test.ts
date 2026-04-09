@@ -324,6 +324,78 @@ describe("sanitizeProviderBody — Azure OpenAI", () => {
   });
 });
 
+describe("translateToProvider — Azure gpt-5 family uses max_completion_tokens", () => {
+  it("uses max_completion_tokens for azure/gpt-5", () => {
+    const azureCtx = {
+      baseUrl: "https://mygateway.azure-api.net",
+      endpointMode: "legacy" as const,
+      apiVersion: "2024-12-01-preview",
+      deploymentName: "gpt-5",
+      modelId: "gpt-5",
+    };
+    const result = translateToProvider(
+      { ...openaiRequest, model: "gpt-5" },
+      "AZURE_OPENAI",
+      10,
+      azureCtx,
+    );
+    expect(result.body.max_completion_tokens).toBe(10);
+    expect(result.body.max_tokens).toBeUndefined();
+  });
+
+  it("uses max_completion_tokens for azure/gpt-5-mini", () => {
+    const azureCtx = {
+      baseUrl: "https://mygateway.azure-api.net",
+      endpointMode: "legacy" as const,
+      apiVersion: "2024-12-01-preview",
+      deploymentName: "gpt-5-mini",
+      modelId: "gpt-5-mini",
+    };
+    const result = translateToProvider(
+      { ...openaiRequest, model: "gpt-5-mini" },
+      "AZURE_OPENAI",
+      10,
+      azureCtx,
+    );
+    expect(result.body.max_completion_tokens).toBe(10);
+    expect(result.body.max_tokens).toBeUndefined();
+  });
+
+  it("still uses max_tokens for azure/gpt-4o (non-reasoning)", () => {
+    const azureCtx = {
+      baseUrl: "https://mygateway.azure-api.net",
+      endpointMode: "legacy" as const,
+      apiVersion: "2024-12-01-preview",
+      deploymentName: "gpt-4o",
+      modelId: "gpt-4o",
+    };
+    const result = translateToProvider(
+      { ...openaiRequest, model: "gpt-4o" },
+      "AZURE_OPENAI",
+      1000,
+      azureCtx,
+    );
+    expect(result.body.max_tokens).toBe(1000);
+    expect(result.body.max_completion_tokens).toBeUndefined();
+  });
+
+  it("constructs URL with default api-version 2024-12-01-preview for azure/o3", () => {
+    const azureCtx = {
+      baseUrl: "https://mygateway.azure-api.net",
+      endpointMode: "legacy" as const,
+      deploymentName: "o3",
+      modelId: "o3",
+    };
+    const result = translateToProvider(
+      { ...openaiRequest, model: "o3" },
+      "AZURE_OPENAI",
+      100,
+      azureCtx,
+    );
+    expect(result.url).toContain("api-version=2024-12-01-preview");
+  });
+});
+
 describe("translateResponseToOpenAI — Azure OpenAI", () => {
   it("passes through Azure response (same as OpenAI)", () => {
     const azureResponse = {

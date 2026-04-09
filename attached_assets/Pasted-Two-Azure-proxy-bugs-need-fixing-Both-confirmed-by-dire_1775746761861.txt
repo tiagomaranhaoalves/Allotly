@@ -1,0 +1,63 @@
+Two Azure proxy bugs need fixing. Both confirmed by direct curl probes against the user's APIM gateway with the user's subscription key — direct calls work, proxy calls fail. The new structured upstream_error you implemented earlier surfaced these perfectly.
+
+CONTEXT — DO-NOTS (from CONTRIBUTING.md):
+- Do NOT re-introduce Azure auto-routing. The azure/ prefix remains the only routing mechanism.
+- Do NOT change the api-key header convention (no Ocp-Apim-Subscription-Key).
+- Do NOT broaden the parameter sanitization to passthrough — keep the whitelist approach.
+- Do NOT touch claude-sonnet-4-6 routing — that's a separate issue we will handle later (APIM config problem, not proxy).
+
+================================================================
+BUG #1 — gpt-5 family is sending max_tokens instead of max_completion_tokens
+================================================================
+
+File: server/lib/proxy/translate.ts:158
+Current code:
+    const isReasoningModel = /^(o1|o3|o4)/.test(azureContext.modelId);
+
+Problem: This regex catches o1/o3/o4 but NOT gpt-5*. So gpt-5, gpt-5-mini, gpt-5.1, gpt-5.2, gpt-5.2-chat fall into the else branch on line 165 which sets body.max_tokens. Azure rejects with: "Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead."
+
+Direct proof: I called the user's APIM directly at /openai/deployments/gpt-5/chat/completions?api-version=2024-10-21 with ONLY max_completion_tokens in the body — Azure returned HTTP 200 with a real completion. So gpt-5 family on the user's APIM works fine when given max_completion_tokens.
+
+Fix: Update the regex on translate.ts:158 to also match gpt-5:
+    const isReasoningModel = /^(o1|o3|o4|gpt-5)/.test(azureContext.modelId);
+
+ALSO check translate.ts:139 (the same regex pattern in the OPENAI branch). Update both for consistency, since OpenAI's gpt-5 family will eventually have the same constraint.
+
+================================================================
+BUG #2 — Default Azure api-version is too old for o3/o4 models
+================================================================
+
+Five files hardcode "2024-10-21" as the default Azure api-version. Azure rejects o3/o3-mini/o4-mini with: "Model X is enabled only for api versions 2024-12-01-preview and later"
+
+Direct proof: I called the user's APIM directly with api-version=2024-12-01-preview for o3 — HTTP 200 with a real completion.
+
+Files to update (search for "2024-10-21" to find all occurrences):
+1. server/lib/proxy/translate.ts:175 (main proxy translation)
+2. server/lib/proxy/handler.ts:380 (azureContext construction)
+3. server/routes.ts:734 (Azure connection test on save)
+4. server/lib/jobs/provider-validation.ts:24 (background validation job)
+5. server/lib/providers/azure-openai.ts:13 (validation helper)
+
+Fix: Bump the default to "2024-12-01-preview" in all 5 places. Even better: extract a single shared constant DEFAULT_AZURE_API_VERSION in (suggest) server/lib/providers/azure-openai.ts and import it everywhere — prevents future drift.
+
+================================================================
+TESTS REQUIRED
+================================================================
+Add unit tests in tests/request-translation.test.ts (which already covers this area):
+1. Translation of azure/gpt-5 with max_completion_tokens=10 produces a body with max_completion_tokens: 10 and NO max_tokens key.
+2. Translation of azure/gpt-5-mini does the same.
+3. Translation of azure/o3 produces a URL containing api-version=2024-12-01-preview.
+4. Translation of azure/gpt-4o (a non-reasoning model) still uses max_tokens (regression guard).
+
+Run all existing tests after the change — the previous run had 25 passing; this should still pass.
+
+================================================================
+DO NOT PUBLISH YET
+================================================================
+After implementation:
+1. Confirm the build runs and the app starts.
+2. Confirm all unit tests pass (including the 4 new ones).
+3. Report back what changed in each file.
+4. Wait for explicit "publish" instruction before deploying.
+
+If you hit any blocker or need clarification, stop and ask.

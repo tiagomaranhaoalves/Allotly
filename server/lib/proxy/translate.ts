@@ -1,5 +1,6 @@
 import { storage } from "../../storage";
 import { redisGet, redisSet, REDIS_KEYS } from "../redis";
+import { DEFAULT_AZURE_API_VERSION } from "../providers/azure-openai";
 import type { AzureDeploymentMapping } from "@shared/schema";
 
 export type ProviderType = "OPENAI" | "ANTHROPIC" | "GOOGLE" | "AZURE_OPENAI";
@@ -136,7 +137,7 @@ export function translateToProvider(
   const maxTokens = effectiveMaxTokens ?? request.max_tokens;
 
   if (provider === "OPENAI") {
-    const isReasoningModel = /^(o1|o3|o4)/.test(request.model);
+    const isReasoningModel = /^(o1|o3|o4|gpt-5)/.test(request.model);
     const body = { ...request };
     if (isReasoningModel && maxTokens) {
       body.max_completion_tokens = maxTokens;
@@ -155,7 +156,7 @@ export function translateToProvider(
   if (provider === "AZURE_OPENAI") {
     if (!azureContext) throw new Error("Azure context required for AZURE_OPENAI provider");
 
-    const isReasoningModel = /^(o1|o3|o4)/.test(azureContext.modelId);
+    const isReasoningModel = /^(o1|o3|o4|gpt-5)/.test(azureContext.modelId);
     const body = { ...request };
 
     if (isReasoningModel && maxTokens) {
@@ -172,7 +173,7 @@ export function translateToProvider(
       url = `${baseUrl}/openai/v1/chat/completions`;
       body.model = azureContext.deploymentName;
     } else {
-      url = `${baseUrl}/openai/deployments/${encodeURIComponent(azureContext.deploymentName)}/chat/completions?api-version=${azureContext.apiVersion || "2024-10-21"}`;
+      url = `${baseUrl}/openai/deployments/${encodeURIComponent(azureContext.deploymentName)}/chat/completions?api-version=${azureContext.apiVersion || DEFAULT_AZURE_API_VERSION}`;
       delete body.model;
     }
 

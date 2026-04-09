@@ -1,5 +1,7 @@
 import type { ProviderAdapter, ValidationResult } from "./types";
 
+export const DEFAULT_AZURE_API_VERSION = "2024-12-01-preview";
+
 export const azureOpenaiAdapter: ProviderAdapter = {
   provider: "AZURE_OPENAI",
 
@@ -10,7 +12,7 @@ export const azureOpenaiAdapter: ProviderAdapter = {
         return { valid: false, error: "Azure base URL is required for validation" };
       }
 
-      const apiVersion = options?.apiVersion || "2024-10-21";
+      const apiVersion = options?.apiVersion || DEFAULT_AZURE_API_VERSION;
       const cleanBase = baseUrl.replace(/\/+$/, "").replace(/\/openai\/?$/, "");
       const isApim = cleanBase.includes("azure-api.net");
       const endpointMode = options?.endpointMode || "legacy";
