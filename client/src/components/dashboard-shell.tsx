@@ -12,7 +12,7 @@ import { Link, useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   LayoutDashboard, Plug, Users, UserCheck, Ticket, Package, BarChart3, FileText,
-  Settings, Sun, Moon, LogOut, ChevronDown, Key,
+  Settings, Sun, Moon, LogOut, ChevronDown, Key, BookOpen,
 } from "lucide-react";
 import { AdminRoleBadge } from "./brand/role-badge";
 import { Skeleton } from "./ui/skeleton";
@@ -31,6 +31,7 @@ const ROOT_ADMIN_NAV = [
   { title: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
   { title: "Audit Log", href: "/dashboard/audit-log", icon: FileText },
   { title: "Settings", href: "/dashboard/settings", icon: Settings },
+  { title: "Docs", href: "/docs", icon: BookOpen },
 ];
 
 const TEAM_ADMIN_NAV = [
@@ -40,10 +41,12 @@ const TEAM_ADMIN_NAV = [
   { title: "Bundles", href: "/dashboard/bundles", icon: Package },
   { title: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
   { title: "Settings", href: "/dashboard/settings", icon: Settings },
+  { title: "Docs", href: "/docs", icon: BookOpen },
 ];
 
 const MEMBER_NAV = [
   { title: "Overview", href: "/dashboard", icon: LayoutDashboard },
+  { title: "Docs", href: "/docs", icon: BookOpen },
 ];
 
 function getNavItems(role: string) {
