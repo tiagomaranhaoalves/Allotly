@@ -81,10 +81,10 @@ describe("Token clamping", () => {
     expect(result.effectiveMaxTokens).toBeLessThanOrEqual(maxAffordable);
   });
 
-  it("uses default max of 4096 when no requestedMaxTokens specified", () => {
+  it("passes through undefined when no requestedMaxTokens specified (provider decides)", () => {
     const result = clampMaxTokens(50000, 10, gpt4Pricing);
     expect(result.clamped).toBe(false);
-    expect(result.effectiveMaxTokens).toBe(4096);
+    expect(result.effectiveMaxTokens).toBeUndefined();
   });
 
   it("respects lower requestedMaxTokens when affordable", () => {

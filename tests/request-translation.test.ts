@@ -560,4 +560,139 @@ describe("max_tokens / max_completion_tokens normalization", () => {
     expect(azureResult.body.max_completion_tokens).toBe(10);
     expect(azureResult.body.max_tokens).toBeUndefined();
   });
+
+  it("TEST 11 — neither supplied + no cap → no cap field injected (provider decides)", () => {
+    const req = { ...baseReq };
+    const result = translateToProvider(req, "OPENAI");
+    expect(result.body.max_tokens).toBeUndefined();
+    expect(result.body.max_completion_tokens).toBeUndefined();
+  });
+
+  it("TEST 12 — neither supplied + no cap → no cap field injected (Azure)", () => {
+    const req = { ...baseReq };
+    const azCtx = { baseUrl: "https://test.azure.com", endpointMode: "legacy" as const, apiVersion: "2024-12-01-preview", deploymentName: "gpt-4o", modelId: "gpt-4o" };
+    const result = translateToProvider(req, "AZURE_OPENAI", undefined, azCtx);
+    expect(result.body.max_tokens).toBeUndefined();
+    expect(result.body.max_completion_tokens).toBeUndefined();
+  });
+});
+
+describe("parity-by-shape: forwarded body shape per model/cap combo", () => {
+  const msg = [{ role: "user", content: "hi" }] as any;
+  const azCtxFor = (model: string) => ({
+    baseUrl: "https://test.azure.com",
+    endpointMode: "legacy" as const,
+    apiVersion: "2024-12-01-preview",
+    deploymentName: model,
+    modelId: model,
+  });
+
+  const cases: Array<{
+    label: string;
+    model: string;
+    provider: "OPENAI" | "AZURE_OPENAI";
+    input: Record<string, any>;
+    cap?: number;
+    expectMT?: number;
+    expectMCT?: number;
+  }> = [
+    { label: "azure/gpt-5 no-cap", model: "gpt-5", provider: "AZURE_OPENAI", input: {}, expectMT: undefined, expectMCT: undefined },
+    { label: "azure/gpt-5 max_tokens:10", model: "gpt-5", provider: "AZURE_OPENAI", input: { max_tokens: 10 }, expectMCT: 10 },
+    { label: "azure/gpt-5 max_completion_tokens:50", model: "gpt-5", provider: "AZURE_OPENAI", input: { max_completion_tokens: 50 }, expectMCT: 50 },
+    { label: "azure/gpt-5 both", model: "gpt-5", provider: "AZURE_OPENAI", input: { max_tokens: 10, max_completion_tokens: 50 }, expectMCT: 50 },
+    { label: "azure/gpt-4o no-cap", model: "gpt-4o", provider: "AZURE_OPENAI", input: {}, expectMT: undefined, expectMCT: undefined },
+    { label: "azure/gpt-4o max_tokens:10", model: "gpt-4o", provider: "AZURE_OPENAI", input: { max_tokens: 10 }, expectMT: 10 },
+    { label: "azure/gpt-4o max_completion_tokens:50", model: "gpt-4o", provider: "AZURE_OPENAI", input: { max_completion_tokens: 50 }, expectMCT: 50 },
+    { label: "azure/gpt-4o both", model: "gpt-4o", provider: "AZURE_OPENAI", input: { max_tokens: 10, max_completion_tokens: 50 }, expectMCT: 50 },
+    { label: "gpt-5 no-cap", model: "gpt-5", provider: "OPENAI", input: {}, expectMT: undefined, expectMCT: undefined },
+    { label: "gpt-5 max_tokens:10", model: "gpt-5", provider: "OPENAI", input: { max_tokens: 10 }, expectMCT: 10 },
+    { label: "gpt-5 max_completion_tokens:50", model: "gpt-5", provider: "OPENAI", input: { max_completion_tokens: 50 }, expectMCT: 50 },
+    { label: "gpt-5 both", model: "gpt-5", provider: "OPENAI", input: { max_tokens: 10, max_completion_tokens: 50 }, expectMCT: 50 },
+    { label: "gpt-4o no-cap", model: "gpt-4o", provider: "OPENAI", input: {}, expectMT: undefined, expectMCT: undefined },
+    { label: "gpt-4o max_tokens:10", model: "gpt-4o", provider: "OPENAI", input: { max_tokens: 10 }, expectMT: 10 },
+    { label: "gpt-4o max_completion_tokens:50", model: "gpt-4o", provider: "OPENAI", input: { max_completion_tokens: 50 }, expectMCT: 50 },
+    { label: "gpt-4o both", model: "gpt-4o", provider: "OPENAI", input: { max_tokens: 10, max_completion_tokens: 50 }, expectMCT: 50 },
+  ];
+
+  for (const c of cases) {
+    it(c.label, () => {
+      const req = { model: c.model, messages: msg, stream: false, ...c.input };
+      const cap = c.input.max_completion_tokens ?? c.input.max_tokens;
+      const azCtx = c.provider === "AZURE_OPENAI" ? azCtxFor(c.model) : undefined;
+      const result = translateToProvider(req, c.provider, cap, azCtx);
+      if (c.expectMT !== undefined) {
+        expect(result.body.max_tokens).toBe(c.expectMT);
+      } else {
+        expect(result.body.max_tokens).toBeUndefined();
+      }
+      if (c.expectMCT !== undefined) {
+        expect(result.body.max_completion_tokens).toBe(c.expectMCT);
+      } else {
+        expect(result.body.max_completion_tokens).toBeUndefined();
+      }
+    });
+  }
+});
+
+describe("client-cap-honored: budget cap does not override client cap", () => {
+  const msg = [{ role: "user", content: "hi" }] as any;
+
+  it("reasoning model: client MCT:50, voucher cap 4000 → forwarded MCT:50", () => {
+    const req = { model: "gpt-5", messages: msg, stream: false, max_completion_tokens: 50 };
+    const result = translateToProvider(req, "OPENAI", 50);
+    expect(result.body.max_completion_tokens).toBe(50);
+    expect(result.body.max_tokens).toBeUndefined();
+  });
+
+  it("azure reasoning: client MCT:50, voucher cap 4000 → forwarded MCT:50", () => {
+    const req = { model: "gpt-5", messages: msg, stream: false, max_completion_tokens: 50 };
+    const azCtx = { baseUrl: "https://test.azure.com", endpointMode: "legacy" as const, apiVersion: "2024-12-01-preview", deploymentName: "gpt-5", modelId: "gpt-5" };
+    const result = translateToProvider(req, "AZURE_OPENAI", 50, azCtx);
+    expect(result.body.max_completion_tokens).toBe(50);
+    expect(result.body.max_tokens).toBeUndefined();
+  });
+
+  it("non-reasoning: client MT:100, voucher cap 4000 → forwarded MT:100 (not 4000)", () => {
+    const req = { model: "gpt-4o", messages: msg, stream: false, max_tokens: 100 };
+    const result = translateToProvider(req, "OPENAI", 100);
+    expect(result.body.max_tokens).toBe(100);
+    expect(result.body.max_completion_tokens).toBeUndefined();
+  });
+});
+
+describe("single-cap-field invariant — Azure adapter fuzz (100 random bodies)", () => {
+  const msg = [{ role: "user", content: "hi" }] as any;
+  const models = ["gpt-4o", "gpt-4.1-mini", "o3", "gpt-5", "o4-mini", "gpt-5-mini"];
+  const azCtxFor = (model: string) => ({
+    baseUrl: "https://test.azure.com",
+    endpointMode: "legacy" as const,
+    apiVersion: "2024-12-01-preview",
+    deploymentName: model,
+    modelId: model,
+  });
+
+  it("fuzz: never sends both cap fields for AZURE_OPENAI", () => {
+    let tested = 0;
+    for (let i = 0; i < 120; i++) {
+      const model = models[i % models.length];
+      const mt = Math.random() > 0.5 ? Math.floor(Math.random() * 10000) + 1 : undefined;
+      const mct = Math.random() > 0.5 ? Math.floor(Math.random() * 10000) + 1 : undefined;
+      const cap = Math.random() > 0.3 ? Math.floor(Math.random() * 8000) + 50 : undefined;
+
+      const req: any = { model, messages: msg, stream: false };
+      if (mt !== undefined) req.max_tokens = mt;
+      if (mct !== undefined) req.max_completion_tokens = mct;
+
+      const clientCap = mct ?? mt;
+      const effectiveCap = cap !== undefined
+        ? (clientCap !== undefined ? Math.min(clientCap, cap) : cap)
+        : clientCap;
+
+      const result = translateToProvider(req, "AZURE_OPENAI", effectiveCap, azCtxFor(model));
+      const hasBoth = result.body.max_tokens !== undefined && result.body.max_completion_tokens !== undefined;
+      expect(hasBoth, `both fields for i=${i} model=${model} mt=${mt} mct=${mct} cap=${cap}`).toBe(false);
+      tested++;
+    }
+    expect(tested).toBeGreaterThanOrEqual(100);
+  });
 });

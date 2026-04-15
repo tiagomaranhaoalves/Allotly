@@ -150,7 +150,7 @@ export function clampMaxTokens(
   inputCostCents: number,
   pricing: ModelPricing,
   requestedMaxTokens?: number
-): { effectiveMaxTokens: number; clamped: boolean } {
+): { effectiveMaxTokens: number | undefined; clamped: boolean } {
   const budgetForOutput = remainingBudgetCents - inputCostCents;
   if (budgetForOutput <= 0) {
     return { effectiveMaxTokens: 50, clamped: true };
@@ -163,12 +163,11 @@ export function clampMaxTokens(
     return { effectiveMaxTokens: requestedMaxTokens, clamped: false };
   }
 
-  const defaultMax = requestedMaxTokens || 4096;
-  if (defaultMax <= maxAffordable) {
-    return { effectiveMaxTokens: defaultMax, clamped: false };
+  if (requestedMaxTokens && requestedMaxTokens > maxAffordable) {
+    return { effectiveMaxTokens: Math.max(50, maxAffordable), clamped: true };
   }
 
-  return { effectiveMaxTokens: Math.max(50, maxAffordable), clamped: true };
+  return { effectiveMaxTokens: undefined, clamped: false };
 }
 
 export async function reserveBudget(membershipId: string, estimatedCostCents: number): Promise<{ remaining: number } | ProxyError> {

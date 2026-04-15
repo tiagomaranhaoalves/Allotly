@@ -61,9 +61,23 @@ const extractors: Record<string, (body: any) => Partial<UpstreamErrorDetail>> = 
   GOOGLE: extractGoogle,
 };
 
-function mapStatus(upstreamStatus: number): { allotlyStatus: number; errorType: string } {
+const QUOTA_PATTERNS = [
+  /token quota.*exceeded/i,
+  /quota.*exceeded/i,
+  /capacity.*exceeded/i,
+];
+
+function isQuotaExhausted(message: string | null | undefined): boolean {
+  if (!message) return false;
+  return QUOTA_PATTERNS.some(p => p.test(message));
+}
+
+function mapStatus(upstreamStatus: number, upstreamMessage?: string | null): { allotlyStatus: number; errorType: string } {
   if (upstreamStatus === 429) {
     return { allotlyStatus: 429, errorType: "upstream_rate_limited" };
+  }
+  if (upstreamStatus === 403 && isQuotaExhausted(upstreamMessage)) {
+    return { allotlyStatus: 502, errorType: "upstream_quota_exhausted" };
   }
   if (upstreamStatus === 401 || upstreamStatus === 403) {
     return { allotlyStatus: 502, errorType: "upstream_auth_failed" };
@@ -96,12 +110,19 @@ export function buildUpstreamError(
   const redactedMessage = redact(String(rawMessage), providerKeys);
   const redactedCode = extracted.code ? redact(String(extracted.code), providerKeys) : null;
 
-  const { allotlyStatus, errorType } = mapStatus(upstreamStatus);
+  const { allotlyStatus, errorType } = mapStatus(upstreamStatus, rawMessage);
 
   const codeOrStatus = redactedCode || String(upstreamStatus);
-  const friendlyMessage = redactedMessage
-    ? `Allotly: upstream ${provider.toLowerCase()} error (${codeOrStatus}): ${redactedMessage}`
-    : "Allotly: upstream provider returned an error.";
+  let friendlyMessage: string;
+  if (errorType === "upstream_quota_exhausted") {
+    friendlyMessage = `Allotly: the upstream ${provider.toLowerCase()} deployment's token quota is exhausted. `
+      + "This is an Azure subscription quota limit, not an Allotly budget limit. "
+      + "Contact your Azure tenant admin to increase the token-per-minute (TPM) quota for this model deployment.";
+  } else if (redactedMessage) {
+    friendlyMessage = `Allotly: upstream ${provider.toLowerCase()} error (${codeOrStatus}): ${redactedMessage}`;
+  } else {
+    friendlyMessage = "Allotly: upstream provider returned an error.";
+  }
 
   return {
     allotlyStatus,

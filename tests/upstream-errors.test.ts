@@ -140,6 +140,38 @@ describe("formatUpstreamLogLine", () => {
     expect(line).not.toContain("allotly_sk_test_abcd1234");
   });
 
+  it("APIM quota: 403 + quota-exceeded message → upstream_quota_exhausted", () => {
+    const body = JSON.stringify({
+      error: {
+        code: null,
+        message: "OpenAI token quota is already exceeded",
+      },
+    });
+    const result = buildUpstreamError("AZURE_OPENAI", 403, body);
+    expect(result.errorType).toBe("upstream_quota_exhausted");
+    expect(result.allotlyStatus).toBe(502);
+    expect(result.friendlyMessage).toContain("token quota is exhausted");
+    expect(result.friendlyMessage).toContain("Azure");
+    expect(result.friendlyMessage).toContain("tenant admin");
+    expect(result.friendlyMessage).not.toContain("upstream_auth_failed");
+  });
+
+  it("APIM quota: 403 without quota message → upstream_auth_failed (unchanged)", () => {
+    const body = JSON.stringify({
+      error: { message: "Unauthorized" },
+    });
+    const result = buildUpstreamError("AZURE_OPENAI", 403, body);
+    expect(result.errorType).toBe("upstream_auth_failed");
+  });
+
+  it("APIM quota: 403 + capacity exceeded variant → upstream_quota_exhausted", () => {
+    const body = JSON.stringify({
+      error: { message: "Token capacity exceeded for this deployment" },
+    });
+    const result = buildUpstreamError("AZURE_OPENAI", 403, body);
+    expect(result.errorType).toBe("upstream_quota_exhausted");
+  });
+
   it("TEST 9 — error.message contains upstream code and message for SDK consumers", () => {
     const body = JSON.stringify({
       error: {
