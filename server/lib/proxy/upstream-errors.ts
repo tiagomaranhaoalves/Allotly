@@ -98,10 +98,15 @@ export function buildUpstreamError(
 
   const { allotlyStatus, errorType } = mapStatus(upstreamStatus);
 
+  const codeOrStatus = redactedCode || String(upstreamStatus);
+  const friendlyMessage = redactedMessage
+    ? `Allotly: upstream ${provider.toLowerCase()} error (${codeOrStatus}): ${redactedMessage}`
+    : "Allotly: upstream provider returned an error.";
+
   return {
     allotlyStatus,
     errorType,
-    friendlyMessage: "Allotly: upstream provider returned an error.",
+    friendlyMessage,
     upstream: {
       status: upstreamStatus,
       code: redactedCode,

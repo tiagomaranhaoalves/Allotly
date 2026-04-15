@@ -128,23 +128,46 @@ export interface AzureContext {
   modelId: string;
 }
 
+function normalizeTokenCap(
+  body: any,
+  isReasoningModel: boolean,
+  effectiveValue: number | undefined,
+  originalRequest: any,
+): void {
+  delete body.max_tokens;
+  delete body.max_completion_tokens;
+
+  if (!effectiveValue) return;
+
+  if (isReasoningModel) {
+    body.max_completion_tokens = effectiveValue;
+    return;
+  }
+
+  const clientSentMCT = originalRequest.max_completion_tokens !== undefined;
+  const clientSentMT = originalRequest.max_tokens !== undefined;
+
+  if (clientSentMCT) {
+    body.max_completion_tokens = effectiveValue;
+  } else if (clientSentMT) {
+    body.max_tokens = effectiveValue;
+  } else {
+    body.max_completion_tokens = effectiveValue;
+  }
+}
+
 export function translateToProvider(
   request: OpenAIRequest,
   provider: ProviderType,
   effectiveMaxTokens?: number,
   azureContext?: AzureContext
 ): { url: string; body: any; headers: Record<string, string>; method: string; proxyStopSequences?: string[] } {
-  const maxTokens = effectiveMaxTokens ?? request.max_tokens;
+  const maxTokens = effectiveMaxTokens ?? request.max_completion_tokens ?? request.max_tokens;
 
   if (provider === "OPENAI") {
     const isReasoningModel = /^(o1|o3|o4|gpt-5)/.test(request.model);
     const body = { ...request };
-    if (isReasoningModel && maxTokens) {
-      body.max_completion_tokens = maxTokens;
-      delete body.max_tokens;
-    } else {
-      body.max_tokens = maxTokens;
-    }
+    normalizeTokenCap(body, isReasoningModel, maxTokens, request);
     return {
       url: "https://api.openai.com/v1/chat/completions",
       method: "POST",
@@ -158,13 +181,7 @@ export function translateToProvider(
 
     const isReasoningModel = /^(o1|o3|o4|gpt-5)/.test(azureContext.modelId);
     const body = { ...request };
-
-    if (isReasoningModel && maxTokens) {
-      body.max_completion_tokens = maxTokens;
-      delete body.max_tokens;
-    } else {
-      body.max_tokens = maxTokens;
-    }
+    normalizeTokenCap(body, isReasoningModel, maxTokens, request);
 
     let url: string;
     const baseUrl = azureContext.baseUrl.replace(/\/$/, "");

@@ -459,3 +459,105 @@ describe("effectiveAzureApiVersion", () => {
     expect(result.url).not.toContain("2024-10-21");
   });
 });
+
+describe("max_tokens / max_completion_tokens normalization", () => {
+  const baseReq = {
+    model: "gpt-4o",
+    messages: [{ role: "user", content: "hi" }],
+    stream: false,
+  };
+
+  it("TEST 1 — injection invariant: never sends both fields (property test)", () => {
+    const combos = [
+      { max_tokens: undefined, max_completion_tokens: undefined },
+      { max_tokens: 100, max_completion_tokens: undefined },
+      { max_tokens: undefined, max_completion_tokens: 100 },
+      { max_tokens: 100, max_completion_tokens: 200 },
+    ];
+    const caps = [undefined, 500, 4000, 100000];
+    const models = ["gpt-4o", "gpt-4.1-mini", "o3", "gpt-5", "o4-mini"];
+    const providers: Array<{ p: "OPENAI" | "AZURE_OPENAI"; ctx?: any }> = [
+      { p: "OPENAI" },
+      { p: "AZURE_OPENAI", ctx: { baseUrl: "https://test.azure.com", endpointMode: "legacy" as const, apiVersion: "2024-12-01-preview", deploymentName: "gpt-4o", modelId: "gpt-4o" } },
+    ];
+    let tested = 0;
+    for (const combo of combos) {
+      for (const cap of caps) {
+        for (const model of models) {
+          for (const { p, ctx } of providers) {
+            const req = { ...baseReq, model, ...combo };
+            const azCtx = ctx ? { ...ctx, deploymentName: model, modelId: model } : undefined;
+            if (p === "AZURE_OPENAI" && !azCtx) continue;
+            const result = translateToProvider(req, p, cap, azCtx);
+            const hasBoth = result.body.max_tokens !== undefined && result.body.max_completion_tokens !== undefined;
+            expect(hasBoth, `both fields set for model=${model} provider=${p} cap=${cap} combo=${JSON.stringify(combo)}`).toBe(false);
+            tested++;
+          }
+        }
+      }
+    }
+    expect(tested).toBeGreaterThan(100);
+  });
+
+  it("TEST 2 — modern SDK: client sends only max_completion_tokens → preserved for gpt-4o (OpenAI)", () => {
+    const req = { ...baseReq, max_completion_tokens: 10 };
+    const result = translateToProvider(req, "OPENAI");
+    expect(result.body.max_completion_tokens).toBe(10);
+    expect(result.body.max_tokens).toBeUndefined();
+  });
+
+  it("TEST 3 — modern SDK: client sends only max_completion_tokens → preserved for azure/gpt-4o", () => {
+    const req = { ...baseReq, max_completion_tokens: 10 };
+    const azCtx = { baseUrl: "https://test.azure.com", endpointMode: "legacy" as const, apiVersion: "2024-12-01-preview", deploymentName: "gpt-4o", modelId: "gpt-4o" };
+    const result = translateToProvider(req, "AZURE_OPENAI", undefined, azCtx);
+    expect(result.body.max_completion_tokens).toBe(10);
+    expect(result.body.max_tokens).toBeUndefined();
+  });
+
+  it("TEST 4 — legacy field preserved: client sends only max_tokens → kept as max_tokens", () => {
+    const req = { ...baseReq, max_tokens: 10 };
+    const result = translateToProvider(req, "OPENAI");
+    expect(result.body.max_tokens).toBe(10);
+    expect(result.body.max_completion_tokens).toBeUndefined();
+  });
+
+  it("TEST 5 — budget clamp (modern): cap=4000, client sends max_completion_tokens=10000 → clamped", () => {
+    const req = { ...baseReq, max_completion_tokens: 10000 };
+    const result = translateToProvider(req, "OPENAI", 4000);
+    expect(result.body.max_completion_tokens).toBe(4000);
+    expect(result.body.max_tokens).toBeUndefined();
+  });
+
+  it("TEST 6 — budget clamp (legacy): cap=4000, client sends max_tokens=10000 → clamped, field preserved", () => {
+    const req = { ...baseReq, max_tokens: 10000 };
+    const result = translateToProvider(req, "OPENAI", 4000);
+    expect(result.body.max_tokens).toBe(4000);
+    expect(result.body.max_completion_tokens).toBeUndefined();
+  });
+
+  it("TEST 7 — neither supplied + cap exists → injects max_completion_tokens (modern)", () => {
+    const req = { ...baseReq };
+    const result = translateToProvider(req, "OPENAI", 4000);
+    expect(result.body.max_completion_tokens).toBe(4000);
+    expect(result.body.max_tokens).toBeUndefined();
+  });
+
+  it("TEST 8 — reasoning model: client sends max_completion_tokens → preserved, no max_tokens", () => {
+    const req = { ...baseReq, model: "gpt-5", max_completion_tokens: 50 };
+    const result = translateToProvider(req, "OPENAI");
+    expect(result.body.max_completion_tokens).toBe(50);
+    expect(result.body.max_tokens).toBeUndefined();
+  });
+
+  it("TEST 10 — cross-path parity: same body via OpenAI and Azure both succeed", () => {
+    const req = { ...baseReq, max_completion_tokens: 10 };
+    const openaiResult = translateToProvider(req, "OPENAI");
+    const azCtx = { baseUrl: "https://test.azure.com", endpointMode: "legacy" as const, apiVersion: "2024-12-01-preview", deploymentName: "gpt-4o", modelId: "gpt-4o" };
+    const azureResult = translateToProvider(req, "AZURE_OPENAI", undefined, azCtx);
+
+    expect(openaiResult.body.max_completion_tokens).toBe(10);
+    expect(openaiResult.body.max_tokens).toBeUndefined();
+    expect(azureResult.body.max_completion_tokens).toBe(10);
+    expect(azureResult.body.max_tokens).toBeUndefined();
+  });
+});

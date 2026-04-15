@@ -140,6 +140,23 @@ describe("formatUpstreamLogLine", () => {
     expect(line).not.toContain("allotly_sk_test_abcd1234");
   });
 
+  it("TEST 9 — error.message contains upstream code and message for SDK consumers", () => {
+    const body = JSON.stringify({
+      error: {
+        code: "invalid_parameter_combination",
+        message: "Setting 'max_tokens' and 'max_completion_tokens' at the same time is not supported.",
+        param: "max_tokens",
+      },
+    });
+    const result = buildUpstreamError("OPENAI", 400, body);
+    expect(result.friendlyMessage).toContain("invalid_parameter_combination");
+    expect(result.friendlyMessage).toContain("max_tokens");
+    expect(result.friendlyMessage).toContain("openai");
+    expect(result.upstream.code).toBe("invalid_parameter_combination");
+    expect(result.upstream.message).toContain("max_completion_tokens");
+    expect(result.upstream.param).toBe("max_tokens");
+  });
+
   it("does not leak secrets in log line message", () => {
     const providerKey = "sk-proj-abc123XYZ456789012345678";
     const upstream = {

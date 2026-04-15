@@ -50,6 +50,7 @@ const chatRequestSchema = z.object({
   })).min(1, "messages must be a non-empty array"),
   stream: z.boolean().optional().default(false),
   max_tokens: z.number().int().min(1, "max_tokens must be at least 1").optional(),
+  max_completion_tokens: z.number().int().min(1, "max_completion_tokens must be at least 1").optional(),
   temperature: z.number().optional(),
   top_p: z.number().optional(),
 }).passthrough();
@@ -339,8 +340,9 @@ export async function handleChatCompletion(req: Request, res: Response) {
     const inputCostCents = estimateInputCostCents(inputTokens, pricing);
 
     const remainingBudgetCents = membership.monthlyBudgetCents - membership.currentPeriodSpendCents;
+    const clientTokenCap = (parsed as any).max_completion_tokens ?? parsed.max_tokens;
     const { effectiveMaxTokens, clamped } = clampMaxTokens(
-      remainingBudgetCents, inputCostCents, pricing, parsed.max_tokens
+      remainingBudgetCents, inputCostCents, pricing, clientTokenCap
     );
 
     const estimatedOutputCostCents = calculateOutputCostCents(effectiveMaxTokens, pricing);

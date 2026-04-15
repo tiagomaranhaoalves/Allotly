@@ -1,0 +1,123 @@
+# Replit Prompt — Fix `max_tokens` Injection Breaking Modern SDK Clients
+
+## Symptom
+
+Any client sending ONLY `max_completion_tokens` (what openai-js ≥ 4.x, python-openai ≥ 1.x, LiteLLM, continue.dev, etc. now emit by default) gets HTTP 400 with:
+
+```json
+{
+  "error": {
+    "type": "upstream_error",
+    "provider": "openai",
+    "upstream": {
+      "status": 400,
+      "code": "invalid_parameter_combination",
+      "message": "Setting 'max_tokens' and 'max_completion_tokens' at the same time is not supported.",
+      "param": "max_tokens"
+    }
+  }
+}
+```
+
+The client never sent `max_tokens`. Something in Allotly's request-shaping is adding it on forwarding.
+
+## Confirmed scope (truth table from production, voucher key redacted)
+
+| Path | client sends only `max_completion_tokens` | only `max_tokens` | neither | both |
+|---|---|---|---|---|
+| `gpt-4o` (OpenAI direct) | **400** | 200 | 200 | 400 (expected, upstream rule) |
+| `azure/gpt-4o` (Azure OpenAI) | **400** | 200 | 200 | 400 (expected) |
+
+**The bug hits BOTH OpenAI and Azure paths** → the injector is in shared request-shaping middleware, NOT a per-provider adapter.
+
+Not affected: models where Allotly already knows `max_tokens` doesn't apply (gpt-5, gpt-5.1, gpt-5.2, o3, o3-mini, o4-mini) — those return 200 with client-supplied `max_completion_tokens`. This tells us the injector is model-aware and skips reasoning/GPT-5 families, but still injects on legacy-chat families (gpt-4o, gpt-4.1-*).
+
+## Root cause (hypothesis)
+
+The request-shaping middleware injects a token cap named `max_tokens` on outbound chat-completion calls for legacy-chat models — almost certainly for per-voucher budget enforcement, since `max_tokens` was the classic per-request cost cap. That injection is unconditional on the *presence* of `max_tokens` in the client body but does not check for `max_completion_tokens`. So when a client supplies only `max_completion_tokens`, the outbound body ends up with both, and OpenAI/Azure reject it.
+
+## Fix (three parts)
+
+### 1. Stop ever sending both fields on the same request
+
+In the shared request-shaping middleware (not the provider adapters), before forwarding a chat-completion request, normalize the cap:
+
+```
+supplied_mc = body.max_completion_tokens  # may be undefined
+supplied_m  = body.max_tokens              # may be undefined
+cap         = voucher.per_request_token_cap  # may be undefined
+
+if supplied_mc is not undefined:
+    effective = min(supplied_mc, cap) if cap else supplied_mc
+    body.max_completion_tokens = effective
+    delete body.max_tokens                 # never send both
+elif supplied_m is not undefined:
+    effective = min(supplied_m, cap) if cap else supplied_m
+    body.max_tokens = effective
+    # leave max_completion_tokens absent
+else:
+    # neither supplied — only inject a cap if the voucher has one
+    if cap:
+        if model_is_reasoning_or_gpt5(model):
+            body.max_completion_tokens = cap
+        else:
+            body.max_completion_tokens = cap  # prefer modern field even for legacy chat models; both accept it
+```
+
+Key rules:
+- Never set both `max_tokens` AND `max_completion_tokens` in the same outbound body. This is invariant.
+- If the client picked a field name, keep that field name (don't silently rewrite `max_tokens` → `max_completion_tokens` on their body — some old SDKs parse responses in a way that breaks if we change field names).
+- Default injected cap should use `max_completion_tokens` (modern field). This works on all current OpenAI models including legacy chat; it's the old `max_tokens` that's the ticking time bomb.
+
+### 2. Audit every other place in the codebase that sets/mutates `max_tokens`
+
+Grep for `max_tokens`. For every write site:
+- If it's inside a provider adapter, confirm it only runs when the middleware has NOT already set `max_completion_tokens`, and vice versa. An invariant-check assertion right before the outbound `fetch` call is cheap and catches regressions: assert not (body.max_tokens and body.max_completion_tokens).
+- If any legacy call-site unconditionally writes `max_tokens`, migrate it to `max_completion_tokens`.
+
+### 3. Improve error surfacing for clients using only `error.message`
+
+The upstream error is already populated under `error.upstream.{code,message,param}` — good. But most OpenAI-compat SDKs only read `error.message`. Concatenate the upstream summary into the top-level message:
+
+```
+error.message = f"Allotly: upstream {provider} error ({upstream.code or upstream.status}): {upstream.message}"
+```
+
+Keep the structured `error.upstream` object for programmatic consumers. Redaction pass from the earlier prompt still applies.
+
+## Tests to add (must all pass before deploy)
+
+1. **Injection invariant test** — property test: generate 1000 random chat-completion bodies with combinations of `max_tokens`, `max_completion_tokens`, and voucher caps. Assert the forwarded body never contains both fields simultaneously.
+
+2. **Modern-SDK happy path (regression for this bug)** — client sends `{model: "gpt-4o", messages:[...], max_completion_tokens: 10}` → assert forwarded body has `max_completion_tokens` and does NOT contain `max_tokens`; assert OpenAI mock returns 200.
+
+3. **Same as above for Azure** — client sends `{model: "azure/gpt-4o", ..., max_completion_tokens: 10}` → same assertions on the Azure-bound body.
+
+4. **Legacy-field preservation** — client sends only `max_tokens: 10` → forwarded body has `max_tokens: 10`, not `max_completion_tokens`.
+
+5. **Budget clamp — modern** — voucher cap = 4000, client sends `max_completion_tokens: 10000` → forwarded body has `max_completion_tokens: 4000`, no `max_tokens`.
+
+6. **Budget clamp — legacy** — voucher cap = 4000, client sends `max_tokens: 10000` → forwarded body has `max_tokens: 4000`, no `max_completion_tokens`.
+
+7. **Neither supplied + cap exists** — voucher cap = 4000, client sends no cap → forwarded body has `max_completion_tokens: 4000` (the modern field).
+
+8. **Reasoning-model path** — client sends `{model: "gpt-5", ..., max_completion_tokens: 50}` → forwarded body has `max_completion_tokens: 50`, no `max_tokens` (and in particular the injector must not add `max_tokens` on this path — it currently doesn't, but add the test to pin it).
+
+9. **Error-surface test** — force an upstream 400 → assert the Allotly response has `error.message` containing the upstream code and message text (redacted), AND still has `error.upstream` populated for programmatic consumers.
+
+10. **Cross-path parity test** — same client body `{model:"gpt-4o", messages:[...], max_completion_tokens:10}` sent via both OpenAI-direct and `azure/gpt-4o` routes → both succeed (both return 200 against mocks). This is the test that would have caught the original bug.
+
+## Do NOT
+
+- Do not change voucher enforcement, budget accounting, or provider allowlist logic.
+- Do not silently rewrite client-supplied field names (keep `max_tokens` as `max_tokens` if that's what the client sent).
+- Do not remove the `error.upstream` structured object — only augment `error.message`.
+- Do not apply this fix to only the OpenAI adapter — the Azure path is affected too; the fix belongs in the shared request-shaping middleware.
+
+## Deliverable
+
+1. Patch to the shared request-shaping middleware implementing part 1.
+2. Audit pass for part 2 (grep results + commits migrating any unconditional `max_tokens` writes).
+3. Error-message concatenation for part 3.
+4. All ten tests above green.
+5. Manual smoke-test log showing all four corners of the truth table for both `gpt-4o` and `azure/gpt-4o` return the correct result.
