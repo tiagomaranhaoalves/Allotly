@@ -1,0 +1,158 @@
+# Replit Prompt — Azure-Reasoning Token Cap Regression (BUG-2026-04-15-D)
+
+## Symptom
+
+Immediately after shipping the fix for the `max_tokens` injection bug (prompt:
+`replit-prompt-fix-max-tokens-injection.md`), every call to an **Azure reasoning model**
+via the `azure/` prefix with ANY token-cap field now returns HTTP 502 with upstream:
+
+```json
+{
+  "status": 403,
+  "code": null,
+  "message": "OpenAI token quota is already exceeded",
+  "param": null
+}
+```
+
+The same model with no cap field at all returns 200. The same model family accessed via
+**direct OpenAI** (no `azure/` prefix) still works regardless of cap.
+
+## Confirmed truth table (production, 2026-04-15)
+
+| Model | no cap | `max_tokens:10` | `max_completion_tokens:50` | both |
+|---|---|---|---|---|
+| `azure/gpt-5` | **200** | 502 | 502 | 502 |
+| `azure/gpt-5.1` | — | — | **502** | — |
+| `azure/o3` | — | — | **502** | — |
+| `azure/o4-mini` | — | — | **502** | — |
+| `gpt-5` (direct) | **200** | — | **200** | — |
+| `azure/gpt-4o` | 200 | **200** | **200** | **200** |
+| `azure/gpt-4.1` | 200 | **200** | **200** | **200** |
+
+The pattern is tight: only Azure-routed, only reasoning-family, only when a cap field is
+present. Before the BUG-A fix, `azure/gpt-5` with `max_completion_tokens:50` was returning
+200 with 64 reasoning tokens used. So the trigger was introduced by the cap-normalization
+changes that fixed BUG-A.
+
+## Two candidate root causes
+
+### Hypothesis A — Allotly regression (most likely)
+The BUG-A fix reshaped how cap values are written into the outbound body. On the Azure
+reasoning path, the middleware may now be:
+- writing a voucher/default cap value that's much larger than what the client sent, or
+- writing both `max_tokens` and `max_completion_tokens` in a way APIM's token-quota
+  policy double-counts, or
+- clamping UP to a minimum instead of DOWN to a ceiling, or
+- sending a field the APIM policy treats as "requested tokens" and pre-rejects against a
+  low remaining quota bucket.
+
+### Hypothesis B — NebulaOne quota genuinely exhausted
+APIM's token-quota policy pre-checks requested-tokens against remaining quota; no-cap
+requests bypass the pre-check and only spend what they actually use (handful of tokens).
+
+We cannot distinguish these without seeing what Allotly forwards. **Do NOT attempt a
+fix until diagnosis is complete.**
+
+## What I want from you — TWO PHASES, in order
+
+### PHASE 1 — DIAGNOSE (no user-facing changes)
+
+Add structured logging on the Azure provider adapter for every outbound
+chat-completion request. The log line must capture, with secrets redacted per the
+existing redactor:
+
+```
+ts=<iso> req_id=<uuid> voucher=allotly_sk_***<last4>
+provider=azure_openai deployment=<deployment_name> is_reasoning=<bool>
+client_supplied: { max_tokens?: <num>, max_completion_tokens?: <num> }
+forwarded_body_caps: { max_tokens?: <num>, max_completion_tokens?: <num> }
+voucher_cap: <num|null>
+upstream_status: <num|null>
+upstream_code: <str|null>
+upstream_message_first_80_chars: <str|null>
+```
+
+Do NOT log any message contents, API keys, or voucher keys (only `***<last4>`). Ship
+this log immediately. The single question this log must answer:
+
+> For a client request sending `{model:"azure/gpt-5", max_completion_tokens:50}`, what
+> token-cap fields are present in the body Allotly sent to APIM, and with what values?
+
+Run the following four probes yourself after deploy, with a test voucher, and include
+the log output in your reply:
+
+1. `azure/gpt-5` + `max_completion_tokens:50`
+2. `azure/gpt-5` + `max_tokens:10`
+3. `azure/gpt-5` + neither
+4. `azure/gpt-4o` + `max_completion_tokens:50`  (control — known working)
+
+The diff between probe 3 (passing) and probe 1 (failing) on the forwarded body is the
+smoking gun. Probe 4 tells us whether the issue is reasoning-specific or Azure-wide.
+
+### PHASE 2 — FIX (only after diagnosis)
+
+Based on the Phase 1 log, pick the correct fix:
+
+**If the forwarded body contains a cap value larger than the client supplied** (e.g., we
+wrote a default voucher cap ignoring the client value):
+- The cap-normalization logic for the Azure-reasoning branch needs to honor the client's
+  value as the ceiling, not replace it. Use `min(client_value, voucher_cap)` — never
+  just `voucher_cap`.
+
+**If the forwarded body contains both `max_tokens` AND `max_completion_tokens`**:
+- The BUG-A fix's invariant is leaking on this path. Enforce the same invariant in the
+  Azure adapter: assert exactly one cap field is written, never both.
+
+**If the forwarded body matches the client body exactly** (Allotly is not mutating):
+- Hypothesis A is falsified; it's NebulaOne quota exhaustion. Two deliverables:
+  (a) Translate APIM's 403 `"OpenAI token quota is already exceeded"` into a clearer
+      Allotly error surface that names the subscription, not the voucher, so customers
+      can tell "my Allotly budget is fine, my Azure quota is the problem." Add a
+      dedicated error code like `upstream_quota_exhausted` and include language
+      recommending the user contact their Azure tenant admin.
+  (b) No code change for the happy path — this is a NebulaOne operational issue.
+
+**If something else** (e.g., field-name mismatch like `maxCompletionTokens` camelCase):
+- Fix the translation logic in the Azure adapter.
+
+## Tests to add regardless of which fix path
+
+1. **Parity-by-shape**: for each of {`azure/gpt-5`, `azure/gpt-4o`, `gpt-5`, `gpt-4o`},
+   run `{no-cap, max_tokens, max_completion_tokens, both}` against a mocked upstream. For
+   each shape assert a specific forwarded-body shape (e.g., "both" → only
+   `max_completion_tokens` on reasoning models, only `max_tokens` on legacy-chat).
+
+2. **Client-cap-honored test**: client sends `max_completion_tokens:50`, voucher cap
+   is 4000, model is reasoning. Forwarded body MUST have `max_completion_tokens:50`, not
+   4000. This is the test that catches Hypothesis A.
+
+3. **Single-cap-field invariant (Azure adapter)**: fuzz 100 random bodies, assert
+   outbound never contains both cap fields. (Mirror of the BUG-A test but scoped to the
+   Azure provider adapter, not just the middleware.)
+
+4. **APIM quota-error surface test**: when upstream returns 403 with the
+   `"OpenAI token quota is already exceeded"` message, assert Allotly surfaces it as
+   `type: "upstream_quota_exhausted"` (or similar named code) — not the generic
+   `upstream_auth_failed`, which is misleading here.
+
+## Do NOT
+
+- Do not roll back the BUG-A fix. That bug was real and the fix for legacy-chat models is
+  working (verified 8/8 cells green on gpt-4o, gpt-4.1 direct and azure).
+- Do not change behavior on the OpenAI-direct path — `gpt-5` direct still works and must
+  continue to work.
+- Do not "fix" this by stripping caps from Azure-reasoning requests — that breaks budget
+  enforcement.
+- Do not conclude it's NebulaOne's problem without running Phase 1 first. The temporal
+  correlation with our deploy is too tight to accept the quota-exhaustion story without
+  evidence.
+
+## Acceptance
+
+Phase 1 deliverable: log output for the four probes above, pasted back.
+
+Phase 2 deliverable: whichever fix applies per the diagnosis, plus all four tests green,
+plus a re-run of the truth table against production showing every cell in the table at
+the top returning 200 (or, in the quota-exhaustion scenario, returning a clearly-named
+quota-specific error code with helpful message).

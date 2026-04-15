@@ -393,6 +393,25 @@ export async function handleChatCompletion(req: Request, res: Response) {
     translated.body = sanitizeProviderBody(translated.body, provider);
     const authInfo = setProviderAuth(translated.headers, provider, adminApiKey, translated.url);
 
+    if (provider === "AZURE_OPENAI") {
+      const isReasoningModel = azureContext ? /^(o1|o3|o4|gpt-5)/.test(azureContext.modelId) : false;
+      const maskedVoucher = req.headers.authorization
+        ? `allotly_sk_***${(req.headers.authorization.replace("Bearer ", "")).slice(-4)}`
+        : "none";
+      console.log(
+        `[azure-diag] ts=${new Date().toISOString()}` +
+        ` req_id=${requestId}` +
+        ` voucher=${maskedVoucher}` +
+        ` provider=azure_openai` +
+        ` deployment=${azureContext?.deploymentName ?? "unknown"}` +
+        ` is_reasoning=${isReasoningModel}` +
+        ` client_supplied: { max_tokens: ${(parsed as any).max_tokens ?? "undefined"}, max_completion_tokens: ${(parsed as any).max_completion_tokens ?? "undefined"} }` +
+        ` forwarded_body_caps: { max_tokens: ${translated.body.max_tokens ?? "undefined"}, max_completion_tokens: ${translated.body.max_completion_tokens ?? "undefined"} }` +
+        ` voucher_cap: ${effectiveMaxTokens ?? "null"}` +
+        ` clamped: ${clamped}`
+      );
+    }
+
     let providerResponse: globalThis.Response;
     try {
       providerResponse = await fetch(authInfo.url, {
@@ -431,6 +450,15 @@ export async function handleChatCompletion(req: Request, res: Response) {
       const logLine = formatUpstreamLogLine(provider, req.headers.authorization, parsed.model, upstreamErr.upstream);
       console.error(`[proxy] ${logLine}`);
 
+      if (provider === "AZURE_OPENAI") {
+        console.log(
+          `[azure-diag] req_id=${requestId}` +
+          ` upstream_status: ${status}` +
+          ` upstream_code: ${upstreamErr.upstream.code ?? "null"}` +
+          ` upstream_message_first_80_chars: ${(upstreamErr.upstream.message || "").slice(0, 80)}`
+        );
+      }
+
       budgetCtx = await buildBudgetCtx();
       if (res.headersSent) return;
 
@@ -450,6 +478,10 @@ export async function handleChatCompletion(req: Request, res: Response) {
           upstream: upstreamErr.upstream,
         },
       });
+    }
+
+    if (provider === "AZURE_OPENAI") {
+      console.log(`[azure-diag] req_id=${requestId} upstream_status: ${providerResponse.status} (OK)`);
     }
 
     if (clamped) {
