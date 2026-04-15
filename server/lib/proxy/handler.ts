@@ -533,6 +533,22 @@ export async function handleChatCompletion(req: Request, res: Response) {
     concurrencyAcquired = false;
 
     const durationMs = Date.now() - startTime;
+    const reservationDeltaCents = reservedCostCents - actualCostCents;
+    const reservationRatio = reservedCostCents > 0 ? (actualCostCents / reservedCostCents).toFixed(2) : "N/A";
+    console.log(
+      `[budget-obs]` +
+      ` model=${provider === "AZURE_OPENAI" && azureDeployment ? azureDeployment.modelId : parsed.model}` +
+      ` provider=${provider.toLowerCase()}` +
+      ` est_out_tokens=${budgetEstimateTokens}` +
+      ` actual_out_tokens=${actualOutputTokens}` +
+      ` reserved_cents=${reservedCostCents}` +
+      ` actual_cents=${actualCostCents}` +
+      ` delta_cents=${reservationDeltaCents}` +
+      ` ratio=${reservationRatio}` +
+      ` client_cap=${clientTokenCap ?? "none"}` +
+      ` clamped=${clamped}` +
+      ` duration_ms=${durationMs}`
+    );
 
     setImmediate(async () => {
       try {
