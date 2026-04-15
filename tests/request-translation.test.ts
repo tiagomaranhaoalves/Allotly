@@ -561,19 +561,50 @@ describe("max_tokens / max_completion_tokens normalization", () => {
     expect(azureResult.body.max_tokens).toBeUndefined();
   });
 
-  it("TEST 11 — neither supplied + no cap → no cap field injected (provider decides)", () => {
-    const req = { ...baseReq };
+  it("no-cap parity: OpenAI non-reasoning (gpt-4o) — no cap fields in forwarded body", () => {
+    const req = { ...baseReq, model: "gpt-4o" };
     const result = translateToProvider(req, "OPENAI");
-    expect(result.body.max_tokens).toBeUndefined();
-    expect(result.body.max_completion_tokens).toBeUndefined();
+    expect("max_tokens" in result.body).toBe(false);
+    expect("max_completion_tokens" in result.body).toBe(false);
   });
 
-  it("TEST 12 — neither supplied + no cap → no cap field injected (Azure)", () => {
-    const req = { ...baseReq };
+  it("no-cap parity: OpenAI reasoning (gpt-5) — no cap fields in forwarded body", () => {
+    const req = { ...baseReq, model: "gpt-5" };
+    const result = translateToProvider(req, "OPENAI");
+    expect("max_tokens" in result.body).toBe(false);
+    expect("max_completion_tokens" in result.body).toBe(false);
+  });
+
+  it("no-cap parity: Azure legacy non-reasoning (gpt-4o) — no cap fields in forwarded body", () => {
+    const req = { ...baseReq, model: "gpt-4o" };
     const azCtx = { baseUrl: "https://test.azure.com", endpointMode: "legacy" as const, apiVersion: "2024-12-01-preview", deploymentName: "gpt-4o", modelId: "gpt-4o" };
     const result = translateToProvider(req, "AZURE_OPENAI", undefined, azCtx);
-    expect(result.body.max_tokens).toBeUndefined();
-    expect(result.body.max_completion_tokens).toBeUndefined();
+    expect("max_tokens" in result.body).toBe(false);
+    expect("max_completion_tokens" in result.body).toBe(false);
+  });
+
+  it("no-cap parity: Azure reasoning (gpt-5) — no cap fields in forwarded body", () => {
+    const req = { ...baseReq, model: "gpt-5" };
+    const azCtx = { baseUrl: "https://test.azure.com", endpointMode: "legacy" as const, apiVersion: "2024-12-01-preview", deploymentName: "gpt-5", modelId: "gpt-5" };
+    const result = translateToProvider(req, "AZURE_OPENAI", undefined, azCtx);
+    expect("max_tokens" in result.body).toBe(false);
+    expect("max_completion_tokens" in result.body).toBe(false);
+  });
+
+  it("no-cap parity survives sanitizeProviderBody (full pipeline)", () => {
+    const paths: Array<{ model: string; provider: "OPENAI" | "AZURE_OPENAI"; azCtx?: any }> = [
+      { model: "gpt-4o", provider: "OPENAI" },
+      { model: "gpt-5", provider: "OPENAI" },
+      { model: "gpt-4o", provider: "AZURE_OPENAI", azCtx: { baseUrl: "https://test.azure.com", endpointMode: "legacy" as const, apiVersion: "2024-12-01-preview", deploymentName: "gpt-4o", modelId: "gpt-4o" } },
+      { model: "gpt-5", provider: "AZURE_OPENAI", azCtx: { baseUrl: "https://test.azure.com", endpointMode: "legacy" as const, apiVersion: "2024-12-01-preview", deploymentName: "gpt-5", modelId: "gpt-5" } },
+    ];
+    for (const { model, provider, azCtx } of paths) {
+      const req = { ...baseReq, model };
+      const result = translateToProvider(req, provider, undefined, azCtx);
+      const sanitized = sanitizeProviderBody(result.body, provider);
+      expect("max_tokens" in sanitized, `max_tokens leaked after sanitize for ${provider}/${model}`).toBe(false);
+      expect("max_completion_tokens" in sanitized, `max_completion_tokens leaked after sanitize for ${provider}/${model}`).toBe(false);
+    }
   });
 });
 
