@@ -688,7 +688,13 @@ export async function registerRoutes(
       }
 
       const plainKey = decryptProviderKey(conn.adminApiKeyEncrypted, conn.adminApiKeyIv, conn.adminApiKeyTag);
-      const result = await adapter.validateAdminKey(plainKey);
+      const validationOptions = conn.provider === "AZURE_OPENAI" ? {
+        baseUrl: conn.azureBaseUrl || undefined,
+        deploymentName: ((conn.azureDeployments as any[])?.[0])?.deploymentName || "gpt-4o",
+        apiVersion: effectiveAzureApiVersion("gpt-4o", conn.azureApiVersion),
+        endpointMode: (conn.azureEndpointMode === "v1" && conn.azureBaseUrl?.includes("azure-api.net")) ? "legacy" : (conn.azureEndpointMode || "legacy"),
+      } : undefined;
+      const result = await adapter.validateAdminKey(plainKey, validationOptions);
 
       const newStatus = result.valid ? "ACTIVE" : "INVALID";
       await storage.updateProviderConnection(conn.id, {
@@ -784,7 +790,13 @@ export async function registerRoutes(
       if (!adapter) return res.status(400).json({ message: "Unsupported AI Provider" });
 
       const plainKey = decryptProviderKey(conn.adminApiKeyEncrypted, conn.adminApiKeyIv, conn.adminApiKeyTag);
-      const result = await adapter.validateAdminKey(plainKey);
+      const validationOptions = conn.provider === "AZURE_OPENAI" ? {
+        baseUrl: conn.azureBaseUrl || undefined,
+        deploymentName: ((conn.azureDeployments as any[])?.[0])?.deploymentName || "gpt-4o",
+        apiVersion: effectiveAzureApiVersion("gpt-4o", conn.azureApiVersion),
+        endpointMode: (conn.azureEndpointMode === "v1" && conn.azureBaseUrl?.includes("azure-api.net")) ? "legacy" : (conn.azureEndpointMode || "legacy"),
+      } : undefined;
+      const result = await adapter.validateAdminKey(plainKey, validationOptions);
 
       const newStatus = result.valid ? "ACTIVE" : "INVALID";
       const now = new Date();
@@ -866,6 +878,36 @@ export async function registerRoutes(
           } else {
             const body = await resp.text();
             error = `HTTP ${resp.status}: ${body.slice(0, 200)}`;
+          }
+        } catch (e: any) { error = e.message; }
+      } else if (conn.provider === "AZURE_OPENAI") {
+        const deployments = (conn.azureDeployments || []) as Array<{ deploymentName: string; modelId: string }>;
+        const deployment = deployments[0]?.deploymentName || "gpt-4o";
+        model = deployments[0]?.modelId || deployment;
+        const cleanBase = (conn.azureBaseUrl || "").replace(/\/+$/, "").replace(/\/openai\/?$/, "");
+        const apiVersion = effectiveAzureApiVersion(model, conn.azureApiVersion);
+        const effectiveMode = (conn.azureEndpointMode === "v1" && cleanBase.includes("azure-api.net")) ? "legacy" : (conn.azureEndpointMode || "legacy");
+        try {
+          let url: string;
+          if (effectiveMode === "v1") {
+            url = `${cleanBase}/openai/v1/chat/completions`;
+          } else {
+            url = `${cleanBase}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
+          }
+          const body: any = { messages: [{ role: "user", content: "respond with OK" }], max_tokens: 5 };
+          if (effectiveMode === "v1") body.model = deployment;
+          const resp = await fetch(url, {
+            method: "POST",
+            headers: { "api-key": plainKey, "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            responseText = data.choices?.[0]?.message?.content || "";
+            success = true;
+          } else {
+            const respBody = await resp.text();
+            error = `HTTP ${resp.status}: ${respBody.slice(0, 200)}`;
           }
         } catch (e: any) { error = e.message; }
       } else {
