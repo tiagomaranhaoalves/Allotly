@@ -378,6 +378,11 @@ function ProviderCard({
   const [editAzureBaseUrl, setEditAzureBaseUrl] = useState(p.azureBaseUrl || "");
   const [editAzureEndpointMode, setEditAzureEndpointMode] = useState<"v1" | "legacy">((p.azureEndpointMode as "v1" | "legacy") || "legacy");
   const [editAzureApiVersion, setEditAzureApiVersion] = useState(p.azureApiVersion || "");
+  const [editDeployments, setEditDeployments] = useState<AzureDeployment[]>(p.azureDeployments || []);
+  const [newDepName, setNewDepName] = useState("");
+  const [newDepModel, setNewDepModel] = useState("");
+  const [newDepInputPrice, setNewDepInputPrice] = useState("");
+  const [newDepOutputPrice, setNewDepOutputPrice] = useState("");
 
   const { data: health } = useQuery<HealthData>({
     queryKey: ["/api/providers", p.id, "health"],
@@ -448,6 +453,7 @@ function ProviderCard({
       const body: Record<string, unknown> = {
         azureBaseUrl: editAzureBaseUrl.replace(/\/+$/, "").replace(/\/openai\/?$/, ""),
         azureEndpointMode: editAzureEndpointMode,
+        azureDeployments: editDeployments,
       };
       if (editAzureEndpointMode === "legacy") {
         body.azureApiVersion = editAzureApiVersion || null;
@@ -456,6 +462,7 @@ function ProviderCard({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/providers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/providers", p.id, "models"] });
       toast({ title: "Azure connection updated" });
       setEditAzureOpen(false);
     },
@@ -463,6 +470,27 @@ function ProviderCard({
       toast({ title: "Failed to update", description: err.message, variant: "destructive" });
     },
   });
+
+  const addDeployment = () => {
+    const name = newDepName.trim();
+    const model = newDepModel.trim() || name;
+    const inputPrice = parseInt(newDepInputPrice) || 0;
+    const outputPrice = parseInt(newDepOutputPrice) || 0;
+    if (!name) return;
+    if (editDeployments.some(d => d.deploymentName === name)) {
+      toast({ title: "Duplicate", description: `Deployment "${name}" already exists`, variant: "destructive" });
+      return;
+    }
+    setEditDeployments([...editDeployments, { deploymentName: name, modelId: model, inputPricePerMTok: inputPrice, outputPricePerMTok: outputPrice }]);
+    setNewDepName("");
+    setNewDepModel("");
+    setNewDepInputPrice("");
+    setNewDepOutputPrice("");
+  };
+
+  const removeDeployment = (name: string) => {
+    setEditDeployments(editDeployments.filter(d => d.deploymentName !== name));
+  };
 
   const editAzureUrlValidation = editAzureBaseUrl ? validateAzureBaseUrl(editAzureBaseUrl) : null;
   const editFormValid = editAzureBaseUrl && editAzureUrlValidation?.valid;
@@ -563,7 +591,16 @@ function ProviderCard({
             <span className="px-2 py-0.5 rounded-full bg-muted font-medium" data-testid="text-azure-endpoint-mode">{p.azureEndpointMode} mode</span>
           )}
           <span className="px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium">pass-through</span>
-          <Dialog open={editAzureOpen} onOpenChange={setEditAzureOpen}>
+          <Dialog open={editAzureOpen} onOpenChange={(open) => {
+            setEditAzureOpen(open);
+            if (open) {
+              setEditDeployments(p.azureDeployments || []);
+              setNewDepName("");
+              setNewDepModel("");
+              setNewDepInputPrice("");
+              setNewDepOutputPrice("");
+            }
+          }}>
             <DialogTrigger asChild>
               <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" data-testid="button-edit-azure">
                 <Pencil className="w-3 h-3 mr-1" /> Edit
@@ -573,7 +610,7 @@ function ProviderCard({
               <DialogHeader>
                 <DialogTitle>Edit Azure Connection</DialogTitle>
                 <DialogDescription>
-                  Update the endpoint and routing mode for this Azure connection.
+                  Update the endpoint, routing, and deployment mappings for this Azure connection.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 pt-2">
@@ -620,6 +657,57 @@ function ProviderCard({
                     <p className="text-xs text-muted-foreground">Leave empty for Allotly to auto-pick the right version per model. Override only if you have a specific compatibility need.</p>
                   </div>
                 )}
+                <div className="space-y-3 border-t pt-4">
+                  <Label>Deployment Mappings</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Map Azure deployment names to model IDs with pricing. Required for the model allowlist.
+                  </p>
+                  {editDeployments.length > 0 && (
+                    <div className="space-y-2">
+                      {editDeployments.map(d => (
+                        <div key={d.deploymentName} className="flex items-center gap-2 p-2 rounded-lg border bg-muted/30 text-xs" data-testid={`deployment-row-${d.deploymentName}`}>
+                          <div className="flex-1 min-w-0">
+                            <span className="font-mono font-medium">{d.deploymentName}</span>
+                            {d.modelId !== d.deploymentName && (
+                              <span className="text-muted-foreground ml-1">→ {d.modelId}</span>
+                            )}
+                            <span className="text-muted-foreground ml-2">
+                              ${(d.inputPricePerMTok / 100).toFixed(2)}/${(d.outputPricePerMTok / 100).toFixed(2)} per 1M tok
+                            </span>
+                          </div>
+                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive hover:text-destructive" onClick={() => removeDeployment(d.deploymentName)} data-testid={`button-remove-deployment-${d.deploymentName}`}>
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="space-y-2 p-3 rounded-lg border border-dashed">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-xs">Deployment Name</Label>
+                        <Input placeholder="gpt-4o" value={newDepName} onChange={e => setNewDepName(e.target.value)} className="h-8 text-xs font-mono" data-testid="input-deployment-name" />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Model ID (optional)</Label>
+                        <Input placeholder={newDepName || "same as deployment"} value={newDepModel} onChange={e => setNewDepModel(e.target.value)} className="h-8 text-xs font-mono" data-testid="input-deployment-model" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-xs">Input ¢/1M tokens</Label>
+                        <Input type="number" placeholder="0" value={newDepInputPrice} onChange={e => setNewDepInputPrice(e.target.value)} className="h-8 text-xs" data-testid="input-deployment-input-price" />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Output ¢/1M tokens</Label>
+                        <Input type="number" placeholder="0" value={newDepOutputPrice} onChange={e => setNewDepOutputPrice(e.target.value)} className="h-8 text-xs" data-testid="input-deployment-output-price" />
+                      </div>
+                    </div>
+                    <Button variant="outline" size="sm" className="w-full h-7 text-xs" onClick={addDeployment} disabled={!newDepName.trim()} data-testid="button-add-deployment">
+                      <Plus className="w-3 h-3 mr-1" /> Add Deployment
+                    </Button>
+                  </div>
+                </div>
                 <Button className="w-full" onClick={() => editAzureMutation.mutate()} disabled={!editFormValid || editAzureMutation.isPending} data-testid="button-save-azure-edit">
                   {editAzureMutation.isPending ? "Saving..." : "Save Changes"}
                 </Button>
@@ -802,7 +890,7 @@ function ModelAllowlist({ connection }: { connection: ProviderConnection }) {
   if (modelList.length === 0) {
     return <p className="text-xs text-muted-foreground mt-3">
       {isAzure
-        ? "No deployment mappings registered yet. The proxy routes requests automatically using model names, but the model allowlist needs registered deployments to display here."
+        ? "No deployment mappings registered. Click Edit above to add your Azure deployments, then the model allowlist will appear here."
         : "No models available for this API key."}
     </p>;
   }
