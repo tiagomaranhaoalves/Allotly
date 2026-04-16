@@ -801,7 +801,9 @@ function ModelAllowlist({ connection }: { connection: ProviderConnection }) {
 
   if (modelList.length === 0) {
     return <p className="text-xs text-muted-foreground mt-3">
-      {isAzure ? "No models discovered. Ensure your Azure deployments match standard model names (e.g., gpt-4.1, gpt-4o)." : "No models available for this API key."}
+      {isAzure
+        ? "No deployment mappings registered. Add deployments below to control which models are available. The proxy can route requests without mappings, but the allowlist requires them."
+        : "No models available for this API key."}
     </p>;
   }
 
