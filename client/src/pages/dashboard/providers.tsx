@@ -890,7 +890,7 @@ function ModelAllowlist({ connection }: { connection: ProviderConnection }) {
   if (modelList.length === 0) {
     return <p className="text-xs text-muted-foreground mt-3">
       {isAzure
-        ? "No deployment mappings registered. Click Edit above to add your Azure deployments, then the model allowlist will appear here."
+        ? "Allotly proxies Azure requests automatically using the model name as the deployment name — no configuration required. However, Azure does not provide a deployment list API, so to use the model allowlist you'll need to add your deployments manually via the Edit button above."
         : "No models available for this API key."}
     </p>;
   }
