@@ -22,6 +22,7 @@ import PrivacyPage from "@/pages/privacy";
 import TermsPage from "@/pages/terms";
 import SecurityPage from "@/pages/security";
 import ComponentsShowcase from "@/pages/components-showcase";
+import ArenaPage from "@/pages/arena";
 import InvitePage from "@/pages/invite";
 import AdminLoginPage from "@/pages/admin-login";
 import AdminPage from "@/pages/admin";
@@ -67,6 +68,7 @@ function Router() {
       <Route path="/terms" component={TermsPage} />
       <Route path="/security" component={SecurityPage} />
       <Route path="/components" component={ComponentsShowcase} />
+      <Route path="/arena" component={ArenaPage} />
       <Route path="/admin/login" component={AdminLoginPage} />
       <Route path="/admin" component={AdminPage} />
       <Route path="/dashboard">

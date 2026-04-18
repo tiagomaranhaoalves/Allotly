@@ -55,13 +55,16 @@ const chatRequestSchema = z.object({
   top_p: z.number().optional(),
 }).passthrough();
 
-function sendProxyError(res: Response, error: ProxyError, budgetContext?: { remaining: number; total: number; expires: string; requestsRemaining: number }) {
+function sendProxyError(res: Response, error: ProxyError, budgetContext?: { remaining: number; total: number; expires: string; requestsRemaining: number; keyType?: string }) {
   if (res.headersSent) return;
   if (budgetContext) {
     res.setHeader("X-Allotly-Budget-Remaining", String(budgetContext.remaining));
     res.setHeader("X-Allotly-Budget-Total", String(budgetContext.total));
     res.setHeader("X-Allotly-Expires", budgetContext.expires);
     res.setHeader("X-Allotly-Requests-Remaining", String(budgetContext.requestsRemaining));
+    if (budgetContext.keyType) {
+      res.setHeader("X-Allotly-Key-Type", budgetContext.keyType);
+    }
   }
   res.status(error.status).json({
     error: {
@@ -158,7 +161,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
   let membershipId: string | null = null;
   let reservedCostCents = 0;
   let concurrencyAcquired = false;
-  let budgetCtx: { remaining: number; total: number; expires: string; requestsRemaining: number } | undefined;
+  let budgetCtx: { remaining: number; total: number; expires: string; requestsRemaining: number; keyType?: string } | undefined;
 
   try {
     const authResult = await authenticateKey(req.headers.authorization);
@@ -196,6 +199,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
         total: membership.monthlyBudgetCents,
         expires: periodEnd.toISOString(),
         requestsRemaining,
+        keyType: membership.accessType,
       };
     };
 
@@ -441,6 +445,9 @@ export async function handleChatCompletion(req: Request, res: Response) {
         res.setHeader("X-Allotly-Budget-Total", String(budgetCtx.total));
         res.setHeader("X-Allotly-Expires", budgetCtx.expires);
         res.setHeader("X-Allotly-Requests-Remaining", String(budgetCtx.requestsRemaining));
+        if (budgetCtx.keyType) {
+          res.setHeader("X-Allotly-Key-Type", budgetCtx.keyType);
+        }
       }
 
       return res.json({
@@ -464,6 +471,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
       : Math.max(0, tier.rpm - parseInt(await redisGet(rlKey) || "0"));
     res.setHeader("X-Allotly-Requests-Remaining", String(requestsRemaining));
     res.setHeader("X-Allotly-Expires", periodEnd.toISOString());
+    res.setHeader("X-Allotly-Key-Type", membership.accessType);
 
     let actualInputTokens = inputTokens;
     let actualOutputTokens = 0;
@@ -760,6 +768,38 @@ export async function handleListModels(req: Request, res: Response) {
     });
   } catch (err: any) {
     console.error("[proxy] list models error:", err);
+    sendProxyError(res, createProxyError(500, "internal_error", "An internal error occurred"));
+  }
+}
+
+export async function handleKeyValidation(req: Request, res: Response) {
+  try {
+    const authResult = await authenticateKey(req.headers.authorization);
+    if ("status" in authResult) {
+      return sendProxyError(res, authResult);
+    }
+
+    const { membership } = authResult;
+    const budgetRemainingCents = Math.max(
+      0,
+      membership.monthlyBudgetCents - membership.currentPeriodSpendCents,
+    );
+
+    res.setHeader("X-Allotly-Budget-Remaining", String(budgetRemainingCents));
+    res.setHeader("X-Allotly-Budget-Total", String(membership.monthlyBudgetCents));
+    res.setHeader("X-Allotly-Expires", new Date(membership.periodEnd).toISOString());
+    res.setHeader("X-Allotly-Key-Type", membership.accessType);
+
+    res.json({
+      valid: true,
+      keyType: membership.accessType,
+      budgetRemainingCents,
+      budgetTotalCents: membership.monthlyBudgetCents,
+      expiresAt: new Date(membership.periodEnd).toISOString(),
+      status: membership.status,
+    });
+  } catch (err: any) {
+    console.error("[proxy] key validation error:", err);
     sendProxyError(res, createProxyError(500, "internal_error", "An internal error occurred"));
   }
 }

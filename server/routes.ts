@@ -18,7 +18,7 @@ import { runVoucherExpiry } from "./lib/jobs/voucher-expiry";
 import { runBundleExpiry } from "./lib/jobs/bundle-expiry";
 import { runRedisReconciliation } from "./lib/jobs/redis-reconciliation";
 import { runModelSync } from "./lib/jobs/model-sync";
-import { handleChatCompletion, handleListModels } from "./lib/proxy/handler";
+import { handleChatCompletion, handleListModels, handleKeyValidation } from "./lib/proxy/handler";
 import { redisSet, redisGet, redisDel, redisIncr, redisIncrBy, REDIS_KEYS } from "./lib/redis";
 import { runProviderValidation } from "./lib/jobs/provider-validation";
 import { runSnapshotCleanup } from "./lib/jobs/snapshot-cleanup";
@@ -5975,7 +5975,7 @@ export async function registerRoutes(
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
-    res.setHeader("Access-Control-Expose-Headers", "X-Allotly-Budget-Remaining, X-Allotly-Budget-Total, X-Allotly-Expires, X-Allotly-Requests-Remaining");
+    res.setHeader("Access-Control-Expose-Headers", "X-Allotly-Budget-Remaining, X-Allotly-Budget-Total, X-Allotly-Expires, X-Allotly-Requests-Remaining, X-Allotly-Key-Type, X-Allotly-Max-Tokens-Applied");
     if (req.method === "OPTIONS") {
       return res.sendStatus(204);
     }
@@ -5984,8 +5984,19 @@ export async function registerRoutes(
 
   app.post("/api/v1/chat/completions", handleChatCompletion);
   app.get("/api/v1/models", handleListModels);
+  app.get("/api/v1/keys/me", handleKeyValidation);
   app.get("/api/v1/health", (_req, res) => {
     res.json({ status: "ok", proxy: true, timestamp: new Date().toISOString() });
+  });
+
+  app.all("/api/v1/keys/me", (req, res) => {
+    res.status(405).json({
+      error: {
+        code: "method_not_allowed",
+        message: `Method ${req.method} is not allowed on this endpoint. Use GET.`,
+        type: "allotly_error",
+      },
+    });
   });
 
   app.all("/api/v1/chat/completions", (req, res) => {
@@ -6038,7 +6049,7 @@ export async function registerRoutes(
     });
   });
 
-  console.log("[routes] Proxy routes registered: POST /api/v1/chat/completions, GET /api/v1/models, GET /api/v1/health");
+  console.log("[routes] Proxy routes registered: POST /api/v1/chat/completions, GET /api/v1/models, GET /api/v1/keys/me, GET /api/v1/health");
 
   return httpServer;
 }
