@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MockUIFrame } from "./mock-ui-frame";
 import { PreflightSnippet } from "./preflight-snippet";
+import { AllowlistPanel } from "./allowlist-panel";
 import { ParallelStream, type StreamPanelState } from "./parallel-stream";
 import { VotingPanel } from "./voting-panel";
 import { RoundResults } from "./round-results";
@@ -208,6 +209,8 @@ export function RoundRunner({ persona, challenge, onPlayAgain, onSwitchMode, onE
     "gemini-2.5-flash": panels["gemini-2.5-flash"].tokens,
   };
 
+  const showSnippetAndAllowlist = phase === "preflight" || phase === "streaming" || phase === "voting" || phase === "results";
+
   return (
     <div className="space-y-4">
       <MockUIFrame
@@ -215,14 +218,22 @@ export function RoundRunner({ persona, challenge, onPlayAgain, onSwitchMode, onE
         title={challenge.title}
         contextCopy={challenge.contextCopy}
         prompt={challenge.prompt}
-      >
-        <div className="mt-3 min-h-[54px]">
-          <PreflightSnippet
-            visible={phase === "preflight"}
-            keyRedacted={state.keyValue ? redact(state.keyValue) : "allotly_sk_***"}
-          />
+      />
+
+      {showSnippetAndAllowlist && (
+        <div className="grid gap-4 lg:grid-cols-5">
+          <div className="lg:col-span-3">
+            <PreflightSnippet
+              visible={true}
+              keyRedacted={state.keyValue ? redact(state.keyValue) : "allotly_sk_demo_arena"}
+              model={models[0].id}
+            />
+          </div>
+          <div className="lg:col-span-2">
+            <AllowlistPanel allowedModels={models} />
+          </div>
         </div>
-      </MockUIFrame>
+      )}
 
       {(phase === "streaming" || phase === "voting" || phase === "results") && (
         <ParallelStream panels={models.map((m) => ({ model: m, state: panels[m.id] }))} />
