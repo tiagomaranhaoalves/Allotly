@@ -97,13 +97,14 @@ function formatDisplayName(modelId: string, provider: string): string {
   return modelId;
 }
 
-async function fetchOpenAIModels(apiKey: string): Promise<DiscoveredModel[]> {
+async function fetchOpenAIModels(apiKey: string, label?: string): Promise<DiscoveredModel[]> {
   try {
     const res = await fetch("https://api.openai.com/v1/models", {
       headers: { Authorization: `Bearer ${apiKey}` },
     });
     if (!res.ok) {
-      console.error(`[model-sync] OpenAI models API returned ${res.status}`);
+      const hint = res.status === 401 ? " (invalid or revoked OpenAI API key — update via Providers page)" : "";
+      console.error(`[model-sync] OpenAI models API returned ${res.status}${label ? ` for ${label}` : ""}${hint}`);
       return [];
     }
     const data = await res.json() as { data: Array<{ id: string }> };
@@ -179,7 +180,7 @@ export async function runModelSync(): Promise<void> {
         if (!triedProviders.has(conn.provider)) {
           triedProviders.add(conn.provider);
           let models: DiscoveredModel[] = [];
-          if (conn.provider === "OPENAI") models = await fetchOpenAIModels(apiKey);
+          if (conn.provider === "OPENAI") models = await fetchOpenAIModels(apiKey, conn.displayName);
           else if (conn.provider === "ANTHROPIC") models = await fetchAnthropicModels(apiKey);
           else if (conn.provider === "GOOGLE") models = await fetchGoogleModels(apiKey);
 

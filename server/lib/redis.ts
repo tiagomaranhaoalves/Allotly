@@ -5,6 +5,11 @@ let memoryStore: Map<string, { value: string; expiry?: number }> = new Map();
 let useMemory = true;
 
 function initRedis() {
+  const isTest = process.env.NODE_ENV === "test" || process.env.VITEST === "true" || !!process.env.VITEST_WORKER_ID;
+  if (isTest) {
+    console.log("[redis] Test environment detected, using in-memory store");
+    return;
+  }
   const url = process.env.REDIS_URL;
   if (url) {
     try {
