@@ -920,7 +920,7 @@ function ArenaCallout() {
                 </span>
               </h2>
               <p className="text-lg text-neutral-300 leading-relaxed max-w-[560px]">
-                <span className="font-semibold text-white">The Arena</span> is Allotly running live on a single prompt. Pick the contenders and watch one key route the same request to GPT, Claude, Gemini, and Azure side-by-side — quality on screen, cost and latency metered to the cent. It&rsquo;s the simplest way to feel what a unified AI control plane actually does for your team, before you ever sign up.
+                Pick a prompt, pick the contenders, and watch <span className="font-semibold text-white">Allotly</span> route the same request through every major provider on a single key. You see latency and quality side-by-side. We tally the cost in real time. It&rsquo;s the simplest way to feel what a unified AI proxy actually does for your team.
               </p>
 
               <div className="grid sm:grid-cols-3 gap-3 max-w-[560px]">
