@@ -36,6 +36,7 @@ export const initialState: SessionState = {
   lineup: [...DEFAULT_LINEUP] as LineupSlots,
   keyExpiresAt: null,
   lastRepairs: [],
+  keyModelPricing: {},
 };
 
 type Action =
@@ -60,6 +61,7 @@ type Action =
   | { type: "SET_LINEUP"; lineup: LineupSlots }
   | { type: "CLEAR_REPAIRS" }
   | { type: "CONFIRM_SETUP" }
+  | { type: "SET_KEY_MODEL_PRICING"; pricing: Record<string, { input: number; output: number }> }
   | { type: "HYDRATE"; state: SessionState };
 
 export type SessionAction = Action;
@@ -165,6 +167,8 @@ export function reducer(state: SessionState, action: Action): SessionState {
       return { ...state, lastRepairs: [] };
     case "CONFIRM_SETUP":
       return { ...state, setupConfirmed: true };
+    case "SET_KEY_MODEL_PRICING":
+      return { ...state, keyModelPricing: action.pricing };
     case "HYDRATE":
       return action.state;
     default:
@@ -194,6 +198,7 @@ interface SessionContextValue {
   setLineup: (lineup: LineupSlots) => void;
   clearRepairs: () => void;
   confirmSetup: () => void;
+  setKeyModelPricing: (pricing: Record<string, { input: number; output: number }>) => void;
   favouriteModel: () => ModelId | null;
 }
 
@@ -226,6 +231,10 @@ export function deserialize(raw: unknown): SessionState | null {
     lineup,
     setupConfirmed,
     lastRepairs: [],
+    keyModelPricing:
+      r.keyModelPricing && typeof r.keyModelPricing === "object"
+        ? (r.keyModelPricing as Record<string, { input: number; output: number }>)
+        : {},
   };
 }
 
@@ -288,6 +297,7 @@ export function ArenaSessionProvider({ children }: { children: ReactNode }) {
       setLineup: (lineup) => dispatch({ type: "SET_LINEUP", lineup }),
       clearRepairs: () => dispatch({ type: "CLEAR_REPAIRS" }),
       confirmSetup: () => dispatch({ type: "CONFIRM_SETUP" }),
+      setKeyModelPricing: (pricing) => dispatch({ type: "SET_KEY_MODEL_PRICING", pricing }),
       favouriteModel: () => {
         if (state.voteHistory.length === 0) return null;
         const counts: Partial<Record<ModelId, number>> = {};

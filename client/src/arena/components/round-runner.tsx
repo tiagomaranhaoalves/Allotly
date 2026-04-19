@@ -191,7 +191,12 @@ export function RoundRunner({ persona, challenge, onPlayAgain, onSwitchMode, onE
       onDelta: (delta) => {
         outputCharCount += delta.length;
         const estOutTokens = Math.ceil(outputCharCount / 4);
-        const runningCost = estimateCostUSD(s.model.id, estimatedInputTokens, estOutTokens);
+        const runningCost = estimateCostUSD(
+          s.model.id,
+          estimatedInputTokens,
+          estOutTokens,
+          state.keyModelPricing,
+        );
         setPanels((p) => ({
           ...p,
           [s.slotKey]: {
@@ -208,7 +213,12 @@ export function RoundRunner({ persona, challenge, onPlayAgain, onSwitchMode, onE
         const finalInput = inputTokens > 0 ? inputTokens : estimatedInputTokens;
         const finalOutput = outputTokens > 0 ? outputTokens : Math.ceil(outputCharCount / 4);
         const totalTokens = finalInput + finalOutput;
-        const estimated = estimateCostUSD(s.model.id, finalInput, finalOutput);
+        const estimated = estimateCostUSD(
+          s.model.id,
+          finalInput,
+          finalOutput,
+          state.keyModelPricing,
+        );
         setPanels((p) => ({
           ...p,
           [s.slotKey]: { ...p[s.slotKey], status: "done", tokens: totalTokens, durationMs, liveCostUSD: estimated },

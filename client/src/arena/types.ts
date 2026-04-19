@@ -122,6 +122,10 @@ export interface SessionState {
   lineup: LineupSlots;
   keyExpiresAt: string | null;
   lastRepairs: RepairNote[];
+  // Per-model pricing pulled live from /api/v1/models so we can compute
+  // accurate cost for any model the key allows — not just our 8 catalog ids.
+  // Keyed by model id; values are USD per 1M input/output tokens.
+  keyModelPricing: Record<string, { input: number; output: number }>;
 }
 
 export interface RepairNote {

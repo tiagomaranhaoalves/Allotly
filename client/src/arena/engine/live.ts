@@ -15,8 +15,16 @@ const MODEL_PRICING_PER_MTOK: Record<ModelId, { input: number; output: number }>
   "gemini-2.5-pro": { input: 1.25, output: 10.0 },
 };
 
-export function estimateCostUSD(model: ModelId, inputTokens: number, outputTokens: number): number {
-  const p = MODEL_PRICING_PER_MTOK[model];
+export function estimateCostUSD(
+  model: ModelId,
+  inputTokens: number,
+  outputTokens: number,
+  // Optional override map (e.g. pricing fetched live from /api/v1/models)
+  // takes precedence over the static catalog so custom / non-catalog models
+  // also produce real cost numbers instead of $0.
+  pricingOverride?: Record<string, { input: number; output: number }>,
+): number {
+  const p = pricingOverride?.[model] ?? MODEL_PRICING_PER_MTOK[model];
   if (!p) return 0;
   return (inputTokens * p.input + outputTokens * p.output) / 1_000_000;
 }

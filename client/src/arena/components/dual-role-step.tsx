@@ -41,7 +41,8 @@ interface Props {
 const PROVIDER_ORDER: Provider[] = ["OPENAI", "ANTHROPIC", "GOOGLE"];
 
 export function DualRoleStep({ onConfirm }: Props) {
-  const { state, setAllowlist, setLineup, clearRepairs, confirmSetup } = useArenaSession();
+  const session = useArenaSession();
+  const { state, setAllowlist, setLineup, clearRepairs, confirmSetup } = session;
 
   const [adminCollapsed, setAdminCollapsed] = useState(false);
   const [expandedRationale, setExpandedRationale] = useState<ModelId | null>(null);
@@ -65,11 +66,13 @@ export function DualRoleStep({ onConfirm }: Props) {
   const [keyModelsState, setKeyModelsState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [keyModelsError, setKeyModelsError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const { setKeyModelPricing } = session;
 
   useEffect(() => {
     if (!isLive || !state.keyValue) {
       setKeyModels([]);
       setKeyModelsState("idle");
+      setKeyModelPricing({});
       return;
     }
     let cancelled = false;
@@ -81,6 +84,13 @@ export function DualRoleStep({ onConfirm }: Props) {
       if (res.ok) {
         setKeyModels(res.models);
         setKeyModelsState("ready");
+        // Stash pricing in session so the round runner can compute real
+        // $ cost for any model the key allows — including custom adds.
+        const pricing: Record<string, { input: number; output: number }> = {};
+        for (const m of res.models) {
+          pricing[m.id] = { input: m.inputPerM, output: m.outputPerM };
+        }
+        setKeyModelPricing(pricing);
       } else {
         setKeyModelsError(res.message);
         setKeyModelsState("error");
@@ -89,7 +99,7 @@ export function DualRoleStep({ onConfirm }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [isLive, state.keyValue]);
+  }, [isLive, state.keyValue, setKeyModelPricing]);
 
   const MAX_CUSTOM_MODELS = 3;
   const customAtCap = customAllowed.length >= MAX_CUSTOM_MODELS;
