@@ -1,6 +1,7 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
 import { rm, readFile } from "fs/promises";
+import { spawnSync } from "child_process";
 
 const allowlist = [
   "@google/generative-ai",
@@ -30,7 +31,28 @@ const allowlist = [
   "zod-validation-error",
 ];
 
+function runReleaseTests() {
+  if (process.env.SKIP_RELEASE_TESTS === "1") {
+    console.log("SKIP_RELEASE_TESTS=1 → skipping vitest pre-build check");
+    return;
+  }
+  console.log("running vitest pre-build check (set SKIP_RELEASE_TESTS=1 to bypass)...");
+  const result = spawnSync(
+    "node",
+    ["node_modules/vitest/vitest.mjs", "run"],
+    { stdio: "inherit" },
+  );
+  if (result.status !== 0) {
+    console.error(
+      "vitest pre-build check failed — refusing to build a release artifact.",
+    );
+    process.exit(result.status ?? 1);
+  }
+}
+
 async function buildAll() {
+  runReleaseTests();
+
   await rm("dist", { recursive: true, force: true });
 
   console.log("building client...");
