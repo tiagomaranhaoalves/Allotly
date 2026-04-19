@@ -1,5 +1,6 @@
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
+import { LogoIcon } from "@/components/logo";
 import { useArenaSession, formatUSD } from "../session";
 
 interface Props {
@@ -21,7 +22,7 @@ export function PersistentHeader({ onOpenLiveToggle, onOpenHowItWorks, onSwitchM
     <header className="sticky top-0 z-40 border-b border-white/10 bg-neutral-950/80 backdrop-blur">
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 px-4 py-3">
         <Link href="/arena" className="flex items-center gap-2 text-white hover:opacity-90" data-testid="arena-home-link">
-          <span className="inline-block h-6 w-6 rounded bg-gradient-to-br from-indigo-500 to-cyan-400" />
+          <LogoIcon size={28} />
           <span className="font-semibold tracking-tight">Allotly Arena</span>
         </Link>
 
