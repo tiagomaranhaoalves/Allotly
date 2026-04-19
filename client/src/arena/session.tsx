@@ -17,7 +17,7 @@ const LS_KEY_SESSION = "allotly:arena:session";
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 export const EXHAUSTION_THRESHOLD_USD = 0.02;
 
-const initialState: SessionState = {
+export const initialState: SessionState = {
   mode: "cached",
   keyType: null,
   keyValue: null,
@@ -62,7 +62,9 @@ type Action =
   | { type: "CONFIRM_SETUP" }
   | { type: "HYDRATE"; state: SessionState };
 
-function reducer(state: SessionState, action: Action): SessionState {
+export type SessionAction = Action;
+
+export function reducer(state: SessionState, action: Action): SessionState {
   switch (action.type) {
     case "RESET":
       return { ...initialState };
@@ -197,7 +199,7 @@ function serialize(state: SessionState) {
   return state;
 }
 
-function deserialize(raw: unknown): SessionState | null {
+export function deserialize(raw: unknown): SessionState | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
   if (typeof r.sessionStartTime === "number" && Date.now() - r.sessionStartTime > SESSION_TTL_MS) {
