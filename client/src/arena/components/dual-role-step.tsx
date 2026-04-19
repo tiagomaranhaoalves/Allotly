@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Check, ChevronDown, ChevronRight, Lock } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, ChevronRight, Lock, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -18,6 +19,7 @@ import {
   TIER_INTROS,
   TIER_ORDER,
   groupByTier,
+  inferProvider,
   type CatalogEntry,
   type Tier,
 } from "../data/model-catalog";
@@ -38,6 +40,38 @@ export function DualRoleStep({ onConfirm }: Props) {
   const allowed = state.allowedModels;
   const lineup = state.lineup;
   const repairs = state.lastRepairs;
+  const isLive = state.mode === "live";
+
+  // In live mode, any allowed id that isn't in the catalog is a user-added
+  // custom model. We show it under its own group so it's clearly user-added.
+  const customAllowed = useMemo(
+    () => allowed.filter((id) => !CATALOG_BY_ID[id]),
+    [allowed],
+  );
+
+  const [customDraft, setCustomDraft] = useState("");
+  const [customError, setCustomError] = useState<string | null>(null);
+
+  function addCustomModel() {
+    const id = customDraft.trim();
+    if (!id) return;
+    if (id.length > 80) {
+      setCustomError("Model id is too long.");
+      return;
+    }
+    if (allowed.includes(id)) {
+      setCustomError("Already on the allowlist.");
+      return;
+    }
+    setAllowlist([...allowed, id]);
+    setCustomDraft("");
+    setCustomError(null);
+  }
+
+  function removeCustomModel(id: string) {
+    if (allowed.length <= 1) return;
+    setAllowlist(allowed.filter((m) => m !== id));
+  }
 
   // Auto-fade the inline repair note(s) ~5s after the allowlist toggle.
   useEffect(() => {
@@ -50,11 +84,15 @@ export function DualRoleStep({ onConfirm }: Props) {
 
   const summary = useMemo(() => {
     if (allowed.length === 0) return { count: 0, cheapest: 0, max: 0 };
-    const prices = allowed.map((id) => CATALOG_BY_ID[id].inputPerM);
+    // Custom (live-only) ids aren't in the catalog, so we can't price them.
+    // Compute cheapest/max only across known catalog entries.
+    const prices = allowed
+      .map((id) => CATALOG_BY_ID[id]?.inputPerM)
+      .filter((p): p is number => typeof p === "number");
     return {
       count: allowed.length,
-      cheapest: Math.min(...prices),
-      max: Math.max(...prices),
+      cheapest: prices.length > 0 ? Math.min(...prices) : 0,
+      max: prices.length > 0 ? Math.max(...prices) : 0,
     };
   }, [allowed]);
 
@@ -126,6 +164,15 @@ export function DualRoleStep({ onConfirm }: Props) {
                   In production this is the membership editor. Pick what your team's key can call. Allotly enforces this at the proxy — a request for a model that isn't on your list returns{" "}
                   <code className="font-mono text-[12px] text-amber-200">403 model_not_allowed</code> before a token is charged.
                 </p>
+                {isLive && (
+                  <p
+                    className="mt-2 text-xs text-emerald-300/90"
+                    data-testid="text-live-any-model"
+                  >
+                    Live mode: not limited to the catalog — add any model id your key allows
+                    below to race it for real.
+                  </p>
+                )}
               </div>
             </div>
 
@@ -162,9 +209,88 @@ export function DualRoleStep({ onConfirm }: Props) {
               })}
             </div>
 
+            {isLive && (
+              <div
+                className="mt-5 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.04] p-4"
+                data-testid="custom-model-section"
+              >
+                <div className="flex items-baseline justify-between gap-2 mb-2">
+                  <div className="text-[11px] uppercase tracking-wide text-emerald-300">
+                    Custom · any model your key allows
+                  </div>
+                  <div className="text-[11px] text-white/40">
+                    e.g. <code className="font-mono">o3</code>, <code className="font-mono">claude-opus-4-1</code>, <code className="font-mono">gemini-1.5-pro</code>
+                  </div>
+                </div>
+                <div className="flex items-stretch gap-2">
+                  <Input
+                    value={customDraft}
+                    onChange={(e) => {
+                      setCustomDraft(e.target.value);
+                      if (customError) setCustomError(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addCustomModel();
+                      }
+                    }}
+                    placeholder="model id (e.g. gpt-5)"
+                    className="bg-neutral-950 border-white/10 text-white text-sm"
+                    data-testid="input-custom-model"
+                  />
+                  <Button
+                    type="button"
+                    onClick={addCustomModel}
+                    disabled={!customDraft.trim()}
+                    className="bg-emerald-500 hover:bg-emerald-400 text-black"
+                    data-testid="button-add-custom-model"
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1" /> Add
+                  </Button>
+                </div>
+                {customError && (
+                  <p className="mt-2 text-xs text-rose-300" data-testid="text-custom-model-error">
+                    {customError}
+                  </p>
+                )}
+                {customAllowed.length > 0 && (
+                  <ul className="mt-3 flex flex-wrap gap-2" data-testid="list-custom-models">
+                    {customAllowed.map((id) => {
+                      const provider = inferProvider(id);
+                      return (
+                        <li
+                          key={id}
+                          className="inline-flex items-center gap-2 rounded-md border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-100"
+                          data-testid={`custom-model-${id}`}
+                        >
+                          <ProviderBadge provider={provider} className="text-white" />
+                          <code className="font-mono">{id}</code>
+                          <button
+                            type="button"
+                            onClick={() => removeCustomModel(id)}
+                            className="text-emerald-200/80 hover:text-rose-200"
+                            aria-label={`Remove ${id}`}
+                            data-testid={`button-remove-custom-${id}`}
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+                <p className="mt-2 text-[11px] text-white/50 leading-relaxed">
+                  These will be sent to the proxy as-is. If your key permits them, the round
+                  streams from the real provider. Cached responses aren't available for custom
+                  ids — you&rsquo;ll see live output only.
+                </p>
+              </div>
+            )}
+
             <div className="mt-6 flex items-center justify-between border-t border-white/10 pt-4">
               <div className="text-xs text-white/60">
-                {summary.count} of {MODEL_CATALOG.length} allowed · cheapest{" "}
+                {summary.count} of {MODEL_CATALOG.length + customAllowed.length} allowed · cheapest{" "}
                 <span className="font-mono text-white/80">${summary.cheapest.toFixed(2)}</span> · most{" "}
                 <span className="font-mono text-white/80">${summary.max.toFixed(2)}</span>/1M in
               </div>
@@ -238,6 +364,7 @@ export function DualRoleStep({ onConfirm }: Props) {
                   index={idx}
                   value={lineup[idx]}
                   allowed={allowed}
+                  customAllowed={customAllowed}
                   disabled={!adminCollapsed}
                   onChange={(v) => changeSlot(idx, v)}
                   repair={repairs.find((r) => r.slotIndex === idx) ?? null}
@@ -342,6 +469,7 @@ function SlotPicker({
   index,
   value,
   allowed,
+  customAllowed,
   disabled,
   onChange,
   repair,
@@ -349,14 +477,24 @@ function SlotPicker({
   index: 0 | 1 | 2;
   value: ModelId;
   allowed: ModelId[];
+  customAllowed: ModelId[];
   disabled: boolean;
   onChange: (v: ModelId) => void;
   repair: RepairNote | null;
 }) {
-  const meta = CATALOG_BY_ID[value];
+  const catalogMeta = CATALOG_BY_ID[value];
+  const isCustomValue = !catalogMeta;
+  const meta = catalogMeta ?? {
+    id: value,
+    displayName: value,
+    provider: inferProvider(value),
+    inputPerM: 0,
+    outputPerM: 0,
+    hasCachedContent: false,
+  };
   const valueAllowed = allowed.includes(value);
 
-  // Group allowed models by provider for the dropdown
+  // Group allowed CATALOG models by provider for the dropdown.
   const allowedEntries = MODEL_CATALOG.filter((m) => allowed.includes(m.id));
   const byProvider = new Map<Provider, CatalogEntry[]>();
   for (const p of PROVIDER_ORDER) byProvider.set(p, []);
@@ -416,17 +554,43 @@ function SlotPicker({
               </SelectGroup>
             );
           })}
+          {customAllowed.length > 0 && (
+            <SelectGroup>
+              <SelectLabel className="text-emerald-300/80 text-[10px] uppercase tracking-wide">
+                Custom (live only)
+              </SelectLabel>
+              {customAllowed.map((id) => (
+                <SelectItem
+                  key={id}
+                  value={id}
+                  className="text-white focus:bg-white/10 focus:text-white"
+                  data-testid={`slot-${index}-option-${id}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono">{id}</span>
+                    <span className="text-[10px] text-emerald-300">live only</span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          )}
         </SelectContent>
       </Select>
 
       <div className="mt-3 flex items-center justify-between text-xs">
         <ProviderBadge provider={meta.provider} className="text-white" />
-        <div className="font-mono text-white/70 tabular-nums">${meta.inputPerM.toFixed(2)}/1M in</div>
+        <div className="font-mono text-white/70 tabular-nums">
+          {isCustomValue ? "live only" : `$${meta.inputPerM.toFixed(2)}/1M in`}
+        </div>
       </div>
 
       {!valueAllowed ? (
         <div className="mt-2 text-[11px] text-rose-300 flex items-center gap-1">
           <Lock className="w-3 h-3" /> Not on the allowlist anymore
+        </div>
+      ) : isCustomValue ? (
+        <div className="mt-2 text-[11px] text-emerald-300 flex items-center gap-1">
+          <Check className="w-3 h-3" /> Custom model · streams live from your key
         </div>
       ) : meta.hasCachedContent ? (
         <div className="mt-2 text-[11px] text-emerald-300 flex items-center gap-1">

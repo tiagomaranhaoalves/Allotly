@@ -119,9 +119,17 @@ export const CATALOG_BY_ID: Record<ModelId, CatalogEntry> = MODEL_CATALOG.reduce
   {} as Record<ModelId, CatalogEntry>,
 );
 
+export function inferProvider(id: ModelId): Provider {
+  const lower = id.toLowerCase();
+  if (lower.startsWith("claude") || lower.startsWith("anthropic")) return "ANTHROPIC";
+  if (lower.startsWith("gemini") || lower.startsWith("google") || lower.startsWith("vertex")) return "GOOGLE";
+  return "OPENAI";
+}
+
 export function modelMeta(id: ModelId) {
   const c = CATALOG_BY_ID[id];
-  return { id: c.id, provider: c.provider, displayName: c.displayName };
+  if (c) return { id: c.id, provider: c.provider, displayName: c.displayName };
+  return { id, provider: inferProvider(id), displayName: id };
 }
 
 export const DEFAULT_ALLOWED: ModelId[] = MODEL_CATALOG

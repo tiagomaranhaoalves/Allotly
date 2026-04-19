@@ -4,7 +4,12 @@ export type Persona = "marketing" | "research" | "creative";
 export type PersonaOrSecretKeeper = Persona | "secret-keeper";
 export type MockUI = "gmail" | "linkedin" | "notion" | "twitter" | "doc" | "terminal";
 
-export type ModelId =
+// ModelId is a free-form string so live-mode users can race ANY model their
+// Allotly key allows (not just the curated catalog). The well-known IDs below
+// are the catalog defaults and what the cached recordings cover.
+export type ModelId = string;
+
+export type WellKnownModelId =
   | "gpt-4o-mini"
   | "gpt-4o"
   | "o4-mini"

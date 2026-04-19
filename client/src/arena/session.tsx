@@ -136,8 +136,12 @@ export function reducer(state: SessionState, action: Action): SessionState {
       const allowed = action.allowedModels;
       // Repair lineup so every slot is still in the new allowlist;
       // snap any orphaned slot to the cheapest remaining allowed model.
+      // Prefer the cheapest catalog model as a repair target. Custom (live-only)
+      // ids are only used if no catalog model remains on the allowlist.
+      const catalogAllowed = allowed.filter((id) => CATALOG_BY_ID[id]);
+      const repairPool = catalogAllowed.length > 0 ? catalogAllowed : allowed;
       const cheapest =
-        [...allowed].sort(
+        [...repairPool].sort(
           (a, b) => (CATALOG_BY_ID[a]?.inputPerM ?? 0) - (CATALOG_BY_ID[b]?.inputPerM ?? 0),
         )[0] ?? state.lineup[0];
       const repairs: RepairNote[] = [];
