@@ -920,7 +920,7 @@ function ArenaCallout() {
                 </span>
               </h2>
               <p className="text-lg text-neutral-300 leading-relaxed max-w-[560px]">
-                Welcome to <span className="font-semibold text-white">The Arena</span> — a head-to-head model showdown where GPT, Claude, Gemini, and friends answer the same prompt in real time. You see who wins on quality. We do the math on cost. Decisions take minutes, not meetings.
+                <span className="font-semibold text-white">The Arena</span> is Allotly running live on a single prompt. Pick the contenders and watch one key route the same request to GPT, Claude, Gemini, and Azure side-by-side — quality on screen, cost and latency metered to the cent. It&rsquo;s the simplest way to feel what a unified AI control plane actually does for your team, before you ever sign up.
               </p>
 
               <div className="grid sm:grid-cols-3 gap-3 max-w-[560px]">
