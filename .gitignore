@@ -6,3 +6,7 @@ vite.config.ts.*
 *.tar.gz
 .replit
 sedbWfipU
+# Playwright artifacts
+test-results/
+playwright-report/
+.cache/ms-playwright/
