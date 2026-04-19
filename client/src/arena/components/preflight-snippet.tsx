@@ -75,6 +75,20 @@ export function PreflightSnippet({ visible, keyRedacted = "allotly_sk_demo_arena
       className="rounded-lg border border-white/10 bg-black/60 overflow-hidden transition-opacity duration-200"
       data-testid="preflight-snippet"
     >
+      <div
+        className="border-b border-white/10 bg-white/[0.02] px-3 py-2"
+        data-testid="snippet-explainer"
+      >
+        <div className="text-[11px] uppercase tracking-wide text-indigo-300 font-medium">
+          What your developers actually write
+        </div>
+        <p className="mt-1 text-xs text-white/70 leading-relaxed">
+          This is the only code change Allotly asks for: point your existing OpenAI SDK
+          (or a plain HTTP call) at <code className="font-mono text-white/85">allotly.ai</code> and
+          swap in your Allotly key. Every budget rule, allowlist, and audit log you set up
+          gets enforced from here — no model-specific SDKs, no rewrites.
+        </p>
+      </div>
       <div className="flex items-center justify-between border-b border-white/10 bg-black/40 px-3 py-1.5">
         <div className="flex items-center gap-1">
           {TABS.map(t => (
