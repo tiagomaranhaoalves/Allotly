@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Check, ChevronDown, ChevronRight, Lock } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowRight, Check, ChevronDown, ChevronRight, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -21,7 +21,7 @@ import {
   type CatalogEntry,
   type Tier,
 } from "../data/model-catalog";
-import type { LineupSlots, ModelId, Provider } from "../types";
+import type { LineupSlots, ModelId, Provider, RepairNote } from "../types";
 
 interface Props {
   onConfirm: () => void;
@@ -30,13 +30,21 @@ interface Props {
 const PROVIDER_ORDER: Provider[] = ["OPENAI", "ANTHROPIC", "GOOGLE"];
 
 export function DualRoleStep({ onConfirm }: Props) {
-  const { state, setAllowlist, setLineup, confirmSetup } = useArenaSession();
+  const { state, setAllowlist, setLineup, clearRepairs, confirmSetup } = useArenaSession();
 
   const [adminCollapsed, setAdminCollapsed] = useState(false);
   const [expandedRationale, setExpandedRationale] = useState<ModelId | null>(null);
 
   const allowed = state.allowedModels;
   const lineup = state.lineup;
+  const repairs = state.lastRepairs;
+
+  // Auto-fade the inline repair note(s) ~5s after the allowlist toggle.
+  useEffect(() => {
+    if (repairs.length === 0) return;
+    const timer = setTimeout(() => clearRepairs(), 5000);
+    return () => clearTimeout(timer);
+  }, [repairs, clearRepairs]);
 
   const grouped = useMemo(() => groupByTier(MODEL_CATALOG), []);
 
@@ -222,16 +230,20 @@ export function DualRoleStep({ onConfirm }: Props) {
           </div>
 
           <div className="mt-5 grid gap-3 md:grid-cols-3">
-            {[0, 1, 2].map((i) => (
-              <SlotPicker
-                key={i}
-                index={i as 0 | 1 | 2}
-                value={lineup[i as 0 | 1 | 2]}
-                allowed={allowed}
-                disabled={!adminCollapsed}
-                onChange={(v) => changeSlot(i as 0 | 1 | 2, v)}
-              />
-            ))}
+            {[0, 1, 2].map((i) => {
+              const idx = i as 0 | 1 | 2;
+              return (
+                <SlotPicker
+                  key={i}
+                  index={idx}
+                  value={lineup[idx]}
+                  allowed={allowed}
+                  disabled={!adminCollapsed}
+                  onChange={(v) => changeSlot(idx, v)}
+                  repair={repairs.find((r) => r.slotIndex === idx) ?? null}
+                />
+              );
+            })}
           </div>
 
           <p className="mt-4 text-xs text-white/50">
@@ -332,12 +344,14 @@ function SlotPicker({
   allowed,
   disabled,
   onChange,
+  repair,
 }: {
   index: 0 | 1 | 2;
   value: ModelId;
   allowed: ModelId[];
   disabled: boolean;
   onChange: (v: ModelId) => void;
+  repair: RepairNote | null;
 }) {
   const meta = CATALOG_BY_ID[value];
   const valueAllowed = allowed.includes(value);
@@ -421,6 +435,33 @@ function SlotPicker({
       ) : (
         <div className="mt-2 text-[11px] text-amber-300">
           🚫 No cached response — slot will show a placeholder
+        </div>
+      )}
+
+      {repair && (
+        <div
+          className="mt-3 rounded-md border border-amber-400/40 bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-100 leading-snug animate-in fade-in slide-in-from-top-1 duration-300"
+          role="status"
+          data-testid={`repair-note-${index}`}
+        >
+          <div className="flex items-start gap-1.5">
+            <span className="mt-0.5">⚠</span>
+            <div className="min-w-0">
+              <div className="font-medium">Slot {index + 1} auto-repaired</div>
+              <div className="mt-0.5 flex flex-wrap items-center gap-1 text-amber-200/90">
+                <span className="line-through decoration-amber-300/60">
+                  {CATALOG_BY_ID[repair.from]?.displayName ?? repair.from}
+                </span>
+                <ArrowRight className="w-3 h-3" />
+                <span className="text-white">
+                  {CATALOG_BY_ID[repair.to]?.displayName ?? repair.to}
+                </span>
+              </div>
+              <div className="mt-0.5 text-amber-200/70">
+                because you blocked it on the allowlist.
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

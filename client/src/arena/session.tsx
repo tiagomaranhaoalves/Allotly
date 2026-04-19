@@ -8,8 +8,9 @@ import type {
   ModelId,
   Persona,
   LineupSlots,
+  RepairNote,
 } from "./types";
-import { DEFAULT_ALLOWED, DEFAULT_LINEUP } from "./data/model-catalog";
+import { CATALOG_BY_ID, DEFAULT_ALLOWED, DEFAULT_LINEUP } from "./data/model-catalog";
 
 const LS_KEY_REMEMBERED = "allotly:arena:rememberedKey";
 const LS_KEY_SESSION = "allotly:arena:session";
@@ -34,6 +35,7 @@ const initialState: SessionState = {
   allowedModels: [...DEFAULT_ALLOWED],
   lineup: [...DEFAULT_LINEUP] as LineupSlots,
   keyExpiresAt: null,
+  lastRepairs: [],
 };
 
 type Action =
@@ -56,6 +58,7 @@ type Action =
   | { type: "SET_EXHAUSTED"; exhausted: boolean }
   | { type: "SET_ALLOWLIST"; allowedModels: ModelId[] }
   | { type: "SET_LINEUP"; lineup: LineupSlots }
+  | { type: "CLEAR_REPAIRS" }
   | { type: "CONFIRM_SETUP" }
   | { type: "HYDRATE"; state: SessionState };
 
@@ -129,13 +132,31 @@ function reducer(state: SessionState, action: Action): SessionState {
       return { ...state, isExhausted: action.exhausted };
     case "SET_ALLOWLIST": {
       const allowed = action.allowedModels;
-      // Repair lineup so every slot is still in the new allowlist; fall back to first allowed.
-      const fallback = allowed[0] ?? state.lineup[0];
-      const lineup = state.lineup.map((m) => (allowed.includes(m) ? m : fallback)) as LineupSlots;
-      return { ...state, allowedModels: allowed, lineup };
+      // Repair lineup so every slot is still in the new allowlist;
+      // snap any orphaned slot to the cheapest remaining allowed model.
+      const cheapest =
+        [...allowed].sort(
+          (a, b) => (CATALOG_BY_ID[a]?.inputPerM ?? 0) - (CATALOG_BY_ID[b]?.inputPerM ?? 0),
+        )[0] ?? state.lineup[0];
+      const repairs: RepairNote[] = [];
+      const now = Date.now();
+      const lineup = state.lineup.map((m, i) => {
+        if (allowed.includes(m)) return m;
+        repairs.push({ slotIndex: i as 0 | 1 | 2, from: m, to: cheapest, at: now });
+        return cheapest;
+      }) as LineupSlots;
+      return {
+        ...state,
+        allowedModels: allowed,
+        lineup,
+        lastRepairs: repairs,
+      };
     }
     case "SET_LINEUP":
-      return { ...state, lineup: action.lineup };
+      // User edits to the lineup clear any pending auto-repair notes for that slot.
+      return { ...state, lineup: action.lineup, lastRepairs: [] };
+    case "CLEAR_REPAIRS":
+      return { ...state, lastRepairs: [] };
     case "CONFIRM_SETUP":
       return { ...state, setupConfirmed: true };
     case "HYDRATE":
@@ -165,6 +186,7 @@ interface SessionContextValue {
   incrementRound: (mode: PersonaOrSecretKeeper) => void;
   setAllowlist: (allowedModels: ModelId[]) => void;
   setLineup: (lineup: LineupSlots) => void;
+  clearRepairs: () => void;
   confirmSetup: () => void;
   favouriteModel: () => ModelId | null;
 }
@@ -197,6 +219,7 @@ function deserialize(raw: unknown): SessionState | null {
     allowedModels,
     lineup,
     setupConfirmed,
+    lastRepairs: [],
   };
 }
 
@@ -257,6 +280,7 @@ export function ArenaSessionProvider({ children }: { children: ReactNode }) {
       incrementRound: (mode) => dispatch({ type: "INCREMENT_ROUND", mode }),
       setAllowlist: (allowedModels) => dispatch({ type: "SET_ALLOWLIST", allowedModels }),
       setLineup: (lineup) => dispatch({ type: "SET_LINEUP", lineup }),
+      clearRepairs: () => dispatch({ type: "CLEAR_REPAIRS" }),
       confirmSetup: () => dispatch({ type: "CONFIRM_SETUP" }),
       favouriteModel: () => {
         if (state.voteHistory.length === 0) return null;

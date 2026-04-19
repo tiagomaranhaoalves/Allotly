@@ -116,6 +116,14 @@ export interface SessionState {
   allowedModels: ModelId[];
   lineup: LineupSlots;
   keyExpiresAt: string | null;
+  lastRepairs: RepairNote[];
+}
+
+export interface RepairNote {
+  slotIndex: 0 | 1 | 2;
+  from: ModelId;
+  to: ModelId;
+  at: number;
 }
 
 export interface RoundResult {
