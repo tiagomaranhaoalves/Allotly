@@ -175,20 +175,40 @@ export function RoundRunner({ persona, challenge, onPlayAgain, onSwitchMode, onE
       return;
     }
 
+    // Heuristic token estimator (~4 chars/token) so the running cost ticks up
+    // even when the upstream provider doesn't include `usage` in the SSE stream.
+    const estimatedInputTokens = Math.max(
+      1,
+      Math.ceil(((challenge.systemPrompt?.length ?? 0) + challenge.prompt.length) / 4),
+    );
+    let outputCharCount = 0;
+
     const handle = streamLiveChatCompletion({
       key: state.keyValue,
       model: s.model.id,
       systemPrompt: challenge.systemPrompt,
       userPrompt: challenge.prompt,
       onDelta: (delta) => {
+        outputCharCount += delta.length;
+        const estOutTokens = Math.ceil(outputCharCount / 4);
+        const runningCost = estimateCostUSD(s.model.id, estimatedInputTokens, estOutTokens);
         setPanels((p) => ({
           ...p,
-          [s.slotKey]: { ...p[s.slotKey], text: p[s.slotKey].text + delta },
+          [s.slotKey]: {
+            ...p[s.slotKey],
+            text: p[s.slotKey].text + delta,
+            liveCostUSD: runningCost,
+            tokens: estimatedInputTokens + estOutTokens,
+          },
         }));
       },
       onDone: ({ inputTokens, outputTokens, durationMs, budgetRemainingUSD }) => {
-        const totalTokens = inputTokens + outputTokens;
-        const estimated = estimateCostUSD(s.model.id, inputTokens, outputTokens);
+        // Prefer real usage from the proxy; fall back to our heuristic when
+        // the provider didn't include usage.
+        const finalInput = inputTokens > 0 ? inputTokens : estimatedInputTokens;
+        const finalOutput = outputTokens > 0 ? outputTokens : Math.ceil(outputCharCount / 4);
+        const totalTokens = finalInput + finalOutput;
+        const estimated = estimateCostUSD(s.model.id, finalInput, finalOutput);
         setPanels((p) => ({
           ...p,
           [s.slotKey]: { ...p[s.slotKey], status: "done", tokens: totalTokens, durationMs, liveCostUSD: estimated },
