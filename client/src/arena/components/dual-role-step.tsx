@@ -91,9 +91,13 @@ export function DualRoleStep({ onConfirm }: Props) {
     };
   }, [isLive, state.keyValue]);
 
+  const MAX_CUSTOM_MODELS = 3;
+  const customAtCap = customAllowed.length >= MAX_CUSTOM_MODELS;
+
   function addCustomModel(id: string) {
     if (!id) return;
     if (allowed.includes(id)) return; // silent: already on list
+    if (customAtCap) return; // hard cap: 3 custom models
     setAllowlist([...allowed, id]);
     setPickerOpen(false);
   }
@@ -257,6 +261,9 @@ export function DualRoleStep({ onConfirm }: Props) {
                 <div className="flex items-baseline justify-between gap-2 mb-2">
                   <div className="text-[11px] uppercase tracking-wide text-emerald-300">
                     More from your key
+                    <span className="ml-2 text-white/40 normal-case tracking-normal" data-testid="text-custom-cap">
+                      {customAllowed.length}/{MAX_CUSTOM_MODELS} added
+                    </span>
                   </div>
                   <div className="text-[11px] text-white/40">
                     {keyModelsState === "loading" && "loading models from your key…"}
@@ -276,7 +283,7 @@ export function DualRoleStep({ onConfirm }: Props) {
                       variant="outline"
                       role="combobox"
                       aria-expanded={pickerOpen}
-                      disabled={keyModelsState !== "ready" || pickerCandidates.length === 0}
+                      disabled={keyModelsState !== "ready" || pickerCandidates.length === 0 || customAtCap}
                       className="w-full justify-between bg-neutral-950 border-white/15 text-white hover:bg-neutral-900 hover:text-white"
                       data-testid="button-open-key-model-picker"
                     >
@@ -286,9 +293,11 @@ export function DualRoleStep({ onConfirm }: Props) {
                           ? "Loading models from your key…"
                           : keyModelsState === "error"
                             ? "Couldn’t load models — refresh and try again"
-                            : pickerCandidates.length === 0
-                              ? "All key-allowed models are already on the list"
-                              : "Add a model from your key"}
+                            : customAtCap
+                              ? `You can add up to ${MAX_CUSTOM_MODELS} extra models — remove one to add another`
+                              : pickerCandidates.length === 0
+                                ? "All key-allowed models are already on the list"
+                                : `Add a model from your key (${MAX_CUSTOM_MODELS - customAllowed.length} left)`}
                       </span>
                       <ChevronsUpDown className="w-4 h-4 opacity-50" />
                     </Button>
