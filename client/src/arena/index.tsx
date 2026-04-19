@@ -60,7 +60,8 @@ function ArenaInner() {
     setScreen("allocation");
   }
 
-  function handleAllocConfirm(_mode: PersonaOrSecretKeeper) {
+  function handleAllocConfirm(mode: PersonaOrSecretKeeper) {
+    enterMode(mode);
     setScreen("mode");
   }
 
