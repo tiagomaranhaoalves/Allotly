@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, Check, ChevronDown, ChevronRight, ChevronsUpDown, Lock, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -66,13 +66,18 @@ export function DualRoleStep({ onConfirm }: Props) {
   const [keyModelsState, setKeyModelsState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [keyModelsError, setKeyModelsError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const { setKeyModelPricing } = session;
+  // Hold the setter in a ref because the session provider rebuilds its
+  // value object on every state change — depending on it directly would
+  // refire this effect in an infinite loop and keep the picker stuck on
+  // "Loading models from your key…" forever.
+  const setKeyModelPricingRef = useRef(session.setKeyModelPricing);
+  setKeyModelPricingRef.current = session.setKeyModelPricing;
 
   useEffect(() => {
     if (!isLive || !state.keyValue) {
       setKeyModels([]);
       setKeyModelsState("idle");
-      setKeyModelPricing({});
+      setKeyModelPricingRef.current({});
       return;
     }
     let cancelled = false;
@@ -90,7 +95,7 @@ export function DualRoleStep({ onConfirm }: Props) {
         for (const m of res.models) {
           pricing[m.id] = { input: m.inputPerM, output: m.outputPerM };
         }
-        setKeyModelPricing(pricing);
+        setKeyModelPricingRef.current(pricing);
       } else {
         setKeyModelsError(res.message);
         setKeyModelsState("error");
@@ -99,7 +104,7 @@ export function DualRoleStep({ onConfirm }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [isLive, state.keyValue, setKeyModelPricing]);
+  }, [isLive, state.keyValue]);
 
   const MAX_CUSTOM_MODELS = 3;
   const customAtCap = customAllowed.length >= MAX_CUSTOM_MODELS;
