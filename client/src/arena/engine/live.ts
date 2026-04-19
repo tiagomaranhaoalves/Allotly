@@ -11,7 +11,7 @@ const MODEL_PRICING_PER_MTOK: Record<ModelId, { input: number; output: number }>
   "claude-sonnet-4-20250514": { input: 3.0, output: 15.0 },
   "claude-haiku-4-5": { input: 1.0, output: 5.0 },
   "claude-opus-4-7": { input: 5.0, output: 25.0 },
-  "gemini-2.5-flash": { input: 0.075, output: 0.3 },
+  "gemini-2.5-flash": { input: 0.15, output: 0.6 },
   "gemini-2.5-pro": { input: 1.25, output: 10.0 },
 };
 
