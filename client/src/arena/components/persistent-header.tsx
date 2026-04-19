@@ -23,7 +23,7 @@ export function PersistentHeader({ onOpenLiveToggle, onOpenHowItWorks, onSwitchM
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 px-4 py-3">
         <Link href="/arena" className="flex items-center gap-2 text-white hover:opacity-90" data-testid="arena-home-link">
           <LogoIcon size={28} />
-          <span className="font-semibold tracking-tight">Allotly Arena</span>
+          <span className="font-semibold tracking-tight">Allotly Demo Arena</span>
         </Link>
 
         <div className="flex items-center gap-3">
