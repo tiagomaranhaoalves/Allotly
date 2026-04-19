@@ -911,7 +911,7 @@ function ArenaCallout() {
           <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
             <div className="space-y-8">
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-400/30 text-indigo-300 text-xs font-semibold uppercase tracking-widest">
-                <Sparkles className="w-3.5 h-3.5" /> Try It · No Signup
+                <Sparkles className="w-3.5 h-3.5" /> Allotly Demo · No Signup Needed
               </div>
               <h2 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05]" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
                 Stop guessing which model is{" "}
