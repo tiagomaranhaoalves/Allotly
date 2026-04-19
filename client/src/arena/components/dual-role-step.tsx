@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Check, ChevronDown, ChevronRight, Lock, Plus, X } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, ChevronRight, ChevronsUpDown, Lock, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -11,6 +10,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { ProviderBadge } from "@/components/brand/provider-badge";
 import { useArenaSession } from "../session";
 import {
@@ -23,6 +31,7 @@ import {
   type CatalogEntry,
   type Tier,
 } from "../data/model-catalog";
+import { fetchKeyAllowedModels, type KeyAllowedModel } from "../engine/live";
 import type { LineupSlots, ModelId, Provider, RepairNote } from "../types";
 
 interface Props {
@@ -49,29 +58,60 @@ export function DualRoleStep({ onConfirm }: Props) {
     [allowed],
   );
 
-  const [customDraft, setCustomDraft] = useState("");
-  const [customError, setCustomError] = useState<string | null>(null);
+  // Live mode: fetch the actual list of models this key is allowed to call
+  // from /api/v1/models so users can pick from a typo-proof dropdown instead
+  // of typing model ids by hand.
+  const [keyModels, setKeyModels] = useState<KeyAllowedModel[]>([]);
+  const [keyModelsState, setKeyModelsState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [keyModelsError, setKeyModelsError] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
-  function addCustomModel() {
-    const id = customDraft.trim();
+  useEffect(() => {
+    if (!isLive || !state.keyValue) {
+      setKeyModels([]);
+      setKeyModelsState("idle");
+      return;
+    }
+    let cancelled = false;
+    setKeyModelsState("loading");
+    setKeyModelsError(null);
+    void (async () => {
+      const res = await fetchKeyAllowedModels(state.keyValue!);
+      if (cancelled) return;
+      if (res.ok) {
+        setKeyModels(res.models);
+        setKeyModelsState("ready");
+      } else {
+        setKeyModelsError(res.message);
+        setKeyModelsState("error");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isLive, state.keyValue]);
+
+  function addCustomModel(id: string) {
     if (!id) return;
-    if (id.length > 80) {
-      setCustomError("Model id is too long.");
-      return;
-    }
-    if (allowed.includes(id)) {
-      setCustomError("Already on the allowlist.");
-      return;
-    }
+    if (allowed.includes(id)) return; // silent: already on list
     setAllowlist([...allowed, id]);
-    setCustomDraft("");
-    setCustomError(null);
+    setPickerOpen(false);
   }
 
   function removeCustomModel(id: string) {
     if (allowed.length <= 1) return;
     setAllowlist(allowed.filter((m) => m !== id));
   }
+
+  // Models the key can call that aren't in our static catalog AND haven't
+  // already been added — these are the candidates shown in the picker.
+  const pickerCandidates = useMemo(
+    () =>
+      keyModels.filter(
+        (m) => !CATALOG_BY_ID[m.id] && !allowed.includes(m.id),
+      ),
+    [keyModels, allowed],
+  );
 
   // Auto-fade the inline repair note(s) ~5s after the allowlist toggle.
   useEffect(() => {
@@ -216,48 +256,102 @@ export function DualRoleStep({ onConfirm }: Props) {
               >
                 <div className="flex items-baseline justify-between gap-2 mb-2">
                   <div className="text-[11px] uppercase tracking-wide text-emerald-300">
-                    Custom · any model your key allows
+                    More from your key
                   </div>
                   <div className="text-[11px] text-white/40">
-                    e.g. <code className="font-mono">o3</code>, <code className="font-mono">claude-opus-4-1</code>, <code className="font-mono">gemini-1.5-pro</code>
+                    {keyModelsState === "loading" && "loading models from your key…"}
+                    {keyModelsState === "ready" && `${pickerCandidates.length} extra available`}
+                    {keyModelsState === "error" && "couldn’t load model list"}
                   </div>
                 </div>
-                <div className="flex items-stretch gap-2">
-                  <Input
-                    value={customDraft}
-                    onChange={(e) => {
-                      setCustomDraft(e.target.value);
-                      if (customError) setCustomError(null);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        addCustomModel();
-                      }
-                    }}
-                    placeholder="model id (e.g. gpt-5)"
-                    className="bg-neutral-950 border-white/10 text-white text-sm"
-                    data-testid="input-custom-model"
-                  />
-                  <Button
-                    type="button"
-                    onClick={addCustomModel}
-                    disabled={!customDraft.trim()}
-                    className="bg-emerald-500 hover:bg-emerald-400 text-black"
-                    data-testid="button-add-custom-model"
+                <p className="text-xs text-white/65 leading-relaxed mb-3">
+                  Pick from the actual list of models <strong className="text-white">this key
+                  is allowed to call</strong>. We pull the list from Allotly so there&rsquo;s
+                  nothing to type — no typos, no surprises after the race.
+                </p>
+                <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={pickerOpen}
+                      disabled={keyModelsState !== "ready" || pickerCandidates.length === 0}
+                      className="w-full justify-between bg-neutral-950 border-white/15 text-white hover:bg-neutral-900 hover:text-white"
+                      data-testid="button-open-key-model-picker"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Plus className="w-3.5 h-3.5" />
+                        {keyModelsState === "loading"
+                          ? "Loading models from your key…"
+                          : keyModelsState === "error"
+                            ? "Couldn’t load models — refresh and try again"
+                            : pickerCandidates.length === 0
+                              ? "All key-allowed models are already on the list"
+                              : "Add a model from your key"}
+                      </span>
+                      <ChevronsUpDown className="w-4 h-4 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    className="w-[--radix-popover-trigger-width] p-0 bg-neutral-950 border-white/15"
+                    data-testid="popover-key-model-picker"
                   >
-                    <Plus className="w-3.5 h-3.5 mr-1" /> Add
-                  </Button>
-                </div>
-                {customError && (
-                  <p className="mt-2 text-xs text-rose-300" data-testid="text-custom-model-error">
-                    {customError}
+                    <Command className="bg-neutral-950 text-white">
+                      <CommandInput
+                        placeholder="Search models…"
+                        className="text-white placeholder:text-white/40"
+                        data-testid="input-key-model-search"
+                      />
+                      <CommandList>
+                        <CommandEmpty>No matching models on this key.</CommandEmpty>
+                        <CommandGroup>
+                          {pickerCandidates.map((m) => {
+                            const provider = (["OPENAI", "ANTHROPIC", "GOOGLE"].includes(m.provider)
+                              ? m.provider
+                              : inferProvider(m.id)) as Provider;
+                            return (
+                              <CommandItem
+                                key={m.id}
+                                value={`${m.id} ${m.displayName}`}
+                                onSelect={() => addCustomModel(m.id)}
+                                className="text-white aria-selected:bg-white/10 cursor-pointer"
+                                data-testid={`option-key-model-${m.id}`}
+                              >
+                                <div className="flex w-full items-center gap-2">
+                                  <ProviderBadge provider={provider} className="text-white" />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-sm truncate">{m.displayName}</div>
+                                    <div className="text-[10px] font-mono text-white/40 truncate">
+                                      {m.id}
+                                    </div>
+                                  </div>
+                                  {m.inputPerM > 0 && (
+                                    <div className="text-[10px] font-mono text-white/60 tabular-nums">
+                                      ${m.inputPerM.toFixed(2)}/1M
+                                    </div>
+                                  )}
+                                </div>
+                              </CommandItem>
+                            );
+                          })}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                {keyModelsState === "error" && keyModelsError && (
+                  <p className="mt-2 text-xs text-rose-300" data-testid="text-key-models-error">
+                    {keyModelsError}
                   </p>
                 )}
                 {customAllowed.length > 0 && (
                   <ul className="mt-3 flex flex-wrap gap-2" data-testid="list-custom-models">
                     {customAllowed.map((id) => {
-                      const provider = inferProvider(id);
+                      const meta = keyModels.find((m) => m.id === id);
+                      const provider = (meta && ["OPENAI", "ANTHROPIC", "GOOGLE"].includes(meta.provider)
+                        ? meta.provider
+                        : inferProvider(id)) as Provider;
                       return (
                         <li
                           key={id}
@@ -265,7 +359,12 @@ export function DualRoleStep({ onConfirm }: Props) {
                           data-testid={`custom-model-${id}`}
                         >
                           <ProviderBadge provider={provider} className="text-white" />
-                          <code className="font-mono">{id}</code>
+                          <span>{meta?.displayName ?? id}</span>
+                          {meta && meta.displayName !== id && (
+                            <code className="font-mono text-[10px] text-emerald-200/70">
+                              {id}
+                            </code>
+                          )}
                           <button
                             type="button"
                             onClick={() => removeCustomModel(id)}
@@ -280,11 +379,6 @@ export function DualRoleStep({ onConfirm }: Props) {
                     })}
                   </ul>
                 )}
-                <p className="mt-2 text-[11px] text-white/50 leading-relaxed">
-                  These will be sent to the proxy as-is. If your key permits them, the round
-                  streams from the real provider. Cached responses aren't available for custom
-                  ids — you&rsquo;ll see live output only.
-                </p>
               </div>
             )}
 

@@ -35,6 +35,58 @@ export interface LiveValidationError {
   message: string;
 }
 
+export interface KeyAllowedModel {
+  id: string;
+  displayName: string;
+  provider: string;
+  inputPerM: number;
+  outputPerM: number;
+}
+
+export interface KeyAllowedModelsResult {
+  ok: true;
+  models: KeyAllowedModel[];
+}
+
+export interface KeyAllowedModelsError {
+  ok: false;
+  status: number;
+  message: string;
+}
+
+export async function fetchKeyAllowedModels(
+  key: string,
+): Promise<KeyAllowedModelsResult | KeyAllowedModelsError> {
+  try {
+    const res = await fetch("/api/v1/models", {
+      method: "GET",
+      headers: { Authorization: `Bearer ${key}` },
+    });
+    if (!res.ok) {
+      let message = `Failed to load models (${res.status})`;
+      try {
+        const body = await res.json();
+        if (body?.error?.message) message = body.error.message;
+      } catch {
+        /* ignore */
+      }
+      return { ok: false, status: res.status, message };
+    }
+    const body = await res.json();
+    const data = Array.isArray(body?.data) ? body.data : [];
+    const models: KeyAllowedModel[] = data.map((m: any) => ({
+      id: String(m.id),
+      displayName: String(m.display_name ?? m.id),
+      provider: String(m.owned_by ?? "").toUpperCase(),
+      inputPerM: Number(m.input_price_per_m_tok ?? 0),
+      outputPerM: Number(m.output_price_per_m_tok ?? 0),
+    }));
+    return { ok: true, models };
+  } catch (e: any) {
+    return { ok: false, status: 0, message: e?.message || "Network error" };
+  }
+}
+
 export async function validateAllotlyKey(key: string): Promise<LiveValidationResult | LiveValidationError> {
   try {
     const res = await fetch("/api/v1/keys/me", {
