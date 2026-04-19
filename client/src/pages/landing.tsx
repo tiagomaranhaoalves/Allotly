@@ -8,7 +8,7 @@ import {
   Key, Ticket, Shield, Zap, BarChart3, Users, Check,
   Sun, Moon, ArrowRight, ArrowDown, Lock, Eye, Gauge, Code,
   ChevronDown, ChevronRight, Menu, X, Plug, Sliders, Activity,
-  Share2, Sparkles, Globe, QrCode,
+  Share2, Sparkles, Globe, QrCode, Swords, Trophy, DollarSign,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 
@@ -94,6 +94,9 @@ function Header() {
             <a href="#how-it-works" onClick={(e) => smoothScroll(e, "how-it-works")} className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="link-how-it-works">How It Works</a>
             <a href="#pricing" onClick={(e) => smoothScroll(e, "pricing")} className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="link-pricing">Pricing</a>
             <Link href="/docs" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="link-docs">Docs</Link>
+            <Link href="/arena" className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors inline-flex items-center gap-1.5" data-testid="link-arena">
+              <Swords className="w-3.5 h-3.5" /> Arena
+            </Link>
           </nav>
         </div>
         <div className="hidden lg:flex items-center gap-3">
@@ -125,6 +128,7 @@ function Header() {
           <a href="#how-it-works" onClick={(e) => smoothScroll(e, "how-it-works")} className="block text-sm font-medium text-muted-foreground" data-testid="link-how-it-works-mobile">How It Works</a>
           <a href="#pricing" onClick={(e) => smoothScroll(e, "pricing")} className="block text-sm font-medium text-muted-foreground" data-testid="link-pricing-mobile">Pricing</a>
           <Link href="/docs" className="block text-sm font-medium text-muted-foreground" data-testid="link-docs-mobile">Docs</Link>
+          <Link href="/arena" className="block text-sm font-semibold text-indigo-600 dark:text-indigo-400" data-testid="link-arena-mobile">Arena</Link>
           <hr className="border-border/50" />
           <Link href="/login">
             <span className="block text-sm font-medium text-muted-foreground" data-testid="button-login-mobile">Log In</span>
@@ -894,6 +898,114 @@ function Footer() {
   );
 }
 
+function ArenaCallout() {
+  return (
+    <section className="relative py-24 lg:py-32 overflow-hidden bg-neutral-950 text-white">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(99,102,241,0.18),transparent_60%)]" />
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(99,102,241,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(99,102,241,0.05)_1px,transparent_1px)] bg-[size:60px_60px]" />
+      <div className="absolute -top-24 left-1/4 w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl" />
+      <div className="absolute -bottom-24 right-1/4 w-96 h-96 bg-cyan-500/20 rounded-full blur-3xl" />
+
+      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <FadeIn>
+          <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+            <div className="space-y-8">
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-400/30 text-indigo-300 text-xs font-semibold uppercase tracking-widest">
+                <Sparkles className="w-3.5 h-3.5" /> Try It · No Signup
+              </div>
+              <h2 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05]" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
+                Stop guessing which model is{" "}
+                <span className="bg-gradient-to-r from-indigo-400 via-cyan-300 to-indigo-400 bg-clip-text text-transparent">
+                  actually worth it.
+                </span>
+              </h2>
+              <p className="text-lg text-neutral-300 leading-relaxed max-w-[560px]">
+                Welcome to <span className="font-semibold text-white">The Arena</span> — a head-to-head model showdown where GPT, Claude, Gemini, and friends answer the same prompt in real time. You see who wins on quality. We do the math on cost. Decisions take minutes, not meetings.
+              </p>
+
+              <div className="grid sm:grid-cols-3 gap-3 max-w-[560px]">
+                {[
+                  { icon: <Swords className="w-4 h-4" />, label: "Race any models", sub: "side-by-side" },
+                  { icon: <DollarSign className="w-4 h-4" />, label: "Live $ per answer", sub: "to the cent" },
+                  { icon: <Trophy className="w-4 h-4" />, label: "Pick your winner", sub: "blind or open" },
+                ].map(b => (
+                  <div key={b.label} className="rounded-xl bg-white/5 border border-white/10 p-3.5 backdrop-blur">
+                    <div className="w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-300 flex items-center justify-center mb-2">
+                      {b.icon}
+                    </div>
+                    <p className="text-sm font-semibold text-white">{b.label}</p>
+                    <p className="text-[11px] text-neutral-400">{b.sub}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 pt-2">
+                <Link href="/arena">
+                  <Button size="lg" className="gap-2 px-7 text-[15px] font-semibold bg-white text-neutral-900 hover:bg-neutral-100 shadow-xl shadow-indigo-500/20" data-testid="button-arena-enter">
+                    Enter the Arena <ArrowRight className="w-4 h-4" />
+                  </Button>
+                </Link>
+                <span className="text-xs text-neutral-400">
+                  Free demo mode · Bring your own key for live races
+                </span>
+              </div>
+            </div>
+
+            <div className="relative">
+              <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent backdrop-blur-xl p-1.5 shadow-2xl">
+                <div className="rounded-xl bg-neutral-900/80 p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Swords className="w-4 h-4 text-indigo-400" />
+                      <span className="text-sm font-semibold">Round 1 · "Summarize this contract"</span>
+                    </div>
+                    <span className="text-[10px] uppercase tracking-wider text-emerald-400 font-bold inline-flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live
+                    </span>
+                  </div>
+
+                  {[
+                    { name: "GPT-4o", color: "from-emerald-400 to-emerald-500", cost: "$0.0042", time: "1.8s", winner: false },
+                    { name: "Claude 3.5 Sonnet", color: "from-amber-400 to-orange-500", cost: "$0.0061", time: "2.1s", winner: true },
+                    { name: "Gemini 2.5 Flash", color: "from-blue-400 to-cyan-500", cost: "$0.0008", time: "1.2s", winner: false },
+                  ].map(m => (
+                    <div key={m.name} className={`relative rounded-lg border p-3.5 ${m.winner ? "border-amber-400/50 bg-amber-400/5" : "border-white/10 bg-white/[0.02]"}`}>
+                      {m.winner && (
+                        <div className="absolute -top-2 -right-2 inline-flex items-center gap-1 bg-amber-400 text-neutral-900 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full shadow-lg">
+                          <Trophy className="w-3 h-3" /> Winner
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-6 h-6 rounded-md bg-gradient-to-br ${m.color}`} />
+                          <span className="text-sm font-semibold text-white">{m.name}</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-[11px] font-mono">
+                          <span className="text-neutral-400">{m.time}</span>
+                          <span className="text-emerald-300 font-semibold">{m.cost}</span>
+                        </div>
+                      </div>
+                      <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full bg-gradient-to-r ${m.color}`} style={{ width: m.winner ? "100%" : m.name === "GPT-4o" ? "82%" : "64%" }} />
+                      </div>
+                    </div>
+                  ))}
+
+                  <div className="flex items-center justify-between pt-2 border-t border-white/10 text-xs">
+                    <span className="text-neutral-400">Cheapest: <span className="text-cyan-300 font-semibold">Gemini Flash</span></span>
+                    <span className="text-neutral-400">Best answer: <span className="text-amber-300 font-semibold">Claude 3.5</span></span>
+                  </div>
+                </div>
+              </div>
+              <div className="absolute -z-10 inset-0 bg-gradient-to-br from-indigo-500/20 to-cyan-500/20 rounded-3xl blur-2xl" />
+            </div>
+          </div>
+        </FadeIn>
+      </div>
+    </section>
+  );
+}
+
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background overflow-x-hidden" style={{ scrollBehavior: "smooth" }}>
@@ -904,6 +1016,7 @@ export default function LandingPage() {
       <TwoFeaturesSection />
       <VoucherCallout />
       <HowItWorks />
+      <ArenaCallout />
       <TrustSection />
       <PricingSection />
       <SocialProof />
