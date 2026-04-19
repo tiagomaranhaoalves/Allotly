@@ -7,7 +7,9 @@ import type {
   VoteRecord,
   ModelId,
   Persona,
+  LineupSlots,
 } from "./types";
+import { DEFAULT_ALLOWED, DEFAULT_LINEUP } from "./data/model-catalog";
 
 const LS_KEY_REMEMBERED = "allotly:arena:rememberedKey";
 const LS_KEY_SESSION = "allotly:arena:session";
@@ -28,6 +30,9 @@ const initialState: SessionState = {
   sessionStartTime: null,
   isExhausted: false,
   allocationConfirmed: false,
+  setupConfirmed: false,
+  allowedModels: [...DEFAULT_ALLOWED],
+  lineup: [...DEFAULT_LINEUP] as LineupSlots,
   keyExpiresAt: null,
 };
 
@@ -49,6 +54,9 @@ type Action =
   | { type: "RECORD_VOTE"; vote: VoteRecord }
   | { type: "INCREMENT_ROUND"; mode: PersonaOrSecretKeeper }
   | { type: "SET_EXHAUSTED"; exhausted: boolean }
+  | { type: "SET_ALLOWLIST"; allowedModels: ModelId[] }
+  | { type: "SET_LINEUP"; lineup: LineupSlots }
+  | { type: "CONFIRM_SETUP" }
   | { type: "HYDRATE"; state: SessionState };
 
 function reducer(state: SessionState, action: Action): SessionState {
@@ -119,6 +127,17 @@ function reducer(state: SessionState, action: Action): SessionState {
       };
     case "SET_EXHAUSTED":
       return { ...state, isExhausted: action.exhausted };
+    case "SET_ALLOWLIST": {
+      const allowed = action.allowedModels;
+      // Repair lineup so every slot is still in the new allowlist; fall back to first allowed.
+      const fallback = allowed[0] ?? state.lineup[0];
+      const lineup = state.lineup.map((m) => (allowed.includes(m) ? m : fallback)) as LineupSlots;
+      return { ...state, allowedModels: allowed, lineup };
+    }
+    case "SET_LINEUP":
+      return { ...state, lineup: action.lineup };
+    case "CONFIRM_SETUP":
+      return { ...state, setupConfirmed: true };
     case "HYDRATE":
       return action.state;
     default:
@@ -144,6 +163,9 @@ interface SessionContextValue {
   syncRemaining: (amountUSD: number) => void;
   recordVote: (vote: VoteRecord) => void;
   incrementRound: (mode: PersonaOrSecretKeeper) => void;
+  setAllowlist: (allowedModels: ModelId[]) => void;
+  setLineup: (lineup: LineupSlots) => void;
+  confirmSetup: () => void;
   favouriteModel: () => ModelId | null;
 }
 
@@ -160,7 +182,22 @@ function deserialize(raw: unknown): SessionState | null {
     return null;
   }
   const modesPlayed = Array.isArray(r.modesPlayed) ? (r.modesPlayed as PersonaOrSecretKeeper[]) : [];
-  return { ...(r as unknown as SessionState), modesPlayed };
+  // Backfill new fields on hydration so older saved sessions don't crash.
+  const allowedModels = Array.isArray(r.allowedModels) && r.allowedModels.length > 0
+    ? (r.allowedModels as ModelId[])
+    : [...DEFAULT_ALLOWED];
+  const lineup =
+    Array.isArray(r.lineup) && r.lineup.length === 3
+      ? (r.lineup as LineupSlots)
+      : ([...DEFAULT_LINEUP] as LineupSlots);
+  const setupConfirmed = typeof r.setupConfirmed === "boolean" ? r.setupConfirmed : false;
+  return {
+    ...(r as unknown as SessionState),
+    modesPlayed,
+    allowedModels,
+    lineup,
+    setupConfirmed,
+  };
 }
 
 export function ArenaSessionProvider({ children }: { children: ReactNode }) {
@@ -218,6 +255,9 @@ export function ArenaSessionProvider({ children }: { children: ReactNode }) {
       syncRemaining: (amountUSD) => dispatch({ type: "SYNC_REMAINING", amountUSD }),
       recordVote: (vote) => dispatch({ type: "RECORD_VOTE", vote }),
       incrementRound: (mode) => dispatch({ type: "INCREMENT_ROUND", mode }),
+      setAllowlist: (allowedModels) => dispatch({ type: "SET_ALLOWLIST", allowedModels }),
+      setLineup: (lineup) => dispatch({ type: "SET_LINEUP", lineup }),
+      confirmSetup: () => dispatch({ type: "CONFIRM_SETUP" }),
       favouriteModel: () => {
         if (state.voteHistory.length === 0) return null;
         const counts: Partial<Record<ModelId, number>> = {};

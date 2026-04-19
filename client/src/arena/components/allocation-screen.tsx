@@ -165,7 +165,7 @@ export function AllocationScreen({ onConfirm }: Props) {
             </div>
 
             <p className="mt-4 text-xs text-white/50">
-              You can switch modes later without re-allocating. The ticker up top enforces this budget.
+              Next you'll set the allowlist (admin role), then pick today's lineup (developer role). Both decisions are yours.
             </p>
           </div>
         </div>

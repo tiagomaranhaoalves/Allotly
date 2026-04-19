@@ -18,10 +18,20 @@ export function HowThisWorksDrawer({ open, onOpenChange }: Props) {
 
         <div className="mt-6 space-y-5 text-sm text-white/80">
           <section>
+            <h3 className="font-semibold text-white">Two roles, one key</h3>
+            <p className="mt-1 text-white/65">
+              An <strong>admin</strong> picks which models a key is allowed to call (and the budget).
+              A <strong>developer</strong> then picks one of those allowed models in each request via{" "}
+              <code className="font-mono text-[12px] text-white/85">model: "..."</code>. Allotly enforces the allowlist at the proxy.
+            </p>
+          </section>
+
+          <section>
             <h3 className="font-semibold text-white">One endpoint, three providers</h3>
             <p className="mt-1 text-white/65">
               Each round fires three parallel calls to one OpenAI-compatible
-              endpoint. Allotly routes them to OpenAI, Anthropic, and Google.
+              endpoint. Allotly routes them to OpenAI, Anthropic, and Google
+              based on the model id in each call.
             </p>
             <pre className="mt-3 rounded-lg border border-white/10 bg-black/40 p-3 text-[11px] text-white/80 overflow-x-auto">
 {`POST https://allotly.ai/api/v1/chat/completions

@@ -3,12 +3,12 @@ import { MockUIFrame } from "./mock-ui-frame";
 import { PreflightSnippet } from "./preflight-snippet";
 import { AllowlistPanel } from "./allowlist-panel";
 import { ParallelStream, type StreamPanelState } from "./parallel-stream";
-import { VotingPanel } from "./voting-panel";
+import { VotingPanel, type VoteSlot } from "./voting-panel";
 import { RoundResults } from "./round-results";
 import { useArenaSession } from "../session";
 import { streamCachedVariant, scaledCostUSD, type StreamController } from "../engine/cached";
 import { streamLiveChatCompletion, estimateCostUSD, type LiveStreamHandle } from "../engine/live";
-import { DEFAULT_MODELS } from "../types";
+import { modelMeta } from "../data/model-catalog";
 import type { Challenge, ModelId, ModelMeta, Persona, CachedVariant } from "../types";
 
 type RoundPhase = "briefing" | "preflight" | "streaming" | "voting" | "results";
@@ -21,6 +21,12 @@ interface Props {
   onEndSession: () => void;
 }
 
+interface SlotEntry {
+  slotKey: string;
+  index: number;
+  model: ModelMeta;
+}
+
 const INITIAL_PANEL: StreamPanelState = {
   text: "",
   status: "pending",
@@ -29,26 +35,33 @@ const INITIAL_PANEL: StreamPanelState = {
   durationMs: null,
 };
 
-function freshPanels(): Record<ModelId, StreamPanelState> {
-  return {
-    "gpt-4o-mini": { ...INITIAL_PANEL },
-    "claude-sonnet-4-20250514": { ...INITIAL_PANEL },
-    "gemini-2.5-flash": { ...INITIAL_PANEL },
-  };
+function buildSlots(lineup: ModelId[]): SlotEntry[] {
+  return lineup.map((id, index) => ({
+    slotKey: `${id}-${index}`,
+    index,
+    model: modelMeta(id),
+  }));
+}
+
+function freshPanels(slots: SlotEntry[]): Record<string, StreamPanelState> {
+  const out: Record<string, StreamPanelState> = {};
+  for (const s of slots) out[s.slotKey] = { ...INITIAL_PANEL };
+  return out;
 }
 
 export function RoundRunner({ persona, challenge, onPlayAgain, onSwitchMode, onEndSession }: Props) {
   const { state, spend, syncRemaining, recordVote, incrementRound } = useArenaSession();
   const [phase, setPhase] = useState<RoundPhase>("briefing");
-  const [panels, setPanels] = useState<Record<ModelId, StreamPanelState>>(freshPanels);
-  const [votes, setVotes] = useState<{ bestPick: ModelId; wouldPayMostPick: ModelId } | null>(null);
-  const controllersRef = useRef<Array<StreamController | LiveStreamHandle>>([]);
+  const lineup = state.lineup;
 
-  const models: ModelMeta[] = useMemo(() => DEFAULT_MODELS, []);
+  const slots = useMemo(() => buildSlots(lineup), [lineup]);
+  const [panels, setPanels] = useState<Record<string, StreamPanelState>>(() => freshPanels(slots));
+  const [votes, setVotes] = useState<{ bestSlotKey: string; payMostSlotKey: string } | null>(null);
+  const controllersRef = useRef<Array<StreamController | LiveStreamHandle>>([]);
 
   useEffect(() => {
     setPhase("briefing");
-    setPanels(freshPanels());
+    setPanels(freshPanels(slots));
     setVotes(null);
 
     const t1 = window.setTimeout(() => setPhase("preflight"), 1400);
@@ -63,28 +76,56 @@ export function RoundRunner({ persona, challenge, onPlayAgain, onSwitchMode, onE
       controllersRef.current = [];
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [challenge.id]);
+  }, [challenge.id, lineup.join(",")]);
 
   function runStreams() {
-    setPanels({
-      "gpt-4o-mini": { ...INITIAL_PANEL, status: "streaming" },
-      "claude-sonnet-4-20250514": { ...INITIAL_PANEL, status: "streaming" },
-      "gemini-2.5-flash": { ...INITIAL_PANEL, status: "streaming" },
-    });
+    const streaming: Record<string, StreamPanelState> = {};
+    for (const s of slots) streaming[s.slotKey] = { ...INITIAL_PANEL, status: "streaming" };
+    setPanels(streaming);
 
-    let outstanding = models.length;
-    const onModelDone = () => {
+    let outstanding = slots.length;
+    const onSlotDone = () => {
       outstanding -= 1;
       if (outstanding === 0) {
         window.setTimeout(() => setPhase("voting"), 400);
       }
     };
 
-    for (const meta of models) {
+    for (const s of slots) {
+      const isAllowed = state.allowedModels.includes(s.model.id);
+      if (!isAllowed) {
+        setPanels((p) => ({
+          ...p,
+          [s.slotKey]: {
+            text: `🚫 ${s.model.displayName} would have run here, but you blocked it on the allowlist screen.\n(In production: 403 model_not_allowed.)`,
+            status: "done",
+            liveCostUSD: 0,
+            tokens: 0,
+            durationMs: 0,
+          },
+        }));
+        onSlotDone();
+        continue;
+      }
       if (state.mode === "cached") {
-        startCachedFor(meta, onModelDone);
+        const variant = pickVariant(s.model.id);
+        if (!variant) {
+          setPanels((p) => ({
+            ...p,
+            [s.slotKey]: {
+              text: `🚫 We don't have a cached response for ${s.model.displayName} on this challenge — in live mode it would race here.`,
+              status: "done",
+              liveCostUSD: 0,
+              tokens: 0,
+              durationMs: 0,
+            },
+          }));
+          onSlotDone();
+          continue;
+        }
+        startCachedFor(s, variant, onSlotDone);
       } else {
-        startLiveFor(meta, onModelDone);
+        startLiveFor(s, onSlotDone);
       }
     }
   }
@@ -95,17 +136,7 @@ export function RoundRunner({ persona, challenge, onPlayAgain, onSwitchMode, onE
     return byModel[Math.floor(Math.random() * byModel.length)];
   }
 
-  function startCachedFor(meta: ModelMeta, onDone: () => void) {
-    const variant = pickVariant(meta.id);
-    if (!variant) {
-      setPanels((p) => ({
-        ...p,
-        [meta.id]: { text: "[no cached variant available]", status: "done", liveCostUSD: 0, tokens: 0, durationMs: 0 },
-      }));
-      onDone();
-      return;
-    }
-
+  function startCachedFor(s: SlotEntry, variant: CachedVariant, onDone: () => void) {
     const scaled = scaledCostUSD(variant.costUSD);
     const totalLen = approxTotalLength(variant);
 
@@ -113,18 +144,18 @@ export function RoundRunner({ persona, challenge, onPlayAgain, onSwitchMode, onE
       variant,
       (delta) => {
         setPanels((p) => {
-          const prev = p[meta.id];
+          const prev = p[s.slotKey];
           const runningCost = Math.min(scaled, prev.liveCostUSD + scaled * (delta.length / totalLen));
           return {
             ...p,
-            [meta.id]: { ...prev, text: prev.text + delta, liveCostUSD: runningCost },
+            [s.slotKey]: { ...prev, text: prev.text + delta, liveCostUSD: runningCost },
           };
         });
       },
       ({ costUSD, tokens, durationMs }) => {
         setPanels((p) => ({
           ...p,
-          [meta.id]: { ...p[meta.id], status: "done", liveCostUSD: costUSD, tokens, durationMs },
+          [s.slotKey]: { ...p[s.slotKey], status: "done", liveCostUSD: costUSD, tokens, durationMs },
         }));
         spend(costUSD);
         onDone();
@@ -134,11 +165,11 @@ export function RoundRunner({ persona, challenge, onPlayAgain, onSwitchMode, onE
     controllersRef.current.push(ctrl);
   }
 
-  function startLiveFor(meta: ModelMeta, onDone: () => void) {
+  function startLiveFor(s: SlotEntry, onDone: () => void) {
     if (!state.keyValue) {
       setPanels((p) => ({
         ...p,
-        [meta.id]: { ...p[meta.id], status: "done", text: "[no key — live mode unavailable]" },
+        [s.slotKey]: { ...p[s.slotKey], status: "done", text: "[no key — live mode unavailable]" },
       }));
       onDone();
       return;
@@ -146,21 +177,21 @@ export function RoundRunner({ persona, challenge, onPlayAgain, onSwitchMode, onE
 
     const handle = streamLiveChatCompletion({
       key: state.keyValue,
-      model: meta.id,
+      model: s.model.id,
       systemPrompt: challenge.systemPrompt,
       userPrompt: challenge.prompt,
       onDelta: (delta) => {
         setPanels((p) => ({
           ...p,
-          [meta.id]: { ...p[meta.id], text: p[meta.id].text + delta },
+          [s.slotKey]: { ...p[s.slotKey], text: p[s.slotKey].text + delta },
         }));
       },
       onDone: ({ inputTokens, outputTokens, durationMs, budgetRemainingUSD }) => {
         const totalTokens = inputTokens + outputTokens;
-        const estimated = estimateCostUSD(meta.id, inputTokens, outputTokens);
+        const estimated = estimateCostUSD(s.model.id, inputTokens, outputTokens);
         setPanels((p) => ({
           ...p,
-          [meta.id]: { ...p[meta.id], status: "done", tokens: totalTokens, durationMs, liveCostUSD: estimated },
+          [s.slotKey]: { ...p[s.slotKey], status: "done", tokens: totalTokens, durationMs, liveCostUSD: estimated },
         }));
         if (budgetRemainingUSD !== null) {
           const allocatedRemaining = Math.max(0, budgetRemainingUSD - (state.totalBudgetUSD - state.allocatedUSD));
@@ -171,7 +202,7 @@ export function RoundRunner({ persona, challenge, onPlayAgain, onSwitchMode, onE
       onError: ({ message }) => {
         setPanels((p) => ({
           ...p,
-          [meta.id]: { ...p[meta.id], status: "done", text: p[meta.id].text + `\n[error: ${message}]` },
+          [s.slotKey]: { ...p[s.slotKey], status: "done", text: p[s.slotKey].text + `\n[error: ${message}]` },
         }));
         onDone();
       },
@@ -179,37 +210,38 @@ export function RoundRunner({ persona, challenge, onPlayAgain, onSwitchMode, onE
     controllersRef.current.push(handle);
   }
 
-  function handleVoteSubmit(v: { bestPick: ModelId; wouldPayMostPick: ModelId }) {
+  function handleVoteSubmit(v: { bestSlotKey: string; payMostSlotKey: string }) {
     setVotes(v);
-    const costs: Record<ModelId, number> = {
-      "gpt-4o-mini": panels["gpt-4o-mini"].liveCostUSD,
-      "claude-sonnet-4-20250514": panels["claude-sonnet-4-20250514"].liveCostUSD,
-      "gemini-2.5-flash": panels["gemini-2.5-flash"].liveCostUSD,
-    };
+    const bestSlot = slots.find((s) => s.slotKey === v.bestSlotKey)!;
+    const paySlot = slots.find((s) => s.slotKey === v.payMostSlotKey)!;
+    const costs: Record<string, number> = {};
+    for (const s of slots) costs[s.slotKey] = panels[s.slotKey].liveCostUSD;
     recordVote({
       mode: persona,
       challengeId: challenge.id,
-      bestPick: v.bestPick,
-      wouldPayMostPick: v.wouldPayMostPick,
-      winnerCost: costs[v.bestPick] ?? 0,
+      bestPick: bestSlot.model.id,
+      wouldPayMostPick: paySlot.model.id,
+      winnerCost: costs[v.bestSlotKey] ?? 0,
       costs,
     });
     incrementRound(persona);
     setPhase("results");
   }
 
-  const modelCosts: Record<ModelId, number> = {
-    "gpt-4o-mini": panels["gpt-4o-mini"].liveCostUSD,
-    "claude-sonnet-4-20250514": panels["claude-sonnet-4-20250514"].liveCostUSD,
-    "gemini-2.5-flash": panels["gemini-2.5-flash"].liveCostUSD,
-  };
-  const modelTokens: Record<ModelId, number> = {
-    "gpt-4o-mini": panels["gpt-4o-mini"].tokens,
-    "claude-sonnet-4-20250514": panels["claude-sonnet-4-20250514"].tokens,
-    "gemini-2.5-flash": panels["gemini-2.5-flash"].tokens,
-  };
+  const slotPanels = slots.map((s) => ({
+    model: s.model,
+    slotKey: s.slotKey,
+    state: panels[s.slotKey] ?? { ...INITIAL_PANEL },
+  }));
 
-  const showSnippetAndAllowlist = phase === "preflight" || phase === "streaming" || phase === "voting" || phase === "results";
+  const voteSlots: VoteSlot[] = slots.map((s) => ({
+    slotKey: s.slotKey,
+    index: s.index,
+    model: s.model,
+  }));
+
+  const showSnippetAndAllowlist =
+    phase === "preflight" || phase === "streaming" || phase === "voting" || phase === "results";
 
   return (
     <div className="space-y-4">
@@ -226,28 +258,30 @@ export function RoundRunner({ persona, challenge, onPlayAgain, onSwitchMode, onE
             <PreflightSnippet
               visible={true}
               keyRedacted={state.keyValue ? redact(state.keyValue) : "allotly_sk_demo_arena"}
-              model={models[0].id}
+              model={lineup[0]}
             />
           </div>
           <div className="lg:col-span-2">
-            <AllowlistPanel allowedModels={models} />
+            <AllowlistPanel allowedModels={state.allowedModels} lineup={lineup} />
           </div>
         </div>
       )}
 
       {(phase === "streaming" || phase === "voting" || phase === "results") && (
-        <ParallelStream panels={models.map((m) => ({ model: m, state: panels[m.id] }))} />
+        <ParallelStream panels={slotPanels} />
       )}
 
-      {phase === "voting" && <VotingPanel models={models} onSubmit={handleVoteSubmit} />}
+      {phase === "voting" && <VotingPanel slots={voteSlots} onSubmit={handleVoteSubmit} />}
 
       {phase === "results" && votes && (
         <RoundResults
-          models={models}
-          costs={modelCosts}
-          tokens={modelTokens}
-          bestPick={votes.bestPick}
-          wouldPayMostPick={votes.wouldPayMostPick}
+          slots={voteSlots.map((vs) => ({
+            ...vs,
+            costUSD: panels[vs.slotKey]?.liveCostUSD ?? 0,
+            tokens: panels[vs.slotKey]?.tokens ?? 0,
+          }))}
+          bestSlotKey={votes.bestSlotKey}
+          payMostSlotKey={votes.payMostSlotKey}
           teachingNote={challenge.teachingNote}
           onPlayAgain={onPlayAgain}
           onSwitchMode={onSwitchMode}

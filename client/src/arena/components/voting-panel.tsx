@@ -1,21 +1,32 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ProviderBadge } from "@/components/brand/provider-badge";
-import type { ModelMeta, ModelId } from "../types";
+import type { ModelMeta } from "../types";
 
-interface Props {
-  models: ModelMeta[];
-  onSubmit: (votes: { bestPick: ModelId; wouldPayMostPick: ModelId }) => void;
+export interface VoteSlot {
+  slotKey: string;
+  index: number;
+  model: ModelMeta;
 }
 
-export function VotingPanel({ models, onSubmit }: Props) {
-  const [best, setBest] = useState<ModelId | null>(null);
-  const [payMost, setPayMost] = useState<ModelId | null>(null);
+interface Props {
+  slots: VoteSlot[];
+  onSubmit: (votes: { bestSlotKey: string; payMostSlotKey: string }) => void;
+}
+
+export function VotingPanel({ slots, onSubmit }: Props) {
+  const [best, setBest] = useState<string | null>(null);
+  const [payMost, setPayMost] = useState<string | null>(null);
 
   function handleSubmit() {
     if (!best || !payMost) return;
-    onSubmit({ bestPick: best, wouldPayMostPick: payMost });
+    onSubmit({ bestSlotKey: best, payMostSlotKey: payMost });
   }
+
+  // Detect duplicate models in lineup so we can label slots disambiguatingly.
+  const counts = new Map<string, number>();
+  for (const s of slots) counts.set(s.model.id, (counts.get(s.model.id) ?? 0) + 1);
+  const hasDupes = Array.from(counts.values()).some((n) => n > 1);
 
   return (
     <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-5">
@@ -26,16 +37,18 @@ export function VotingPanel({ models, onSubmit }: Props) {
 
       <VoteRow
         label="Which output is best?"
-        models={models}
+        slots={slots}
         value={best}
         onChange={setBest}
+        showSlotLabel={hasDupes}
         testIdPrefix="vote-best"
       />
       <VoteRow
         label="Which would you have paid the most for?"
-        models={models}
+        slots={slots}
         value={payMost}
         onChange={setPayMost}
+        showSlotLabel={hasDupes}
         testIdPrefix="vote-paymost"
       />
 
@@ -55,37 +68,47 @@ export function VotingPanel({ models, onSubmit }: Props) {
 
 function VoteRow({
   label,
-  models,
+  slots,
   value,
   onChange,
+  showSlotLabel,
   testIdPrefix,
 }: {
   label: string;
-  models: ModelMeta[];
-  value: ModelId | null;
-  onChange: (v: ModelId) => void;
+  slots: VoteSlot[];
+  value: string | null;
+  onChange: (v: string) => void;
+  showSlotLabel: boolean;
   testIdPrefix: string;
 }) {
+  const cols = slots.length === 1 ? "sm:grid-cols-1" : slots.length === 2 ? "sm:grid-cols-2" : "sm:grid-cols-3";
   return (
     <div className="mt-4">
       <div className="text-sm text-white/80 mb-2">{label}</div>
-      <div className="grid gap-2 sm:grid-cols-3">
-        {models.map((m) => {
-          const selected = value === m.id;
+      <div className={`grid gap-2 ${cols}`}>
+        {slots.map((s) => {
+          const selected = value === s.slotKey;
           return (
             <button
-              key={m.id}
+              key={s.slotKey}
               type="button"
-              onClick={() => onChange(m.id)}
+              onClick={() => onChange(s.slotKey)}
               className={`rounded-lg border px-3 py-2.5 text-left transition ${
                 selected
                   ? "border-indigo-400/60 bg-indigo-500/15"
                   : "border-white/10 bg-white/[0.03] hover:border-white/20 hover:bg-white/5"
               }`}
-              data-testid={`${testIdPrefix}-${m.id}`}
+              data-testid={`${testIdPrefix}-${s.slotKey}`}
             >
-              <ProviderBadge provider={m.provider} className="text-white" />
-              <div className="mt-0.5 text-xs text-white/60">{m.displayName}</div>
+              <div className="flex items-center gap-2">
+                <ProviderBadge provider={s.model.provider} className="text-white" />
+                {showSlotLabel && (
+                  <span className="text-[10px] uppercase tracking-wide text-white/50">
+                    Slot {s.index + 1}
+                  </span>
+                )}
+              </div>
+              <div className="mt-0.5 text-xs text-white/60">{s.model.displayName}</div>
             </button>
           );
         })}

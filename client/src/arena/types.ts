@@ -4,7 +4,16 @@ export type Persona = "marketing" | "research" | "creative";
 export type PersonaOrSecretKeeper = Persona | "secret-keeper";
 export type MockUI = "gmail" | "linkedin" | "notion" | "twitter" | "doc" | "terminal";
 
-export type ModelId = "gpt-4o-mini" | "claude-sonnet-4-20250514" | "gemini-2.5-flash";
+export type ModelId =
+  | "gpt-4o-mini"
+  | "gpt-4o"
+  | "o4-mini"
+  | "claude-sonnet-4-20250514"
+  | "claude-haiku-4-5"
+  | "claude-opus-4-7"
+  | "gemini-2.5-flash"
+  | "gemini-2.5-pro";
+
 export type Provider = "OPENAI" | "ANTHROPIC" | "GOOGLE";
 
 export interface ModelMeta {
@@ -18,6 +27,8 @@ export const DEFAULT_MODELS: ModelMeta[] = [
   { id: "claude-sonnet-4-20250514", provider: "ANTHROPIC", displayName: "Claude Sonnet 4" },
   { id: "gemini-2.5-flash", provider: "GOOGLE", displayName: "Gemini 2.5 Flash" },
 ];
+
+export type LineupSlots = [ModelId, ModelId, ModelId];
 
 export interface CachedChunk {
   delta: string;
@@ -84,7 +95,7 @@ export interface VoteRecord {
   bestPick: ModelId;
   wouldPayMostPick: ModelId;
   winnerCost: number;
-  costs: Record<ModelId, number>;
+  costs: Record<string, number>;
 }
 
 export interface SessionState {
@@ -101,6 +112,9 @@ export interface SessionState {
   sessionStartTime: number | null;
   isExhausted: boolean;
   allocationConfirmed: boolean;
+  setupConfirmed: boolean;
+  allowedModels: ModelId[];
+  lineup: LineupSlots;
   keyExpiresAt: string | null;
 }
 

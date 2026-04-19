@@ -4,6 +4,7 @@ import { PersistentHeader } from "./components/persistent-header";
 import { Splash } from "./components/splash";
 import { KeyEntry } from "./components/key-entry";
 import { AllocationScreen } from "./components/allocation-screen";
+import { DualRoleStep } from "./components/dual-role-step";
 import { ModePicker } from "./components/mode-picker";
 import { PersonaArena } from "./components/persona-arena";
 import { SecretKeeper } from "./components/secret-keeper";
@@ -14,11 +15,12 @@ import { ShareForwardPanel } from "./components/share-forward-panel";
 import { validateAllotlyKey } from "./engine/live";
 import type { PersonaOrSecretKeeper, Persona } from "./types";
 
-type Screen = "splash" | "key-entry" | "allocation" | "mode-picker" | "mode" | "exhausted";
+type Screen = "splash" | "key-entry" | "allocation" | "setup" | "mode-picker" | "mode" | "exhausted";
 
 function ArenaInner() {
   const { state, setLiveKey, enterMode, reset } = useArenaSession();
   const [screen, setScreen] = useState<Screen>("splash");
+  const [pendingMode, setPendingMode] = useState<PersonaOrSecretKeeper>("marketing");
   const [liveToggleOpen, setLiveToggleOpen] = useState(false);
   const [howOpen, setHowOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -61,7 +63,12 @@ function ArenaInner() {
   }
 
   function handleAllocConfirm(mode: PersonaOrSecretKeeper) {
-    enterMode(mode);
+    setPendingMode(mode);
+    setScreen("setup");
+  }
+
+  function handleSetupConfirm() {
+    enterMode(pendingMode);
     setScreen("mode");
   }
 
@@ -127,6 +134,10 @@ function ArenaInner() {
 
       {screen === "allocation" && (
         <AllocationScreen onConfirm={handleAllocConfirm} />
+      )}
+
+      {screen === "setup" && (
+        <DualRoleStep onConfirm={handleSetupConfirm} />
       )}
 
       {screen === "mode-picker" && (
