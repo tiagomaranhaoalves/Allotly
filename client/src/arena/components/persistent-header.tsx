@@ -8,9 +8,10 @@ interface Props {
   onOpenHowItWorks: () => void;
   onSwitchMode?: () => void;
   showModeSwitch?: boolean;
+  onSwitchToCached?: () => void;
 }
 
-export function PersistentHeader({ onOpenLiveToggle, onOpenHowItWorks, onSwitchMode, showModeSwitch }: Props) {
+export function PersistentHeader({ onOpenLiveToggle, onOpenHowItWorks, onSwitchMode, showModeSwitch, onSwitchToCached }: Props) {
   const { state } = useArenaSession();
   const keyTypeLabel = state.mode === "live"
     ? state.keyType === "VOUCHER" ? "Voucher" : state.keyType === "TEAM" ? "Teams" : "Live"
@@ -73,7 +74,7 @@ export function PersistentHeader({ onOpenLiveToggle, onOpenHowItWorks, onSwitchM
             How this works
           </Button>
 
-          {state.mode === "cached" && (
+          {state.mode === "cached" ? (
             <Button
               size="sm"
               className="bg-indigo-500 hover:bg-indigo-400 text-white"
@@ -82,6 +83,18 @@ export function PersistentHeader({ onOpenLiveToggle, onOpenHowItWorks, onSwitchM
             >
               Switch to Live
             </Button>
+          ) : (
+            onSwitchToCached && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-white/15 bg-transparent text-white hover:bg-white/5"
+                onClick={onSwitchToCached}
+                data-testid="button-switch-to-cached"
+              >
+                Switch to Cached
+              </Button>
+            )
           )}
         </div>
       </div>

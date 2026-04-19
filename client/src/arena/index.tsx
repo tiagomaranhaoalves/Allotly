@@ -94,6 +94,17 @@ function ArenaInner() {
     setLiveToggleOpen(true);
   }
 
+  function handleSwitchToCached() {
+    const confirmed =
+      !state.allocationConfirmed ||
+      window.confirm(
+        "Switch to cached mode? This will reset your live session — your key, budget, and any rounds played in this session will be cleared. (Your remaining budget on the key itself isn't touched.)",
+      );
+    if (!confirmed) return;
+    reset();
+    setScreen("splash");
+  }
+
   function handlePasteKeyFromModal() {
     setLiveToggleOpen(false);
     setScreen("key-entry");
@@ -113,6 +124,7 @@ function ArenaInner() {
         onOpenHowItWorks={() => setHowOpen(true)}
         onSwitchMode={handleSwitchMode}
         showModeSwitch={showModeSwitch}
+        onSwitchToCached={handleSwitchToCached}
       />
 
       {screen === "splash" && (
