@@ -739,8 +739,11 @@ export async function handleListModels(req: Request, res: Response) {
         created: Math.floor(new Date(p.updatedAt).getTime() / 1000),
         owned_by: p.provider.toLowerCase(),
         display_name: p.displayName,
-        input_price_per_m_tok: p.inputPricePerMTok,
-        output_price_per_m_tok: p.outputPricePerMTok,
+        // Pricing is stored internally as cents/1M-tokens for integer
+        // precision, but the public API contract is USD/1M-tokens (matching
+        // OpenAI-style conventions). Convert at the API boundary.
+        input_price_per_m_tok: p.inputPricePerMTok / 100,
+        output_price_per_m_tok: p.outputPricePerMTok / 100,
       }));
 
     if (filteredProviders.includes("AZURE_OPENAI")) {
@@ -755,8 +758,9 @@ export async function handleListModels(req: Request, res: Response) {
             created: Math.floor(new Date(azureConn.updatedAt).getTime() / 1000),
             owned_by: "azure-openai",
             display_name: `${dep.deploymentName} (${dep.modelId})`,
-            input_price_per_m_tok: dep.inputPricePerMTok,
-            output_price_per_m_tok: dep.outputPricePerMTok,
+            // See note above: cents → USD per 1M tokens at the API boundary.
+            input_price_per_m_tok: dep.inputPricePerMTok / 100,
+            output_price_per_m_tok: dep.outputPricePerMTok / 100,
           });
         }
       }
