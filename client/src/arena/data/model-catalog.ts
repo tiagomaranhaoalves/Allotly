@@ -63,7 +63,7 @@ export const MODEL_CATALOG: CatalogEntry[] = [
     tier: "premium",
     rationale:
       "OpenAI's mid-tier reasoning model. Slower than Mini, much smarter on multi-step problems. Allow only if your team writes those prompts.",
-    hasCachedContent: false,
+    hasCachedContent: true,
   },
   {
     id: "gemini-2.5-pro",
@@ -107,7 +107,7 @@ export const MODEL_CATALOG: CatalogEntry[] = [
     tier: "topend",
     rationale:
       "Top-end reasoning. ~30× Mini. Reserve for genuinely hard tasks; otherwise it's money lit on fire.",
-    hasCachedContent: false,
+    hasCachedContent: true,
   },
 ];
 

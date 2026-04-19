@@ -493,6 +493,214 @@
               }
             ]
           }
+        ],
+        "o4-mini": [
+          {
+            "variantId": "v1",
+            "totalTokens": 1180,
+            "costUSD": 0.00452,
+            "durationMs": 7800,
+            "chunks": [
+              {
+                "delta": "Subject: ",
+                "delayMs": 85
+              },
+              {
+                "delta": "Stopping the AI invoice surprise — ",
+                "delayMs": 100
+              },
+              {
+                "delta": "20 min next week?",
+                "delayMs": 85
+              },
+              {
+                "delta": "\n\n",
+                "delayMs": 94
+              },
+              {
+                "delta": "Priya,",
+                "delayMs": 85
+              },
+              {
+                "delta": "\n\n",
+                "delayMs": 94
+              },
+              {
+                "delta": "Three Heads of Data I've spoken with this quarter all opened the same way: ",
+                "delayMs": 100
+              },
+              {
+                "delta": "an AI bill came in 2-4× their forecast, ",
+                "delayMs": 100
+              },
+              {
+                "delta": "and nobody in the room could attribute it to a team or model.",
+                "delayMs": 100
+              },
+              {
+                "delta": "\n\n",
+                "delayMs": 94
+              },
+              {
+                "delta": "Allotly is an OpenAI-compatible proxy in front of OpenAI, ",
+                "delayMs": 100
+              },
+              {
+                "delta": "Anthropic, ",
+                "delayMs": 85
+              },
+              {
+                "delta": "and Google. ",
+                "delayMs": 85
+              },
+              {
+                "delta": "Admins get per-team budgets with hard cutoffs (not soft alerts), ",
+                "delayMs": 100
+              },
+              {
+                "delta": "per-call audit logs that satisfy SOC 2 and internal review, ",
+                "delayMs": 100
+              },
+              {
+                "delta": "and model allowlists enforced server-side rather than in app code.",
+                "delayMs": 100
+              },
+              {
+                "delta": "\n\n",
+                "delayMs": 94
+              },
+              {
+                "delta": "For NorthStar specifically, ",
+                "delayMs": 85
+              },
+              {
+                "delta": "the claims-summarization workflow is where this usually pays back inside a quarter.",
+                "delayMs": 100
+              },
+              {
+                "delta": "\n\n",
+                "delayMs": 94
+              },
+              {
+                "delta": "Could I take 20 minutes next Tuesday or Wednesday to walk you through it?",
+                "delayMs": 100
+              },
+              {
+                "delta": "\n\n",
+                "delayMs": 94
+              },
+              {
+                "delta": "— ",
+                "delayMs": 85
+              },
+              {
+                "delta": "Alex",
+                "delayMs": 85
+              }
+            ]
+          }
+        ],
+        "claude-opus-4-7": [
+          {
+            "variantId": "v1",
+            "totalTokens": 410,
+            "costUSD": 0.00583,
+            "durationMs": 6400,
+            "chunks": [
+              {
+                "delta": "Subject: ",
+                "delayMs": 90
+              },
+              {
+                "delta": "The AI invoice nobody forecast",
+                "delayMs": 90
+              },
+              {
+                "delta": "\n\n",
+                "delayMs": 99
+              },
+              {
+                "delta": "Priya,",
+                "delayMs": 90
+              },
+              {
+                "delta": "\n\n",
+                "delayMs": 99
+              },
+              {
+                "delta": "The pattern I keep seeing at insurers your size is this: ",
+                "delayMs": 105
+              },
+              {
+                "delta": "a workflow starts as an experiment, ",
+                "delayMs": 105
+              },
+              {
+                "delta": "quietly graduates to production, ",
+                "delayMs": 105
+              },
+              {
+                "delta": "and you find out it has graduated when the LLM invoice arrives at three times the forecast — ",
+                "delayMs": 105
+              },
+              {
+                "delta": "with no per-team breakdown to defend it.",
+                "delayMs": 105
+              },
+              {
+                "delta": "\n\n",
+                "delayMs": 99
+              },
+              {
+                "delta": "Allotly sits in front of OpenAI, ",
+                "delayMs": 105
+              },
+              {
+                "delta": "Anthropic, ",
+                "delayMs": 90
+              },
+              {
+                "delta": "and Google as a single OpenAI-compatible endpoint. ",
+                "delayMs": 105
+              },
+              {
+                "delta": "Admins set per-team budgets that genuinely halt spend rather than send an apologetic Slack message after the fact. ",
+                "delayMs": 105
+              },
+              {
+                "delta": "Every call is logged in a form your auditors will accept, ",
+                "delayMs": 105
+              },
+              {
+                "delta": "and your model allowlist is enforced at the proxy rather than in twelve different application repos.",
+                "delayMs": 105
+              },
+              {
+                "delta": "\n\n",
+                "delayMs": 99
+              },
+              {
+                "delta": "I think NorthStar is one quarter away from needing exactly this layer. ",
+                "delayMs": 105
+              },
+              {
+                "delta": "Could I take 20 minutes next Wednesday to show you how it would slot in?",
+                "delayMs": 105
+              },
+              {
+                "delta": "\n\n",
+                "delayMs": 99
+              },
+              {
+                "delta": "— ",
+                "delayMs": 90
+              },
+              {
+                "delta": "Alex",
+                "delayMs": 90
+              }
+            ]
+          }
         ]
       }
     },
@@ -1061,6 +1269,226 @@
               }
             ]
           }
+        ],
+        "o4-mini": [
+          {
+            "variantId": "v1",
+            "totalTokens": 1420,
+            "costUSD": 0.00564,
+            "durationMs": 8800,
+            "chunks": [
+              {
+                "delta": "A pattern, ",
+                "delayMs": 80
+              },
+              {
+                "delta": "observed across roughly thirty conversations with engineering leaders this year:",
+                "delayMs": 95
+              },
+              {
+                "delta": "\n\n",
+                "delayMs": 88
+              },
+              {
+                "delta": "The first six months of GenAI spend look like a rounding error. ",
+                "delayMs": 95
+              },
+              {
+                "delta": "The next six look like a cost center nobody owns. ",
+                "delayMs": 95
+              },
+              {
+                "delta": "The CFO asks a single question — ",
+                "delayMs": 95
+              },
+              {
+                "delta": "\"which team spent that?\" — ",
+                "delayMs": 80
+              },
+              {
+                "delta": "and a policy lands the next morning.",
+                "delayMs": 95
+              },
+              {
+                "delta": "\n\n",
+                "delayMs": 88
+              },
+              {
+                "delta": "LLM governance is following the SSO curve almost exactly. ",
+                "delayMs": 95
+              },
+              {
+                "delta": "Nobody buys SSO because it is exciting. ",
+                "delayMs": 95
+              },
+              {
+                "delta": "They buy it because an auditor, ",
+                "delayMs": 95
+              },
+              {
+                "delta": "a regulator, ",
+                "delayMs": 80
+              },
+              {
+                "delta": "or a finance leader asked a question that required a structured answer.",
+                "delayMs": 95
+              },
+              {
+                "delta": "\n\n",
+                "delayMs": 88
+              },
+              {
+                "delta": "The structured answer for LLM spend looks like three things: ",
+                "delayMs": 95
+              },
+              {
+                "delta": "per-team budgets that hard-stop, ",
+                "delayMs": 95
+              },
+              {
+                "delta": "per-call audit logs that survive legal review, ",
+                "delayMs": 95
+              },
+              {
+                "delta": "and multi-provider routing behind one endpoint so the choice between OpenAI, ",
+                "delayMs": 95
+              },
+              {
+                "delta": "Anthropic, ",
+                "delayMs": 80
+              },
+              {
+                "delta": "and Google is a config decision, ",
+                "delayMs": 95
+              },
+              {
+                "delta": "not a rewrite.",
+                "delayMs": 80
+              },
+              {
+                "delta": "\n\n",
+                "delayMs": 88
+              },
+              {
+                "delta": "It is unglamorous infrastructure. ",
+                "delayMs": 95
+              },
+              {
+                "delta": "It is also, ",
+                "delayMs": 80
+              },
+              {
+                "delta": "three years from now, ",
+                "delayMs": 80
+              },
+              {
+                "delta": "going to be non-negotiable.",
+                "delayMs": 80
+              }
+            ]
+          }
+        ],
+        "claude-opus-4-7": [
+          {
+            "variantId": "v1",
+            "totalTokens": 470,
+            "costUSD": 0.00742,
+            "durationMs": 6900,
+            "chunks": [
+              {
+                "delta": "There is a moment in every category of enterprise software when a CFO asks a single question, ",
+                "delayMs": 103
+              },
+              {
+                "delta": "nobody in the room can answer, ",
+                "delayMs": 103
+              },
+              {
+                "delta": "and by the next morning a policy exists.",
+                "delayMs": 103
+              },
+              {
+                "delta": "\n\n",
+                "delayMs": 97
+              },
+              {
+                "delta": "SSO had that moment. ",
+                "delayMs": 88
+              },
+              {
+                "delta": "Cloud cost allocation had that moment. ",
+                "delayMs": 103
+              },
+              {
+                "delta": "Data loss prevention had that moment.",
+                "delayMs": 103
+              },
+              {
+                "delta": "\n\n",
+                "delayMs": 97
+              },
+              {
+                "delta": "LLM governance is having it right now, ",
+                "delayMs": 103
+              },
+              {
+                "delta": "quietly, ",
+                "delayMs": 88
+              },
+              {
+                "delta": "in companies that do not yet realize they are mid-transition. ",
+                "delayMs": 103
+              },
+              {
+                "delta": "Last week a Series C founder told me that one of his teams burned $74,000 in three weeks on a model the company had not officially approved — ",
+                "delayMs": 103
+              },
+              {
+                "delta": "a fact discovered from the invoice rather than a dashboard.",
+                "delayMs": 103
+              },
+              {
+                "delta": "\n\n",
+                "delayMs": 97
+              },
+              {
+                "delta": "The infrastructure that makes that conversation impossible is unglamorous. ",
+                "delayMs": 103
+              },
+              {
+                "delta": "Per-team budgets that genuinely halt spend. ",
+                "delayMs": 103
+              },
+              {
+                "delta": "Per-call audit logs your legal team will accept. ",
+                "delayMs": 103
+              },
+              {
+                "delta": "Multi-provider routing hidden behind a single endpoint, ",
+                "delayMs": 103
+              },
+              {
+                "delta": "so the choice between vendors is a config change.",
+                "delayMs": 103
+              },
+              {
+                "delta": "\n\n",
+                "delayMs": 97
+              },
+              {
+                "delta": "Boring. ",
+                "delayMs": 88
+              },
+              {
+                "delta": "Inevitable. ",
+                "delayMs": 88
+              },
+              {
+                "delta": "Being built now.",
+                "delayMs": 88
+              }
+            ]
+          }
         ]
       }
     },
@@ -1389,6 +1817,74 @@
               },
               {
                 "delta": "from measurements taken in early training.",
+                "delayMs": 100
+              }
+            ]
+          }
+        ],
+        "o4-mini": [
+          {
+            "variantId": "v1",
+            "totalTokens": 880,
+            "costUSD": 0.00336,
+            "durationMs": 6600,
+            "chunks": [
+              {
+                "delta": "The system protects each client's contributions by adding carefully calibrated noise to their model updates before anything is shared, ",
+                "delayMs": 90
+              },
+              {
+                "delta": "with the strength of that protection capped by a fixed privacy budget. ",
+                "delayMs": 90
+              },
+              {
+                "delta": "A specialized accountant tracks how much of that budget each round consumes, ",
+                "delayMs": 90
+              },
+              {
+                "delta": "and any client who would exceed their share is excluded for that round. ",
+                "delayMs": 90
+              },
+              {
+                "delta": "To keep the model accurate despite the noise, ",
+                "delayMs": 90
+              },
+              {
+                "delta": "the size of each update is trimmed using thresholds learned from a warm-up group rather than chosen by hand.",
+                "delayMs": 90
+              }
+            ]
+          }
+        ],
+        "claude-opus-4-7": [
+          {
+            "variantId": "v1",
+            "totalTokens": 320,
+            "costUSD": 0.00418,
+            "durationMs": 5400,
+            "chunks": [
+              {
+                "delta": "Each participant's contribution to the shared model is deliberately blurred with mathematical noise before anyone outside their device can see it, ",
+                "delayMs": 100
+              },
+              {
+                "delta": "with an overall ceiling on how much privacy can be spent across the system. ",
+                "delayMs": 100
+              },
+              {
+                "delta": "A precise accountant keeps a running tally of that spending and excludes any participant in danger of overshooting it on a given round. ",
+                "delayMs": 100
+              },
+              {
+                "delta": "To make sure the noise does not cripple accuracy, ",
+                "delayMs": 100
+              },
+              {
+                "delta": "the system caps how large each update can be using thresholds it learned automatically from an initial warm-up group, ",
+                "delayMs": 100
+              },
+              {
+                "delta": "rather than relying on hand-tuned numbers.",
                 "delayMs": 100
               }
             ]
@@ -1761,6 +2257,138 @@
               }
             ]
           }
+        ],
+        "o4-mini": [
+          {
+            "variantId": "v1",
+            "totalTokens": 1240,
+            "costUSD": 0.00478,
+            "durationMs": 7200,
+            "chunks": [
+              {
+                "delta": "The weakest step is the second: ",
+                "delayMs": 95
+              },
+              {
+                "delta": "\"Therefore they cannot be trusted in medical contexts.\"",
+                "delayMs": 95
+              },
+              {
+                "delta": "\n\n",
+                "delayMs": 88
+              },
+              {
+                "delta": "\"Hallucinate\" is a property of unconstrained generation. ",
+                "delayMs": 95
+              },
+              {
+                "delta": "\"Cannot be trusted\" is a property of a deployed system, ",
+                "delayMs": 95
+              },
+              {
+                "delta": "which includes the model plus its retrieval layer, ",
+                "delayMs": 95
+              },
+              {
+                "delta": "its guardrails, ",
+                "delayMs": 80
+              },
+              {
+                "delta": "its output validation, ",
+                "delayMs": 80
+              },
+              {
+                "delta": "and the human in the loop. ",
+                "delayMs": 80
+              },
+              {
+                "delta": "The argument silently equates a raw capability of the model with a property of every conceivable deployment of it — ",
+                "delayMs": 95
+              },
+              {
+                "delta": "and that equivocation is what carries every downstream conclusion. ",
+                "delayMs": 95
+              },
+              {
+                "delta": "Once that equivalence breaks (a model used only to draft notes a clinician must approve, ",
+                "delayMs": 95
+              },
+              {
+                "delta": "for instance), ",
+                "delayMs": 80
+              },
+              {
+                "delta": "every later \"therefore\" loses its force.",
+                "delayMs": 95
+              }
+            ]
+          }
+        ],
+        "claude-opus-4-7": [
+          {
+            "variantId": "v1",
+            "totalTokens": 380,
+            "costUSD": 0.00638,
+            "durationMs": 5800,
+            "chunks": [
+              {
+                "delta": "The weakest step is the second: ",
+                "delayMs": 103
+              },
+              {
+                "delta": "\"Therefore they cannot be trusted in medical contexts.\"",
+                "delayMs": 103
+              },
+              {
+                "delta": "\n\n",
+                "delayMs": 97
+              },
+              {
+                "delta": "It conflates a property of the model in isolation — ",
+                "delayMs": 103
+              },
+              {
+                "delta": "that it sometimes produces false statements — ",
+                "delayMs": 103
+              },
+              {
+                "delta": "with a property of the deployed system, ",
+                "delayMs": 103
+              },
+              {
+                "delta": "which is the model plus retrieval, ",
+                "delayMs": 103
+              },
+              {
+                "delta": "guardrails, ",
+                "delayMs": 88
+              },
+              {
+                "delta": "output validation, ",
+                "delayMs": 88
+              },
+              {
+                "delta": "and human review. ",
+                "delayMs": 88
+              },
+              {
+                "delta": "The argument quietly assumes those layers either do not exist or cannot meaningfully reduce harm, ",
+                "delayMs": 103
+              },
+              {
+                "delta": "and from that unstated assumption every later step inherits its force. ",
+                "delayMs": 103
+              },
+              {
+                "delta": "Strip out the equivocation and the chain collapses: ",
+                "delayMs": 103
+              },
+              {
+                "delta": "a model that hallucinates inside a workflow designed to catch hallucinations is not the same artifact as a model trusted to act unsupervised.",
+                "delayMs": 103
+              }
+            ]
+          }
         ]
       }
     },
@@ -2042,6 +2670,82 @@
               {
                 "delta": "Boring on purpose.",
                 "delayMs": 100
+              }
+            ]
+          }
+        ],
+        "o4-mini": [
+          {
+            "variantId": "v1",
+            "totalTokens": 540,
+            "costUSD": 0.00214,
+            "durationMs": 4400,
+            "chunks": [
+              {
+                "delta": "Most companies discover their AI bill the way they discover a leak — ",
+                "delayMs": 90
+              },
+              {
+                "delta": "from the invoice. ",
+                "delayMs": 75
+              },
+              {
+                "delta": "Allotly is the proxy that puts admins, ",
+                "delayMs": 90
+              },
+              {
+                "delta": "not vendors, ",
+                "delayMs": 75
+              },
+              {
+                "delta": "in charge of where every dollar goes across OpenAI, ",
+                "delayMs": 90
+              },
+              {
+                "delta": "Anthropic, ",
+                "delayMs": 75
+              },
+              {
+                "delta": "and Google, ",
+                "delayMs": 75
+              },
+              {
+                "delta": "with hard limits and a real audit trail.",
+                "delayMs": 90
+              }
+            ]
+          }
+        ],
+        "claude-opus-4-7": [
+          {
+            "variantId": "v1",
+            "totalTokens": 165,
+            "costUSD": 0.00282,
+            "durationMs": 3600,
+            "chunks": [
+              {
+                "delta": "Your AI bill is the only line item where the vendor decides how much you spend. ",
+                "delayMs": 97
+              },
+              {
+                "delta": "Allotly fixes that — ",
+                "delayMs": 82
+              },
+              {
+                "delta": "one endpoint across OpenAI, ",
+                "delayMs": 82
+              },
+              {
+                "delta": "Anthropic, ",
+                "delayMs": 82
+              },
+              {
+                "delta": "and Google, ",
+                "delayMs": 82
+              },
+              {
+                "delta": "with per-team budgets that genuinely halt and audit logs your finance team will actually trust.",
+                "delayMs": 97
               }
             ]
           }
@@ -2410,6 +3114,102 @@
               {
                 "delta": "who spent what.",
                 "delayMs": 90
+              }
+            ]
+          }
+        ],
+        "o4-mini": [
+          {
+            "variantId": "v1",
+            "totalTokens": 820,
+            "costUSD": 0.00316,
+            "durationMs": 5800,
+            "chunks": [
+              {
+                "delta": "Imagine you and your friends share a big jar of candy at school, ",
+                "delayMs": 93
+              },
+              {
+                "delta": "and three different stores keep dropping more candy in. ",
+                "delayMs": 93
+              },
+              {
+                "delta": "It's hard to tell who took what, ",
+                "delayMs": 93
+              },
+              {
+                "delta": "or when the jar will be empty.",
+                "delayMs": 78
+              },
+              {
+                "delta": "\n\n",
+                "delayMs": 86
+              },
+              {
+                "delta": "Allotly is like a kind helper who stands next to the jar. ",
+                "delayMs": 93
+              },
+              {
+                "delta": "They give every kid their own little cup, ",
+                "delayMs": 93
+              },
+              {
+                "delta": "write down what each one takes, ",
+                "delayMs": 93
+              },
+              {
+                "delta": "and gently say \"all done!\" when a cup is empty — ",
+                "delayMs": 93
+              },
+              {
+                "delta": "so nobody ends up with a tummy ache and the grown-ups stay happy.",
+                "delayMs": 93
+              }
+            ]
+          }
+        ],
+        "claude-opus-4-7": [
+          {
+            "variantId": "v1",
+            "totalTokens": 250,
+            "costUSD": 0.00424,
+            "durationMs": 4900,
+            "chunks": [
+              {
+                "delta": "Imagine your whole class shares one big piggy bank to buy snacks from three different shops, ",
+                "delayMs": 100
+              },
+              {
+                "delta": "and nobody knows who's spending what. ",
+                "delayMs": 100
+              },
+              {
+                "delta": "Sometimes a kid buys way too much and the piggy bank is empty before lunch.",
+                "delayMs": 100
+              },
+              {
+                "delta": "\n\n",
+                "delayMs": 94
+              },
+              {
+                "delta": "Allotly is like a friendly grown-up who stands next to the piggy bank. ",
+                "delayMs": 100
+              },
+              {
+                "delta": "Every kid gets their own little allowance jar, ",
+                "delayMs": 100
+              },
+              {
+                "delta": "the grown-up writes down each snack, ",
+                "delayMs": 100
+              },
+              {
+                "delta": "and gently says \"all done!\" when the jar is empty — ",
+                "delayMs": 100
+              },
+              {
+                "delta": "so the snacks are fair and nobody runs out.",
+                "delayMs": 100
               }
             ]
           }
