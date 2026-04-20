@@ -1,0 +1,250 @@
+{
+  "nav": {
+    "howItWorks": "Como Funciona",
+    "pricing": "Preços",
+    "docs": "Documentação",
+    "arena": "Arena",
+    "logIn": "Entrar",
+    "startFree": "Começar Grátis",
+    "home": "Início"
+  },
+  "hero": {
+    "title1": "Equipes boas usam vários modelos.",
+    "title2": "Equipes inteligentes",
+    "title3": "operam com um só orçamento.",
+    "subtitle": "A Allotly se conecta às suas contas da OpenAI, Anthropic, Gemini e Azure e coloca você no controle — por pessoa, por modelo, por dólar.",
+    "ctaStart": "Começar Grátis",
+    "ctaHow": "Veja Como Funciona",
+    "preview": {
+      "title": "Gasto da Organização",
+      "period": "Período de cobrança atual",
+      "delta": "-12% vs. mês passado",
+      "budgetUsed": "Orçamento Utilizado"
+    }
+  },
+  "problem": {
+    "stat1Desc": "gastos em APIs de LLM corporativas só no primeiro semestre de 2025",
+    "stat2Desc": "das empresas não têm controles de IA responsivos",
+    "stat3Desc": "dos executivos dizem que mais de um quarto do gasto não entrega valor"
+  },
+  "solution": {
+    "label": "A SOLUÇÃO",
+    "title": "Um plano de controle. Todos os provedores de IA. Visibilidade total do gasto.",
+    "subtitle": "Seja sua equipe usando OpenAI para gerar código, Anthropic para análises, Gemini para pesquisa ou Azure para implantações corporativas — a Allotly oferece um único painel para gerenciar orçamentos, distribuir acessos e acompanhar cada centavo."
+  },
+  "features": {
+    "label": "DOIS MODELOS DE ACESSO",
+    "title": "Equipes Internas. Usuários Externos. Um Painel.",
+    "teams": {
+      "name": "Allotly Teams",
+      "subtitle": "Acesso à IA Gerenciado",
+      "tag": "Proxy unificado com guardrails",
+      "desc": "Sua equipe usa chaves de proxy da Allotly para chamar OpenAI, Anthropic, Gemini e Azure por um único endpoint. Aplicação de orçamento em tempo real, limitação automática de tokens e rastreamento de gastos por membro — tudo já incluído.",
+      "bullet1": "Uma API key por membro — funciona com todos os provedores",
+      "bullet2": "Aplicação de orçamento em tempo real a cada requisição",
+      "bullet3": "Limitação automática de tokens evita estouro de gasto",
+      "bullet4": "Restrições de acesso no nível do modelo",
+      "builtFor": "Feito para: equipes de engenharia, grupos de P&D e fluxos internos de governança.",
+      "footnote": "Usa chaves de proxy da Allotly com aplicação de orçamento em tempo real a cada requisição."
+    },
+    "vouchers": {
+      "name": "Allotly Vouchers",
+      "subtitle": "Códigos de Acesso Instantâneos",
+      "tag": "Acesso pré-pago à IA para qualquer pessoa",
+      "desc": "Crie códigos de voucher que dão a qualquer pessoa acesso instantâneo à IA com limites rígidos de orçamento. Os destinatários chamam uma API unificada que funciona com todos os provedores. A medição em tempo real por requisição garante que ninguém ultrapasse o orçamento.",
+      "bullet1": "Uma API key, todos os provedores",
+      "bullet2": "Aplicação rígida de orçamento por requisição",
+      "bullet3": "Sem necessidade de contas com provedores para os destinatários",
+      "bullet4": "Códigos compartilháveis com QR",
+      "bullet5": "Funciona com qualquer SDK compatível com OpenAI",
+      "builtFor": "Feito para: hackathons, workshops, freelancers, agências e programas de parceiros.",
+      "footnote": "Usa o proxy enxuto da Allotly com rastreamento de gasto em tempo real. Orçamento aplicado por requisição."
+    }
+  },
+  "voucherCallout": {
+    "title": "Pense em Vale-Presente. Mas para IA.",
+    "desc": "Os Allotly Vouchers permitem que você dê a qualquer pessoa um orçamento de IA pré-carregado — um código que ela resgata e ganha acesso instantâneo à API. Sem contas para criar, sem credenciais de provedor para compartilhar. É só escanear, resgatar e começar a usar.",
+    "cta": "Crie Seu Primeiro Voucher",
+    "voucherLabel": "Allotly Voucher",
+    "voucherCodeLabel": "Código do Voucher",
+    "budget": "Orçamento"
+  },
+  "howItWorks": {
+    "title": "Como Funciona",
+    "subtitle": "Três passos para o controle do gasto com IA.",
+    "tabTeam": "Allotly Teams",
+    "tabVoucher": "Allotly Vouchers",
+    "team": {
+      "step1Title": "Conecte Provedores",
+      "step1Desc": "Vincule suas contas da OpenAI, Anthropic, Google e Azure. API keys criptografadas em repouso com AES-256-GCM.",
+      "step2Title": "Crie Equipes e Defina Orçamentos",
+      "step2Desc": "Adicione membros, atribua orçamentos individuais e restrinja modelos. Os membros recebem chaves de provedor com escopo automaticamente.",
+      "step3Title": "Monitore e Controle",
+      "step3Desc": "Painel unificado com rastreamento de gastos. Alertas automáticos em 80% e revogação de chaves em 100% do orçamento."
+    },
+    "voucher": {
+      "step1Title": "Crie Códigos de Voucher",
+      "step1Desc": "Gere códigos de voucher com limites de orçamento e restrições de modelo. Anexe a bundles para venda.",
+      "step2Title": "Distribua",
+      "step2Desc": "Compartilhe por código, QR ou e-mail. Os destinatários resgatam e recebem uma API key na hora — sem precisar de contas com provedores.",
+      "step3Title": "Aplicação em Tempo Real",
+      "step3Desc": "Medição de orçamento por requisição. Limitação de tokens próxima ao limite. Expiração automática quando o orçamento zera."
+    }
+  },
+  "arenaCallout": {
+    "badge": "Demo da Allotly · Sem Cadastro",
+    "title1": "Pare de chutar qual modelo",
+    "title2": "realmente vale a pena.",
+    "desc": "Escolha um prompt, escolha os concorrentes e veja a <strong>Allotly</strong> rotear a mesma requisição por todos os principais provedores com uma única chave. Você vê latência e qualidade lado a lado. Nós contamos o custo em tempo real. É o jeito mais simples de sentir o que um proxy de IA unificado realmente faz pela sua equipe.",
+    "feature1Label": "Compare modelos",
+    "feature1Sub": "lado a lado",
+    "feature2Label": "Custo ao vivo por resposta",
+    "feature2Sub": "até o centavo",
+    "feature3Label": "Escolha o vencedor",
+    "feature3Sub": "às cegas ou aberto",
+    "ctaEnter": "Entrar na Arena",
+    "ctaSubtext": "Modo demo grátis · Use sua própria chave para corridas ao vivo",
+    "mock": {
+      "round": "Rodada 1 · \"Resuma este contrato\"",
+      "live": "Ao vivo",
+      "winner": "Vencedor",
+      "cheapest": "Mais barato:",
+      "bestAnswer": "Melhor resposta:"
+    }
+  },
+  "trust": {
+    "badge": "Segurança em Primeiro Lugar",
+    "title1": "Seus prompts não são",
+    "title2": "da nossa conta.",
+    "subtitle": "A Allotly é um plano de controle, não um plano de dados. Nós cuidamos de acessos e orçamentos — seu conteúdo trafega direto entre você e o provedor de IA.",
+    "card1Title": "Teams: Pegada de Dados Mínima",
+    "card1Subtitle": "O proxy processa, nunca persiste",
+    "card1Desc": "O proxy encaminha as requisições em tempo real e registra apenas metadados: modelo, contagem de tokens e custo. Nenhum prompt, nenhuma resposta, nenhum histórico de conversa é armazenado.",
+    "card2Title": "Vouchers: Processar, Não Armazenar",
+    "card2Subtitle": "Apenas em trânsito",
+    "card2Desc": "O proxy encaminha as requisições em tempo real. Nada é armazenado — nenhum prompt, nenhuma resposta, nenhum histórico de conversa. Apenas metadados: modelo, contagem de tokens e custo.",
+    "card3Title": "Segurança Corporativa",
+    "card3Subtitle": "Pronta para conformidade",
+    "card3Desc": "Criptografia AES-256-GCM para chaves armazenadas. Trilha de auditoria completa para cada ação administrativa. Arquitetura compatível com a LGPD/GDPR. SOC 2 Tipo II no roadmap.",
+    "badge1": "AES-256-GCM",
+    "badge2": "SOC 2 (planejado)",
+    "badge3": "Compatível com LGPD/GDPR",
+    "badge4": "Zero Retenção de Dados"
+  },
+  "pricing": {
+    "title": "Preços Simples e Transparentes",
+    "subtitle": "Comece grátis. Faça upgrade quando precisar de mais.",
+    "mostPopular": "Mais Popular",
+    "free": {
+      "name": "Free",
+      "period": "/mês",
+      "description": "Para indivíduos começando",
+      "feature1": "1 Admin Raiz (atua como Admin de Equipe)",
+      "feature2": "Até 5 membros diretos",
+      "feature3": "4 conexões com provedores de IA",
+      "feature4": "Rastreamento de uso em tempo real",
+      "feature5": "7 dias de retenção de dados",
+      "feature6": "1 código de voucher, 25 resgates",
+      "feature7": "Bundles de Voucher de US$ 10 disponíveis",
+      "cta": "Começar"
+    },
+    "team": {
+      "name": "Team",
+      "period": "/mês por admin",
+      "description": "Para equipes em crescimento com vários admins",
+      "feature1": "1 Admin Raiz (incluído)",
+      "feature2": "US$ 20 por cada Admin de Equipe adicional, limitado a 9 novas equipes",
+      "feature3": "Até 20 membros por equipe",
+      "feature4": "4 conexões com provedores de IA",
+      "feature5": "Rastreamento de uso em tempo real",
+      "feature6": "90 dias de retenção + log de auditoria",
+      "feature7": "5 códigos de voucher por admin, 50 resgates",
+      "feature8": "Análise de Uso de IA",
+      "feature9": "Bundles de Voucher de US$ 10 disponíveis",
+      "cta": "Começar Grátis, Upgrade a Qualquer Hora"
+    },
+    "enterprise": {
+      "name": "Enterprise",
+      "price": "Sob Consulta",
+      "description": "Para organizações em escala",
+      "feature1": "Tudo ilimitado",
+      "feature2": "Rastreamento de uso em tempo real",
+      "feature3": "1 ano de retenção de dados",
+      "feature4": "SSO + suporte dedicado",
+      "feature5": "Limites personalizados de voucher",
+      "feature6": "Acesso prioritário à API",
+      "feature7": "Garantia de SLA",
+      "cta": "Falar com Vendas"
+    },
+    "voucherBundlesCta": "Você pode comprar Vouchers em qualquer plano. <link>Clique aqui</link> para comprar o Bundle de Voucher de US$ 10 com pacotes de crédito de IA pré-carregados, prontos para distribuir."
+  },
+  "socialProof": {
+    "title": "Feita para Equipes Como a Sua",
+    "challenge": "Desafio",
+    "solution": "Solução",
+    "result": "Resultado",
+    "testimonial1": {
+      "role": "Head de Developer Relations",
+      "org": "Empresa de EdTech",
+      "challenge": "Realiza workshops e hackathons mensalmente. Precisa dar acesso instantâneo à IA para mais de 200 participantes sem criar contas nem gerenciar credenciais.",
+      "solution": "Cria códigos de voucher com orçamento por pessoa e expiração de 24 horas. Os participantes resgatam um link e começam a programar em 60 segundos. Jon vê cada dólar pelo painel.",
+      "result": "200 participantes integrados em 5 minutos. Zero conta surpresa."
+    },
+    "testimonial2": {
+      "role": "VP de Engenharia",
+      "org": "SaaS Série B",
+      "challenge": "Equipe de engenharia de 12 pessoas usando GPT-4o e Claude em três projetos. Queimava US$ 4 mil/mês sem nenhuma visibilidade de quem estava gastando o quê.",
+      "solution": "Conectou OpenAI e Anthropic na Allotly, criou equipes por projeto e definiu orçamentos de US$ 200/mês por engenheiro com restrições de modelo por papel.",
+      "result": "Redução de 40% no custo. Visibilidade total do gasto. Zero mudança no fluxo dos engenheiros."
+    },
+    "testimonial3": {
+      "role": "Sócio-Diretor",
+      "org": "Agência Digital",
+      "challenge": "8 equipes de cliente, cada uma precisando de modelos e orçamentos diferentes. A cobrança era um pesadelo — impossível atribuir gasto a projetos individuais.",
+      "solution": "Usa códigos de voucher por contrato de cliente — cada equipe ganha acesso com escopo, com orçamentos por projeto e allowlists de modelo. A equipe interna usa chaves diretas.",
+      "result": "Cobrança por cliente cristalina. Teams + Vouchers em um único painel."
+    }
+  },
+  "finalCta": {
+    "title1": "Pare de chutar.",
+    "title2": "Comece a governar.",
+    "subtitle": "Tenha visibilidade e controle total do gasto com IA da sua organização em minutos. Sem cartão de crédito.",
+    "cta": "Começar Grátis"
+  },
+  "footer": {
+    "tagline": "O plano de controle de gasto com IA para equipes e organizações.",
+    "product": "Produto",
+    "company": "Empresa",
+    "legal": "Legal",
+    "howItWorks": "Como Funciona",
+    "pricing": "Preços",
+    "documentation": "Documentação",
+    "getStarted": "Começar",
+    "about": "Sobre",
+    "careers": "Carreiras",
+    "contact": "Contato",
+    "privacy": "Política de Privacidade",
+    "terms": "Termos de Serviço",
+    "security": "Segurança",
+    "copyright": "© 2026 Allotly. Todos os direitos reservados."
+  },
+  "arenaHeader": {
+    "backToAllotly": "Voltar para a Allotly",
+    "title": "Arena Demo da Allotly",
+    "budget": "Orçamento",
+    "live": "Ao vivo",
+    "voucher": "Voucher",
+    "teams": "Teams",
+    "cached": "Cache",
+    "switchMode": "Trocar modo",
+    "howThisWorks": "Como funciona",
+    "switchToLive": "Mudar para Ao Vivo",
+    "switchToCached": "Mudar para Cache"
+  },
+  "language": {
+    "label": "Idioma",
+    "english": "English",
+    "portuguese": "Português (BR)",
+    "spanish": "Español"
+  }
+}

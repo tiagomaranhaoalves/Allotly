@@ -3,11 +3,13 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useTheme } from "@/components/theme-provider";
+import { LanguageSwitcher } from "@/components/language-switcher";
 import { Link } from "wouter";
+import { useTranslation, Trans } from "react-i18next";
 import {
   Key, Ticket, Shield, Zap, BarChart3, Users, Check,
-  Sun, Moon, ArrowRight, ArrowDown, Lock, Eye, Gauge, Code,
-  ChevronDown, ChevronRight, Menu, X, Plug, Sliders, Activity,
+  Sun, Moon, ArrowRight, Lock, Eye, Gauge,
+  ChevronDown, ChevronRight, Menu, X, Plug, Activity,
   Share2, Sparkles, Globe, QrCode, Swords, Trophy, DollarSign,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -68,6 +70,7 @@ function ThemeToggle() {
 }
 
 function Header() {
+  const { t } = useTranslation();
   const scrolled = useScrolled();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -91,29 +94,31 @@ function Header() {
             <LogoFull size={28} />
           </Link>
           <nav className="hidden lg:flex items-center gap-6">
-            <a href="#how-it-works" onClick={(e) => smoothScroll(e, "how-it-works")} className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="link-how-it-works">How It Works</a>
-            <a href="#pricing" onClick={(e) => smoothScroll(e, "pricing")} className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="link-pricing">Pricing</a>
-            <Link href="/docs" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="link-docs">Docs</Link>
+            <a href="#how-it-works" onClick={(e) => smoothScroll(e, "how-it-works")} className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="link-how-it-works">{t("nav.howItWorks")}</a>
+            <a href="#pricing" onClick={(e) => smoothScroll(e, "pricing")} className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="link-pricing">{t("nav.pricing")}</a>
+            <Link href="/docs" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="link-docs">{t("nav.docs")}</Link>
             <Link href="/arena" className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors inline-flex items-center gap-1.5" data-testid="link-arena">
-              <Swords className="w-3.5 h-3.5" /> Arena
+              <Swords className="w-3.5 h-3.5" /> {t("nav.arena")}
             </Link>
           </nav>
         </div>
         <div className="hidden lg:flex items-center gap-3">
+          <LanguageSwitcher />
           <ThemeToggle />
           <Link href="/login">
-            <span className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer" data-testid="button-login">Log In</span>
+            <span className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer" data-testid="button-login">{t("nav.logIn")}</span>
           </Link>
           <Link href="/signup">
             <Button className="gap-1.5 bg-indigo-600 border-indigo-700 text-white shadow-lg shadow-indigo-500/25 rounded-full px-5" data-testid="button-start-free">
-              Start Free
+              {t("nav.startFree")}
             </Button>
           </Link>
         </div>
         <div className="flex lg:hidden items-center gap-2">
           <Link href="/login">
-            <span className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer" data-testid="button-login-mobile-header">Log In</span>
+            <span className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer" data-testid="button-login-mobile-header">{t("nav.logIn")}</span>
           </Link>
+          <LanguageSwitcher />
           <ThemeToggle />
           <Button size="icon" variant="ghost" onClick={() => setMobileOpen(!mobileOpen)} data-testid="button-mobile-menu">
             {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -125,17 +130,17 @@ function Header() {
         aria-hidden={!mobileOpen}
       >
         <div className="px-4 py-4 space-y-3">
-          <a href="#how-it-works" onClick={(e) => smoothScroll(e, "how-it-works")} className="block text-sm font-medium text-muted-foreground" data-testid="link-how-it-works-mobile">How It Works</a>
-          <a href="#pricing" onClick={(e) => smoothScroll(e, "pricing")} className="block text-sm font-medium text-muted-foreground" data-testid="link-pricing-mobile">Pricing</a>
-          <Link href="/docs" className="block text-sm font-medium text-muted-foreground" data-testid="link-docs-mobile">Docs</Link>
-          <Link href="/arena" className="block text-sm font-semibold text-indigo-600 dark:text-indigo-400" data-testid="link-arena-mobile">Arena</Link>
+          <a href="#how-it-works" onClick={(e) => smoothScroll(e, "how-it-works")} className="block text-sm font-medium text-muted-foreground" data-testid="link-how-it-works-mobile">{t("nav.howItWorks")}</a>
+          <a href="#pricing" onClick={(e) => smoothScroll(e, "pricing")} className="block text-sm font-medium text-muted-foreground" data-testid="link-pricing-mobile">{t("nav.pricing")}</a>
+          <Link href="/docs" className="block text-sm font-medium text-muted-foreground" data-testid="link-docs-mobile">{t("nav.docs")}</Link>
+          <Link href="/arena" className="block text-sm font-semibold text-indigo-600 dark:text-indigo-400" data-testid="link-arena-mobile">{t("nav.arena")}</Link>
           <hr className="border-border/50" />
           <Link href="/login">
-            <span className="block text-sm font-medium text-muted-foreground" data-testid="button-login-mobile">Log In</span>
+            <span className="block text-sm font-medium text-muted-foreground" data-testid="button-login-mobile">{t("nav.logIn")}</span>
           </Link>
           <Link href="/signup">
             <Button className="w-full gap-1.5 bg-indigo-600 border-indigo-700 text-white rounded-full" data-testid="button-start-free-mobile">
-              Start Free
+              {t("nav.startFree")}
             </Button>
           </Link>
         </div>
@@ -145,6 +150,7 @@ function Header() {
 }
 
 function Hero() {
+  const { t } = useTranslation();
   const smoothScroll = useCallback((e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
     document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" });
@@ -162,26 +168,26 @@ function Hero() {
             <div className="space-y-8">
               <div>
                 <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.08]" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
-                  Great teams use many models.{" "}
-                  <span className="text-muted-foreground">Smart teams</span>
+                  {t("hero.title1")}{" "}
+                  <span className="text-muted-foreground">{t("hero.title2")}</span>
                   <br />
                   <span className="bg-gradient-to-r from-indigo-600 via-cyan-500 to-indigo-600 bg-clip-text text-transparent animate-gradient-text">
-                    run one budget.
+                    {t("hero.title3")}
                   </span>
                 </h1>
                 <p className="mt-6 text-lg sm:text-xl text-muted-foreground max-w-[600px] leading-relaxed">
-                  Allotly connects to your OpenAI, Anthropic, Gemini, and Azure accounts and puts you in control — per person, per model, per dollar.
+                  {t("hero.subtitle")}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <Link href="/signup">
                   <Button size="lg" className="gap-2 px-8 text-[15px] font-semibold bg-indigo-600 border-indigo-700 text-white shadow-lg shadow-indigo-500/25" data-testid="button-hero-start">
-                    Start Free <ArrowRight className="w-4 h-4" />
+                    {t("hero.ctaStart")} <ArrowRight className="w-4 h-4" />
                   </Button>
                 </Link>
                 <a href="#how-it-works" onClick={smoothScroll}>
                   <Button variant="ghost" size="lg" className="gap-1.5 text-[15px] text-muted-foreground" data-testid="button-hero-how">
-                    See How It Works <ChevronDown className="w-4 h-4" />
+                    {t("hero.ctaHow")} <ChevronDown className="w-4 h-4" />
                   </Button>
                 </a>
               </div>
@@ -198,13 +204,13 @@ function Hero() {
                         <BarChart3 className="w-5 h-5 text-white" />
                       </div>
                       <div>
-                        <p className="text-sm font-semibold">Organization Spend</p>
-                        <p className="text-xs text-muted-foreground">Current billing period</p>
+                        <p className="text-sm font-semibold">{t("hero.preview.title")}</p>
+                        <p className="text-xs text-muted-foreground">{t("hero.preview.period")}</p>
                       </div>
                     </div>
                     <div className="text-right">
                       <p className="text-2xl font-bold tracking-tight">$1,247</p>
-                      <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">-12% vs last month</p>
+                      <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">{t("hero.preview.delta")}</p>
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -222,7 +228,7 @@ function Hero() {
                   </div>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="font-medium">Budget Used</span>
+                      <span className="font-medium">{t("hero.preview.budgetUsed")}</span>
                       <span className="text-muted-foreground font-mono">73%</span>
                     </div>
                     <div className="h-2.5 bg-muted rounded-full overflow-hidden">
@@ -270,6 +276,12 @@ function Hero() {
 }
 
 function ProblemStrip() {
+  const { t } = useTranslation();
+  const items = [
+    { stat: "$8.4B", desc: t("problem.stat1Desc"), source: "Menlo Ventures", accent: "from-indigo-400 to-indigo-500" },
+    { stat: "67%", desc: t("problem.stat2Desc"), source: "EY, 2025", accent: "from-cyan-400 to-cyan-500" },
+    { stat: "62%", desc: t("problem.stat3Desc"), source: "Sweep, 2025", accent: "from-violet-400 to-violet-500" },
+  ];
   return (
     <section className="relative bg-neutral-950 text-white py-20 lg:py-24 overflow-hidden">
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-950/40 via-transparent to-transparent" />
@@ -277,26 +289,7 @@ function ProblemStrip() {
       <div className="relative max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
         <FadeIn>
           <div className="grid sm:grid-cols-3 gap-0 divide-y sm:divide-y-0 sm:divide-x divide-neutral-800">
-            {[
-              {
-                stat: "$8.4B",
-                desc: "spent on enterprise LLM APIs in just the first half of 2025",
-                source: "Menlo Ventures",
-                accent: "from-indigo-400 to-indigo-500",
-              },
-              {
-                stat: "67%",
-                desc: "of companies have no responsive AI controls in place",
-                source: "EY, 2025",
-                accent: "from-cyan-400 to-cyan-500",
-              },
-              {
-                stat: "62%",
-                desc: "of executives say over a quarter of their spend delivers no value",
-                source: "Sweep, 2025",
-                accent: "from-violet-400 to-violet-500",
-              },
-            ].map(item => (
+            {items.map(item => (
               <div key={item.stat} className="text-center py-8 sm:py-0 sm:px-10 lg:px-14">
                 <p
                   className={`font-mono text-5xl lg:text-6xl font-extrabold tracking-tighter bg-gradient-to-r ${item.accent} bg-clip-text text-transparent`}
@@ -316,16 +309,17 @@ function ProblemStrip() {
 }
 
 function SolutionIntro() {
+  const { t } = useTranslation();
   return (
     <section className="py-24 lg:py-32">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         <FadeIn>
-          <p className="text-xs uppercase tracking-widest text-indigo-500 font-semibold mb-4" data-testid="text-solution-label">THE SOLUTION</p>
+          <p className="text-xs uppercase tracking-widest text-indigo-500 font-semibold mb-4" data-testid="text-solution-label">{t("solution.label")}</p>
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight max-w-3xl mx-auto">
-            One control plane. Every AI provider. Total spend visibility.
+            {t("solution.title")}
           </h2>
           <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-            Whether your team uses OpenAI for code generation, Anthropic for analysis, Gemini for research, or Azure for enterprise deployments — Allotly gives you a single pane of glass to manage budgets, distribute access, and track every dollar.
+            {t("solution.subtitle")}
           </p>
         </FadeIn>
       </div>
@@ -334,13 +328,27 @@ function SolutionIntro() {
 }
 
 function TwoFeaturesSection() {
+  const { t } = useTranslation();
+  const teamBullets = [
+    t("features.teams.bullet1"),
+    t("features.teams.bullet2"),
+    t("features.teams.bullet3"),
+    t("features.teams.bullet4"),
+  ];
+  const voucherBullets = [
+    t("features.vouchers.bullet1"),
+    t("features.vouchers.bullet2"),
+    t("features.vouchers.bullet3"),
+    t("features.vouchers.bullet4"),
+    t("features.vouchers.bullet5"),
+  ];
   return (
     <section className="py-24 lg:py-32 bg-muted/20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <FadeIn>
           <div className="text-center mb-16">
-            <p className="text-xs uppercase tracking-widest text-indigo-500 font-semibold mb-4">TWO ACCESS MODELS</p>
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">Internal Teams. External Users. One Dashboard.</h2>
+            <p className="text-xs uppercase tracking-widest text-indigo-500 font-semibold mb-4">{t("features.label")}</p>
+            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">{t("features.title")}</h2>
           </div>
         </FadeIn>
         <div className="grid lg:grid-cols-2 gap-6 lg:gap-8">
@@ -351,21 +359,16 @@ function TwoFeaturesSection() {
                   <Key className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold">Allotly Teams</h3>
-                  <p className="text-sm text-muted-foreground">Managed AI Access</p>
+                  <h3 className="text-xl font-bold">{t("features.teams.name")}</h3>
+                  <p className="text-sm text-muted-foreground">{t("features.teams.subtitle")}</p>
                 </div>
               </div>
-              <p className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 mb-2">Unified proxy with guardrails</p>
+              <p className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 mb-2">{t("features.teams.tag")}</p>
               <p className="text-muted-foreground mb-6 leading-relaxed">
-                Your team uses Allotly proxy keys to call OpenAI, Anthropic, Gemini, and Azure through one unified endpoint. Real-time budget enforcement, automatic token clamping, and per-member spend tracking — all built in.
+                {t("features.teams.desc")}
               </p>
               <ul className="space-y-3 mb-6">
-                {[
-                  "One API key per member — works with every provider",
-                  "Real-time budget enforcement on every request",
-                  "Automatic token clamping prevents overspend",
-                  "Model-level access restrictions",
-                ].map(item => (
+                {teamBullets.map(item => (
                   <li key={item} className="flex items-start gap-2.5 text-sm">
                     <Check className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
                     <span>{item}</span>
@@ -373,8 +376,8 @@ function TwoFeaturesSection() {
                 ))}
               </ul>
               <div className="pt-5 border-t">
-                <p className="text-xs italic text-muted-foreground mb-2">Built for: engineering teams, R&D groups, and internal governance workflows.</p>
-                <p className="text-xs text-muted-foreground/70">Uses Allotly proxy keys with real-time budget enforcement on every request.</p>
+                <p className="text-xs italic text-muted-foreground mb-2">{t("features.teams.builtFor")}</p>
+                <p className="text-xs text-muted-foreground/70">{t("features.teams.footnote")}</p>
               </div>
             </Card>
           </FadeIn>
@@ -386,22 +389,16 @@ function TwoFeaturesSection() {
                   <Ticket className="w-6 h-6 text-cyan-600 dark:text-cyan-400" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold">Allotly Vouchers</h3>
-                  <p className="text-sm text-muted-foreground">Instant Access Codes</p>
+                  <h3 className="text-xl font-bold">{t("features.vouchers.name")}</h3>
+                  <p className="text-sm text-muted-foreground">{t("features.vouchers.subtitle")}</p>
                 </div>
               </div>
-              <p className="text-sm font-semibold text-cyan-600 dark:text-cyan-400 mb-2">Pre-paid AI access for anyone</p>
+              <p className="text-sm font-semibold text-cyan-600 dark:text-cyan-400 mb-2">{t("features.vouchers.tag")}</p>
               <p className="text-muted-foreground mb-6 leading-relaxed">
-                Create voucher codes that give anyone instant AI access with hard budget limits. Recipients call one unified API that works with all providers. Real-time per-request metering ensures nobody goes over budget.
+                {t("features.vouchers.desc")}
               </p>
               <ul className="space-y-3 mb-6">
-                {[
-                  "One API key, all providers",
-                  "Hard per-request budget enforcement",
-                  "No provider accounts needed for recipients",
-                  "Shareable codes with QR",
-                  "Works with any OpenAI-compatible SDK",
-                ].map(item => (
+                {voucherBullets.map(item => (
                   <li key={item} className="flex items-start gap-2.5 text-sm">
                     <Check className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
                     <span>{item}</span>
@@ -409,8 +406,8 @@ function TwoFeaturesSection() {
                 ))}
               </ul>
               <div className="pt-5 border-t">
-                <p className="text-xs italic text-muted-foreground mb-2">Built for: hackathons, workshops, contractors, agencies, and partner programs.</p>
-                <p className="text-xs text-muted-foreground/70">Uses Allotly thin proxy with real-time spend tracking. Budget enforced per-request.</p>
+                <p className="text-xs italic text-muted-foreground mb-2">{t("features.vouchers.builtFor")}</p>
+                <p className="text-xs text-muted-foreground/70">{t("features.vouchers.footnote")}</p>
               </div>
             </Card>
           </FadeIn>
@@ -421,6 +418,7 @@ function TwoFeaturesSection() {
 }
 
 function VoucherCallout() {
+  const { t } = useTranslation();
   return (
     <section className="py-24 lg:py-32">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -428,23 +426,22 @@ function VoucherCallout() {
           <div className="bg-cyan-50/50 dark:bg-cyan-950/20 border border-border/50 rounded-2xl p-8 lg:p-14">
             <div className="grid lg:grid-cols-2 gap-10 items-center">
               <div>
-                <h2 className="text-3xl lg:text-4xl font-bold tracking-tight">Think Gift Card. But for AI.</h2>
+                <h2 className="text-3xl lg:text-4xl font-bold tracking-tight">{t("voucherCallout.title")}</h2>
                 <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
-                  Allotly Vouchers let you give anyone a pre-loaded AI budget — a code they redeem for instant API access. 
-                  No accounts to create, no provider credentials to share. Just scan, redeem, and start prompting.
+                  {t("voucherCallout.desc")}
                 </p>
                 <div className="mt-6 flex flex-wrap items-center gap-3">
                   <Link href="/signup">
                     <Button className="gap-1.5 bg-cyan-600 border-cyan-700 text-white" data-testid="button-voucher-cta">
-                      Create Your First Voucher <ArrowRight className="w-4 h-4" />
+                      {t("voucherCallout.cta")} <ArrowRight className="w-4 h-4" />
                     </Button>
                   </Link>
                 </div>
               </div>
               <div className="space-y-6">
                 <div className="bg-background rounded-xl border border-border/60 p-6 shadow-sm">
-                  <p className="text-sm font-bold text-foreground mb-1">Allotly Voucher</p>
-                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-3">Voucher Code</p>
+                  <p className="text-sm font-bold text-foreground mb-1">{t("voucherCallout.voucherLabel")}</p>
+                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-3">{t("voucherCallout.voucherCodeLabel")}</p>
                   <p className="font-mono text-lg font-bold tracking-wider text-foreground" data-testid="text-voucher-code">ALLOT-7K3M-X9PQ-2BWL</p>
                   <div className="mt-4 flex items-center gap-4 flex-wrap">
                     <div className="w-16 h-16 rounded-lg bg-muted/60 border border-border/40 flex items-center justify-center">
@@ -452,7 +449,7 @@ function VoucherCallout() {
                     </div>
                     <div className="flex-1 min-w-0 space-y-2">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="font-medium">Budget</span>
+                        <span className="font-medium">{t("voucherCallout.budget")}</span>
                         <span className="text-muted-foreground font-mono">$15 / $25</span>
                       </div>
                       <div className="h-2 bg-muted rounded-full overflow-hidden">
@@ -471,18 +468,19 @@ function VoucherCallout() {
 }
 
 function HowItWorks() {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<"team" | "voucher">("team");
 
   const steps = {
     team: [
-      { icon: <Plug className="w-6 h-6" />, title: "Connect Providers", desc: "Link your OpenAI, Anthropic, Google, and Azure accounts. API keys encrypted with AES-256-GCM at rest." },
-      { icon: <Users className="w-6 h-6" />, title: "Create Teams & Set Budgets", desc: "Add members, assign per-person budgets, restrict models. Members get scoped provider keys automatically." },
-      { icon: <BarChart3 className="w-6 h-6" />, title: "Monitor & Control", desc: "Unified dashboard with spend tracking. Automatic alerts at 80%, key revocation at 100% budget." },
+      { icon: <Plug className="w-6 h-6" />, title: t("howItWorks.team.step1Title"), desc: t("howItWorks.team.step1Desc") },
+      { icon: <Users className="w-6 h-6" />, title: t("howItWorks.team.step2Title"), desc: t("howItWorks.team.step2Desc") },
+      { icon: <BarChart3 className="w-6 h-6" />, title: t("howItWorks.team.step3Title"), desc: t("howItWorks.team.step3Desc") },
     ],
     voucher: [
-      { icon: <Ticket className="w-6 h-6" />, title: "Create Voucher Codes", desc: "Generate voucher codes with budget limits and model restrictions. Attach to bundles for purchase." },
-      { icon: <Share2 className="w-6 h-6" />, title: "Distribute", desc: "Share via code, QR, or email. Recipients redeem and get an API key instantly — no provider accounts needed." },
-      { icon: <Gauge className="w-6 h-6" />, title: "Real-Time Enforcement", desc: "Per-request budget metering. Token clamping near limits. Auto-expiry when budget hits zero." },
+      { icon: <Ticket className="w-6 h-6" />, title: t("howItWorks.voucher.step1Title"), desc: t("howItWorks.voucher.step1Desc") },
+      { icon: <Share2 className="w-6 h-6" />, title: t("howItWorks.voucher.step2Title"), desc: t("howItWorks.voucher.step2Desc") },
+      { icon: <Gauge className="w-6 h-6" />, title: t("howItWorks.voucher.step3Title"), desc: t("howItWorks.voucher.step3Desc") },
     ],
   };
 
@@ -491,8 +489,8 @@ function HowItWorks() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <FadeIn>
           <div className="text-center mb-14">
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">How It Works</h2>
-            <p className="mt-4 text-lg text-muted-foreground">Three steps to AI spend control.</p>
+            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">{t("howItWorks.title")}</h2>
+            <p className="mt-4 text-lg text-muted-foreground">{t("howItWorks.subtitle")}</p>
           </div>
         </FadeIn>
         <FadeIn>
@@ -503,21 +501,21 @@ function HowItWorks() {
                 className={`px-6 py-2.5 rounded-lg text-sm font-semibold transition-all ${activeTab === "team" ? "bg-indigo-500 text-white shadow-sm" : "border border-border text-muted-foreground"}`}
                 data-testid="tab-team"
               >
-                Allotly Teams
+                {t("howItWorks.tabTeam")}
               </button>
               <button
                 onClick={() => setActiveTab("voucher")}
                 className={`px-6 py-2.5 rounded-lg text-sm font-semibold transition-all ${activeTab === "voucher" ? "bg-cyan-500 text-white shadow-sm" : "border border-border text-muted-foreground"}`}
                 data-testid="tab-voucher"
               >
-                Allotly Vouchers
+                {t("howItWorks.tabVoucher")}
               </button>
             </div>
           </div>
         </FadeIn>
         <div className="grid md:grid-cols-3 gap-8 lg:gap-12">
           {steps[activeTab].map((step, i) => (
-            <FadeIn key={`${activeTab}-${step.title}`} delay={i * 100}>
+            <FadeIn key={`${activeTab}-${i}`} delay={i * 100}>
               <div className="text-center relative">
                 <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-indigo-100 dark:bg-indigo-900/40 mb-6">
                   <span className="text-indigo-600 dark:text-indigo-400">{step.icon}</span>
@@ -540,6 +538,45 @@ function HowItWorks() {
 }
 
 function TrustSection() {
+  const { t } = useTranslation();
+  const cards = [
+    {
+      icon: <Eye className="w-5 h-5" />,
+      title: t("trust.card1Title"),
+      subtitle: t("trust.card1Subtitle"),
+      desc: t("trust.card1Desc"),
+      accent: "from-indigo-500 to-indigo-600",
+      accentBorder: "border-indigo-500/20",
+      accentBg: "bg-indigo-500/10",
+      accentText: "text-indigo-400",
+    },
+    {
+      icon: <Zap className="w-5 h-5" />,
+      title: t("trust.card2Title"),
+      subtitle: t("trust.card2Subtitle"),
+      desc: t("trust.card2Desc"),
+      accent: "from-cyan-500 to-cyan-600",
+      accentBorder: "border-cyan-500/20",
+      accentBg: "bg-cyan-500/10",
+      accentText: "text-cyan-400",
+    },
+    {
+      icon: <Lock className="w-5 h-5" />,
+      title: t("trust.card3Title"),
+      subtitle: t("trust.card3Subtitle"),
+      desc: t("trust.card3Desc"),
+      accent: "from-violet-500 to-violet-600",
+      accentBorder: "border-violet-500/20",
+      accentBg: "bg-violet-500/10",
+      accentText: "text-violet-400",
+    },
+  ];
+  const badges = [
+    { label: t("trust.badge1"), icon: <Lock className="w-3.5 h-3.5" /> },
+    { label: t("trust.badge2"), icon: <Shield className="w-3.5 h-3.5" /> },
+    { label: t("trust.badge3"), icon: <Globe className="w-3.5 h-3.5" /> },
+    { label: t("trust.badge4"), icon: <Eye className="w-3.5 h-3.5" /> },
+  ];
   return (
     <section className="relative py-28 lg:py-36 bg-neutral-950 text-white overflow-hidden">
       <div className="absolute inset-0">
@@ -552,50 +589,19 @@ function TrustSection() {
           <div className="text-center mb-16 lg:mb-20">
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-xs font-semibold uppercase tracking-wider mb-6">
               <Shield className="w-3.5 h-3.5" />
-              Security First
+              {t("trust.badge")}
             </div>
             <h2 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white leading-tight">
-              Your prompts are none<br className="hidden sm:block" /> of our business.
+              {t("trust.title1")}<br className="hidden sm:block" /> {t("trust.title2")}
             </h2>
             <p className="mt-5 text-lg text-neutral-400 max-w-2xl mx-auto leading-relaxed">
-              Allotly is a control plane, not a data plane. We manage access and budgets — your content flows directly between you and the AI provider.
+              {t("trust.subtitle")}
             </p>
           </div>
         </FadeIn>
 
         <div className="grid lg:grid-cols-3 gap-5 lg:gap-6">
-          {[
-            {
-              icon: <Eye className="w-5 h-5" />,
-              title: "Teams: Minimal Data Footprint",
-              subtitle: "Proxy processes, never persists",
-              desc: "The proxy forwards requests in real time and only records metadata: model, token count, and cost. No prompts, no completions, no conversation history is ever stored.",
-              accent: "from-indigo-500 to-indigo-600",
-              accentBorder: "border-indigo-500/20",
-              accentBg: "bg-indigo-500/10",
-              accentText: "text-indigo-400",
-            },
-            {
-              icon: <Zap className="w-5 h-5" />,
-              title: "Vouchers: Process, Don't Persist",
-              subtitle: "In-flight only",
-              desc: "The proxy forwards requests in real time. Nothing is stored — no prompts, no completions, no conversation history. Only metadata: model, token count, cost.",
-              accent: "from-cyan-500 to-cyan-600",
-              accentBorder: "border-cyan-500/20",
-              accentBg: "bg-cyan-500/10",
-              accentText: "text-cyan-400",
-            },
-            {
-              icon: <Lock className="w-5 h-5" />,
-              title: "Enterprise-Grade Security",
-              subtitle: "Built for compliance",
-              desc: "AES-256-GCM encryption for stored keys. Full audit trail for every admin action. GDPR-compliant architecture. SOC 2 Type II on the roadmap.",
-              accent: "from-violet-500 to-violet-600",
-              accentBorder: "border-violet-500/20",
-              accentBg: "bg-violet-500/10",
-              accentText: "text-violet-400",
-            },
-          ].map((item, i) => (
+          {cards.map((item, i) => (
             <FadeIn key={item.title} delay={i * 120}>
               <div className={`relative group h-full p-8 rounded-2xl bg-white/[0.03] border ${item.accentBorder} backdrop-blur-sm transition-all duration-300 hover:bg-white/[0.06] hover:border-opacity-40`}>
                 <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-current to-transparent opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: item.accent.includes('indigo') ? '#6366f1' : item.accent.includes('cyan') ? '#06b6d4' : '#8b5cf6' }} />
@@ -612,12 +618,7 @@ function TrustSection() {
 
         <FadeIn delay={400}>
           <div className="mt-16 lg:mt-20 flex flex-wrap justify-center gap-4">
-            {[
-              { label: "AES-256-GCM", icon: <Lock className="w-3.5 h-3.5" /> },
-              { label: "SOC 2 (planned)", icon: <Shield className="w-3.5 h-3.5" /> },
-              { label: "GDPR Compliant", icon: <Globe className="w-3.5 h-3.5" /> },
-              { label: "Zero Data Retention", icon: <Eye className="w-3.5 h-3.5" /> },
-            ].map(badge => (
+            {badges.map(badge => (
               <span key={badge.label} className="inline-flex items-center gap-2 text-xs font-medium text-neutral-300 px-4 py-2 rounded-full bg-white/[0.05] border border-white/[0.08] backdrop-blur-sm">
                 {badge.icon}
                 {badge.label}
@@ -631,60 +632,64 @@ function TrustSection() {
 }
 
 function PricingSection() {
+  const { t } = useTranslation();
   const plans = [
     {
-      name: "Free",
+      id: "free",
+      name: t("pricing.free.name"),
       price: "$0",
-      period: "/month",
-      description: "For individuals getting started",
+      period: t("pricing.free.period"),
+      description: t("pricing.free.description"),
       features: [
-        "1 Root Admin (acts as Team Admin)",
-        "Up to 5 direct members",
-        "4 AI Provider connections",
-        "Real-time usage tracking",
-        "7-day data retention",
-        "1 voucher code, 25 redemptions",
-        "$10 Voucher Bundles available",
+        t("pricing.free.feature1"),
+        t("pricing.free.feature2"),
+        t("pricing.free.feature3"),
+        t("pricing.free.feature4"),
+        t("pricing.free.feature5"),
+        t("pricing.free.feature6"),
+        t("pricing.free.feature7"),
       ],
-      cta: "Get Started",
+      cta: t("pricing.free.cta"),
       popular: false,
       variant: "outline" as const,
     },
     {
-      name: "Team",
+      id: "team",
+      name: t("pricing.team.name"),
       price: "$20",
-      period: "/mo per admin",
-      description: "For growing teams with multiple admins",
+      period: t("pricing.team.period"),
+      description: t("pricing.team.description"),
       features: [
-        "1 Root Admin (included)",
-        "$20 per each additional Team Admin, limited to 9 new teams",
-        "Up to 20 members per team",
-        "4 AI Provider connections",
-        "Real-time usage tracking",
-        "90-day retention + audit log",
-        "5 voucher codes per admin, 50 redemptions",
-        "AI Usage Analytics",
-        "$10 Voucher Bundles available",
+        t("pricing.team.feature1"),
+        t("pricing.team.feature2"),
+        t("pricing.team.feature3"),
+        t("pricing.team.feature4"),
+        t("pricing.team.feature5"),
+        t("pricing.team.feature6"),
+        t("pricing.team.feature7"),
+        t("pricing.team.feature8"),
+        t("pricing.team.feature9"),
       ],
-      cta: "Start Free, Upgrade Anytime",
+      cta: t("pricing.team.cta"),
       popular: true,
       variant: "default" as const,
     },
     {
-      name: "Enterprise",
-      price: "Custom",
+      id: "enterprise",
+      name: t("pricing.enterprise.name"),
+      price: t("pricing.enterprise.price"),
       period: "",
-      description: "For organizations at scale",
+      description: t("pricing.enterprise.description"),
       features: [
-        "Unlimited everything",
-        "Real-time usage tracking",
-        "1-year data retention",
-        "SSO + dedicated support",
-        "Custom voucher limits",
-        "Priority API access",
-        "SLA guarantee",
+        t("pricing.enterprise.feature1"),
+        t("pricing.enterprise.feature2"),
+        t("pricing.enterprise.feature3"),
+        t("pricing.enterprise.feature4"),
+        t("pricing.enterprise.feature5"),
+        t("pricing.enterprise.feature6"),
+        t("pricing.enterprise.feature7"),
       ],
-      cta: "Contact Sales",
+      cta: t("pricing.enterprise.cta"),
       popular: false,
       variant: "outline" as const,
     },
@@ -695,17 +700,17 @@ function PricingSection() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <FadeIn>
           <div className="text-center mb-16">
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">Simple, Transparent Pricing</h2>
-            <p className="mt-4 text-lg text-muted-foreground">Start free. Upgrade when you need more.</p>
+            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">{t("pricing.title")}</h2>
+            <p className="mt-4 text-lg text-muted-foreground">{t("pricing.subtitle")}</p>
           </div>
         </FadeIn>
         <div className="grid md:grid-cols-3 gap-6 lg:gap-8 max-w-5xl mx-auto">
           {plans.map((plan, i) => (
-            <FadeIn key={plan.name} delay={i * 100}>
+            <FadeIn key={plan.id} delay={i * 100}>
               <Card className={`p-7 lg:p-8 relative flex flex-col h-full transition-all duration-300 hover:-translate-y-1 ${plan.popular ? "ring-2 ring-indigo-500 shadow-xl shadow-indigo-500/5 dark:shadow-none hover:shadow-2xl hover:shadow-indigo-500/10" : "hover:shadow-lg"}`}>
                 {plan.popular && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                    <Badge className="no-default-hover-elevate no-default-active-elevate shadow-sm px-3 py-0.5 text-xs font-semibold bg-indigo-500 text-white border-indigo-600">Most Popular</Badge>
+                    <Badge className="no-default-hover-elevate no-default-active-elevate shadow-sm px-3 py-0.5 text-xs font-semibold bg-indigo-500 text-white border-indigo-600">{t("pricing.mostPopular")}</Badge>
                   </div>
                 )}
                 <div className="mb-6">
@@ -724,8 +729,8 @@ function PricingSection() {
                     </li>
                   ))}
                 </ul>
-                <Link href={plan.name === "Enterprise" ? "/contact" : "/signup"}>
-                  <Button className="w-full font-semibold" variant={plan.variant} data-testid={`button-pricing-${plan.name.toLowerCase()}`}>
+                <Link href={plan.id === "enterprise" ? "/contact" : "/signup"}>
+                  <Button className="w-full font-semibold" variant={plan.variant} data-testid={`button-pricing-${plan.id}`}>
                     {plan.cta}
                     <ChevronRight className="w-4 h-4 ml-1" />
                   </Button>
@@ -736,7 +741,12 @@ function PricingSection() {
         </div>
         <FadeIn delay={300}>
           <p className="text-center text-base font-medium text-foreground mt-10 max-w-2xl mx-auto" data-testid="text-voucher-bundles-cta">
-            You can buy Vouchers from any plan. <Link href="/signup" className="text-indigo-500 hover:text-indigo-400 underline underline-offset-2 transition-colors" data-testid="link-buy-bundle">Click here</Link> to buy the $10 Voucher Bundle with pre-loaded AI credit packs you can buy and distribute.
+            <Trans
+              i18nKey="pricing.voucherBundlesCta"
+              components={{
+                link: <Link href="/signup" className="text-indigo-500 hover:text-indigo-400 underline underline-offset-2 transition-colors" data-testid="link-buy-bundle" />,
+              }}
+            />
           </p>
         </FadeIn>
       </div>
@@ -745,50 +755,52 @@ function PricingSection() {
 }
 
 function SocialProof() {
+  const { t } = useTranslation();
+  const items = [
+    {
+      name: "Jon",
+      role: t("socialProof.testimonial1.role"),
+      org: t("socialProof.testimonial1.org"),
+      avatar: "J",
+      color: "from-cyan-500 to-cyan-600",
+      challenge: t("socialProof.testimonial1.challenge"),
+      solution: t("socialProof.testimonial1.solution"),
+      result: t("socialProof.testimonial1.result"),
+      products: ["Allotly Vouchers", "Bundles"],
+    },
+    {
+      name: "Priya",
+      role: t("socialProof.testimonial2.role"),
+      org: t("socialProof.testimonial2.org"),
+      avatar: "P",
+      color: "from-indigo-500 to-indigo-600",
+      challenge: t("socialProof.testimonial2.challenge"),
+      solution: t("socialProof.testimonial2.solution"),
+      result: t("socialProof.testimonial2.result"),
+      products: ["Allotly Teams"],
+    },
+    {
+      name: "Marcus",
+      role: t("socialProof.testimonial3.role"),
+      org: t("socialProof.testimonial3.org"),
+      avatar: "M",
+      color: "from-violet-500 to-violet-600",
+      challenge: t("socialProof.testimonial3.challenge"),
+      solution: t("socialProof.testimonial3.solution"),
+      result: t("socialProof.testimonial3.result"),
+      products: ["Allotly Teams", "Allotly Vouchers"],
+    },
+  ];
   return (
     <section className="py-24 lg:py-32 bg-muted/50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <FadeIn>
           <div className="text-center mb-14">
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">Built for Teams Like Yours</h2>
+            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">{t("socialProof.title")}</h2>
           </div>
         </FadeIn>
         <div className="grid md:grid-cols-3 gap-6 lg:gap-8">
-          {[
-            {
-              name: "Jon",
-              role: "Head of Developer Relations",
-              org: "EdTech Company",
-              avatar: "J",
-              color: "from-cyan-500 to-cyan-600",
-              challenge: "Runs workshops and hackathons monthly. Needs to give 200+ attendees instant AI access without creating accounts or managing credentials.",
-              solution: "Creates voucher codes with per-person budgets and 24-hour expiry. Attendees redeem a link and start coding in 60 seconds. Jon sees every dollar from his dashboard.",
-              result: "200 attendees onboarded in 5 minutes. Zero surprise bills.",
-              products: ["Allotly Vouchers", "Bundles"],
-            },
-            {
-              name: "Priya",
-              role: "VP of Engineering",
-              org: "Series B SaaS",
-              avatar: "P",
-              color: "from-indigo-500 to-indigo-600",
-              challenge: "12-person engineering team using GPT-4o and Claude across three projects. Was burning $4K/month with zero visibility into who was spending what.",
-              solution: "Connected OpenAI and Anthropic in Allotly, created project-based teams, and set per-engineer budgets of $200/month with model restrictions per role.",
-              result: "40% cost reduction. Full spend visibility. No workflow changes for engineers.",
-              products: ["Allotly Teams"],
-            },
-            {
-              name: "Marcus",
-              role: "Managing Partner",
-              org: "Digital Agency",
-              avatar: "M",
-              color: "from-violet-500 to-violet-600",
-              challenge: "8 client teams, each needing different AI models and budgets. Billing was a nightmare — impossible to attribute spend to individual projects.",
-              solution: "Uses voucher codes per client engagement — each team gets scoped access with project-specific budgets and model allowlists. Internal team uses direct keys.",
-              result: "Crystal-clear per-client billing. Teams + Vouchers from one dashboard.",
-              products: ["Allotly Teams", "Allotly Vouchers"],
-            },
-          ].map((item, i) => (
+          {items.map((item, i) => (
             <FadeIn key={i} delay={i * 100}>
               <Card className="p-7 flex flex-col h-full" data-testid={`card-testimonial-${i}`}>
                 <div className="flex items-center gap-3 mb-5">
@@ -802,15 +814,15 @@ function SocialProof() {
                 </div>
                 <div className="space-y-3 flex-1">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 mb-1">Challenge</p>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 mb-1">{t("socialProof.challenge")}</p>
                     <p className="text-sm text-muted-foreground leading-relaxed">{item.challenge}</p>
                   </div>
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 mb-1">Solution</p>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 mb-1">{t("socialProof.solution")}</p>
                     <p className="text-sm text-muted-foreground leading-relaxed">{item.solution}</p>
                   </div>
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-1">Result</p>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-1">{t("socialProof.result")}</p>
                     <p className="text-sm font-medium text-foreground">{item.result}</p>
                   </div>
                 </div>
@@ -829,21 +841,22 @@ function SocialProof() {
 }
 
 function FinalCTA() {
+  const { t } = useTranslation();
   return (
     <section className="py-24 lg:py-32">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         <FadeIn>
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight">
-            Stop guessing.{" "}
-            <span className="bg-gradient-to-r from-indigo-600 via-cyan-500 to-indigo-600 bg-clip-text text-transparent animate-gradient-text">Start governing.</span>
+            {t("finalCta.title1")}{" "}
+            <span className="bg-gradient-to-r from-indigo-600 via-cyan-500 to-indigo-600 bg-clip-text text-transparent animate-gradient-text">{t("finalCta.title2")}</span>
           </h2>
           <p className="mt-6 text-lg text-muted-foreground max-w-xl mx-auto">
-            Get full visibility and control over your organization's AI spend in minutes. No credit card required.
+            {t("finalCta.subtitle")}
           </p>
           <div className="mt-10">
             <Link href="/signup">
               <Button size="lg" className="gap-2 px-8 text-[15px] font-semibold bg-indigo-600 border-indigo-700 text-white shadow-lg shadow-indigo-500/25" data-testid="button-final-cta">
-                Start Free <ArrowRight className="w-4 h-4" />
+                {t("finalCta.cta")} <ArrowRight className="w-4 h-4" />
               </Button>
             </Link>
           </div>
@@ -854,6 +867,7 @@ function FinalCTA() {
 }
 
 function Footer() {
+  const { t } = useTranslation();
   return (
     <footer className="bg-neutral-900 text-neutral-400 py-16 border-t border-neutral-800">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -861,37 +875,37 @@ function Footer() {
           <div className="col-span-2 md:col-span-1">
             <span data-testid="logo-footer"><LogoMono size={24} className="text-neutral-400" /></span>
             <p className="mt-4 text-sm text-neutral-500 leading-relaxed max-w-xs">
-              The AI spend control plane for teams and organizations.
+              {t("footer.tagline")}
             </p>
           </div>
           <div>
-            <p className="text-xs font-semibold text-neutral-300 uppercase tracking-wider mb-4">Product</p>
+            <p className="text-xs font-semibold text-neutral-300 uppercase tracking-wider mb-4">{t("footer.product")}</p>
             <ul className="space-y-2.5">
-              <li><a href="#how-it-works" className="text-sm hover:text-white transition-colors" data-testid="link-footer-how-it-works">How It Works</a></li>
-              <li><a href="#pricing" className="text-sm hover:text-white transition-colors" data-testid="link-footer-pricing">Pricing</a></li>
-              <li><Link href="/docs" className="text-sm hover:text-white transition-colors" data-testid="link-footer-docs">Documentation</Link></li>
-              <li><Link href="/signup" className="text-sm hover:text-white transition-colors" data-testid="link-footer-signup">Get Started</Link></li>
+              <li><a href="#how-it-works" className="text-sm hover:text-white transition-colors" data-testid="link-footer-how-it-works">{t("footer.howItWorks")}</a></li>
+              <li><a href="#pricing" className="text-sm hover:text-white transition-colors" data-testid="link-footer-pricing">{t("footer.pricing")}</a></li>
+              <li><Link href="/docs" className="text-sm hover:text-white transition-colors" data-testid="link-footer-docs">{t("footer.documentation")}</Link></li>
+              <li><Link href="/signup" className="text-sm hover:text-white transition-colors" data-testid="link-footer-signup">{t("footer.getStarted")}</Link></li>
             </ul>
           </div>
           <div>
-            <p className="text-xs font-semibold text-neutral-300 uppercase tracking-wider mb-4">Company</p>
+            <p className="text-xs font-semibold text-neutral-300 uppercase tracking-wider mb-4">{t("footer.company")}</p>
             <ul className="space-y-2.5">
-              <li><Link href="/about" className="text-sm hover:text-white transition-colors" data-testid="link-footer-about">About</Link></li>
-              <li><Link href="/careers" className="text-sm hover:text-white transition-colors" data-testid="link-footer-careers">Careers</Link></li>
-              <li><Link href="/contact" className="text-sm hover:text-white transition-colors" data-testid="link-footer-contact">Contact</Link></li>
+              <li><Link href="/about" className="text-sm hover:text-white transition-colors" data-testid="link-footer-about">{t("footer.about")}</Link></li>
+              <li><Link href="/careers" className="text-sm hover:text-white transition-colors" data-testid="link-footer-careers">{t("footer.careers")}</Link></li>
+              <li><Link href="/contact" className="text-sm hover:text-white transition-colors" data-testid="link-footer-contact">{t("footer.contact")}</Link></li>
             </ul>
           </div>
           <div>
-            <p className="text-xs font-semibold text-neutral-300 uppercase tracking-wider mb-4">Legal</p>
+            <p className="text-xs font-semibold text-neutral-300 uppercase tracking-wider mb-4">{t("footer.legal")}</p>
             <ul className="space-y-2.5">
-              <li><Link href="/privacy" className="text-sm hover:text-white transition-colors" data-testid="link-footer-privacy">Privacy Policy</Link></li>
-              <li><Link href="/terms" className="text-sm hover:text-white transition-colors" data-testid="link-footer-terms">Terms of Service</Link></li>
-              <li><Link href="/security" className="text-sm hover:text-white transition-colors" data-testid="link-footer-security">Security</Link></li>
+              <li><Link href="/privacy" className="text-sm hover:text-white transition-colors" data-testid="link-footer-privacy">{t("footer.privacy")}</Link></li>
+              <li><Link href="/terms" className="text-sm hover:text-white transition-colors" data-testid="link-footer-terms">{t("footer.terms")}</Link></li>
+              <li><Link href="/security" className="text-sm hover:text-white transition-colors" data-testid="link-footer-security">{t("footer.security")}</Link></li>
             </ul>
           </div>
         </div>
         <div className="mt-12 pt-8 border-t border-neutral-800 text-center">
-          <p className="text-sm text-neutral-500">&copy; 2026 Allotly. All rights reserved.</p>
+          <p className="text-sm text-neutral-500">{t("footer.copyright")}</p>
         </div>
       </div>
     </footer>
@@ -899,6 +913,12 @@ function Footer() {
 }
 
 function ArenaCallout() {
+  const { t } = useTranslation();
+  const features = [
+    { icon: <Swords className="w-4 h-4" />, label: t("arenaCallout.feature1Label"), sub: t("arenaCallout.feature1Sub") },
+    { icon: <DollarSign className="w-4 h-4" />, label: t("arenaCallout.feature2Label"), sub: t("arenaCallout.feature2Sub") },
+    { icon: <Trophy className="w-4 h-4" />, label: t("arenaCallout.feature3Label"), sub: t("arenaCallout.feature3Sub") },
+  ];
   return (
     <section className="relative py-24 lg:py-32 overflow-hidden bg-neutral-950 text-white">
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(99,102,241,0.18),transparent_60%)]" />
@@ -911,24 +931,23 @@ function ArenaCallout() {
           <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
             <div className="space-y-8">
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-400/30 text-indigo-300 text-xs font-semibold uppercase tracking-widest">
-                <Sparkles className="w-3.5 h-3.5" /> Allotly Demo · No Signup Needed
+                <Sparkles className="w-3.5 h-3.5" /> {t("arenaCallout.badge")}
               </div>
               <h2 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05]" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
-                Stop guessing which model is{" "}
+                {t("arenaCallout.title1")}{" "}
                 <span className="bg-gradient-to-r from-indigo-400 via-cyan-300 to-indigo-400 bg-clip-text text-transparent">
-                  actually worth it.
+                  {t("arenaCallout.title2")}
                 </span>
               </h2>
               <p className="text-lg text-neutral-300 leading-relaxed max-w-[560px]">
-                Pick a prompt, pick the contenders, and watch <span className="font-semibold text-white">Allotly</span> route the same request through every major provider on a single key. You see latency and quality side-by-side. We tally the cost in real time. It&rsquo;s the simplest way to feel what a unified AI proxy actually does for your team.
+                <Trans
+                  i18nKey="arenaCallout.desc"
+                  components={{ strong: <span className="font-semibold text-white" /> }}
+                />
               </p>
 
               <div className="grid sm:grid-cols-3 gap-3 max-w-[560px]">
-                {[
-                  { icon: <Swords className="w-4 h-4" />, label: "Race any models", sub: "side-by-side" },
-                  { icon: <DollarSign className="w-4 h-4" />, label: "Live $ per answer", sub: "to the cent" },
-                  { icon: <Trophy className="w-4 h-4" />, label: "Pick your winner", sub: "blind or open" },
-                ].map(b => (
+                {features.map(b => (
                   <div key={b.label} className="rounded-xl bg-white/5 border border-white/10 p-3.5 backdrop-blur">
                     <div className="w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-300 flex items-center justify-center mb-2">
                       {b.icon}
@@ -942,11 +961,11 @@ function ArenaCallout() {
               <div className="flex flex-wrap items-center gap-3 pt-2">
                 <Link href="/arena">
                   <Button size="lg" className="gap-2 px-7 text-[15px] font-semibold bg-white text-neutral-900 hover:bg-neutral-100 shadow-xl shadow-indigo-500/20" data-testid="button-arena-enter">
-                    Enter the Arena <ArrowRight className="w-4 h-4" />
+                    {t("arenaCallout.ctaEnter")} <ArrowRight className="w-4 h-4" />
                   </Button>
                 </Link>
                 <span className="text-xs text-neutral-400">
-                  Free demo mode · Bring your own key for live races
+                  {t("arenaCallout.ctaSubtext")}
                 </span>
               </div>
             </div>
@@ -957,10 +976,10 @@ function ArenaCallout() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Swords className="w-4 h-4 text-indigo-400" />
-                      <span className="text-sm font-semibold">Round 1 · "Summarize this contract"</span>
+                      <span className="text-sm font-semibold">{t("arenaCallout.mock.round")}</span>
                     </div>
                     <span className="text-[10px] uppercase tracking-wider text-emerald-400 font-bold inline-flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> {t("arenaCallout.mock.live")}
                     </span>
                   </div>
 
@@ -972,7 +991,7 @@ function ArenaCallout() {
                     <div key={m.name} className={`relative rounded-lg border p-3.5 ${m.winner ? "border-amber-400/50 bg-amber-400/5" : "border-white/10 bg-white/[0.02]"}`}>
                       {m.winner && (
                         <div className="absolute -top-2 -right-2 inline-flex items-center gap-1 bg-amber-400 text-neutral-900 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full shadow-lg">
-                          <Trophy className="w-3 h-3" /> Winner
+                          <Trophy className="w-3 h-3" /> {t("arenaCallout.mock.winner")}
                         </div>
                       )}
                       <div className="flex items-center justify-between mb-2">
@@ -992,8 +1011,8 @@ function ArenaCallout() {
                   ))}
 
                   <div className="flex items-center justify-between pt-2 border-t border-white/10 text-xs">
-                    <span className="text-neutral-400">Cheapest: <span className="text-cyan-300 font-semibold">Gemini Flash</span></span>
-                    <span className="text-neutral-400">Best answer: <span className="text-amber-300 font-semibold">Claude 3.5</span></span>
+                    <span className="text-neutral-400">{t("arenaCallout.mock.cheapest")} <span className="text-cyan-300 font-semibold">Gemini Flash</span></span>
+                    <span className="text-neutral-400">{t("arenaCallout.mock.bestAnswer")} <span className="text-amber-300 font-semibold">Claude 3.5</span></span>
                   </div>
                 </div>
               </div>

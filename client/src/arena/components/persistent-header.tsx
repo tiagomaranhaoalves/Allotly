@@ -1,7 +1,9 @@
 import { Link } from "wouter";
+import { useTranslation } from "react-i18next";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LogoIcon } from "@/components/logo";
+import { LanguageSwitcher } from "@/components/language-switcher";
 import { useArenaSession, formatUSD } from "../session";
 
 interface Props {
@@ -13,10 +15,11 @@ interface Props {
 }
 
 export function PersistentHeader({ onOpenLiveToggle, onOpenHowItWorks, onSwitchMode, showModeSwitch, onSwitchToCached }: Props) {
+  const { t } = useTranslation();
   const { state } = useArenaSession();
   const keyTypeLabel = state.mode === "live"
-    ? state.keyType === "VOUCHER" ? "Voucher" : state.keyType === "TEAM" ? "Teams" : "Live"
-    : "Cached";
+    ? state.keyType === "VOUCHER" ? t("arenaHeader.voucher") : state.keyType === "TEAM" ? t("arenaHeader.teams") : t("arenaHeader.live")
+    : t("arenaHeader.cached");
 
   const showTicker = state.allocationConfirmed;
 
@@ -28,15 +31,15 @@ export function PersistentHeader({ onOpenLiveToggle, onOpenHowItWorks, onSwitchM
             href="/"
             className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-white/60 hover:text-white hover:bg-white/5"
             data-testid="link-back-to-allotly"
-            title="Back to Allotly"
+            title={t("arenaHeader.backToAllotly")}
           >
             <ArrowLeft className="w-4 h-4" />
-            <span className="hidden sm:inline">Back to Allotly</span>
+            <span className="hidden sm:inline">{t("arenaHeader.backToAllotly")}</span>
           </Link>
           <span className="hidden sm:inline-block h-5 w-px bg-white/10" aria-hidden />
           <Link href="/arena" className="flex items-center gap-2 text-white hover:opacity-90" data-testid="arena-home-link">
             <LogoIcon size={28} />
-            <span className="font-semibold tracking-tight">Allotly Demo Arena</span>
+            <span className="font-semibold tracking-tight">{t("arenaHeader.title")}</span>
           </Link>
         </div>
 
@@ -47,7 +50,7 @@ export function PersistentHeader({ onOpenLiveToggle, onOpenHowItWorks, onSwitchM
               data-testid="budget-ticker"
               aria-live="polite"
             >
-              <span className="text-white/60 mr-2">Budget</span>
+              <span className="text-white/60 mr-2">{t("arenaHeader.budget")}</span>
               <span className="font-semibold">${formatUSD(state.remainingUSD, state.remainingUSD < 1 ? 3 : 2)}</span>
               <span className="text-white/40"> / ${formatUSD(state.allocatedUSD)}</span>
             </div>
@@ -73,7 +76,7 @@ export function PersistentHeader({ onOpenLiveToggle, onOpenHowItWorks, onSwitchM
               onClick={onSwitchMode}
               data-testid="button-switch-mode"
             >
-              Switch mode
+              {t("arenaHeader.switchMode")}
             </Button>
           )}
 
@@ -84,8 +87,10 @@ export function PersistentHeader({ onOpenLiveToggle, onOpenHowItWorks, onSwitchM
             onClick={onOpenHowItWorks}
             data-testid="button-how-it-works"
           >
-            How this works
+            {t("arenaHeader.howThisWorks")}
           </Button>
+
+          <LanguageSwitcher variant="dark" />
 
           {state.mode === "cached" ? (
             <Button
@@ -94,7 +99,7 @@ export function PersistentHeader({ onOpenLiveToggle, onOpenHowItWorks, onSwitchM
               onClick={onOpenLiveToggle}
               data-testid="button-switch-to-live"
             >
-              Switch to Live
+              {t("arenaHeader.switchToLive")}
             </Button>
           ) : (
             onSwitchToCached && (
@@ -105,7 +110,7 @@ export function PersistentHeader({ onOpenLiveToggle, onOpenHowItWorks, onSwitchM
                 onClick={onSwitchToCached}
                 data-testid="button-switch-to-cached"
               >
-                Switch to Cached
+                {t("arenaHeader.switchToCached")}
               </Button>
             )
           )}

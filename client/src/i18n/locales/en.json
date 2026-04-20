@@ -1,0 +1,250 @@
+{
+  "nav": {
+    "howItWorks": "How It Works",
+    "pricing": "Pricing",
+    "docs": "Docs",
+    "arena": "Arena",
+    "logIn": "Log In",
+    "startFree": "Start Free",
+    "home": "Home"
+  },
+  "hero": {
+    "title1": "Great teams use many models.",
+    "title2": "Smart teams",
+    "title3": "run one budget.",
+    "subtitle": "Allotly connects to your OpenAI, Anthropic, Gemini, and Azure accounts and puts you in control — per person, per model, per dollar.",
+    "ctaStart": "Start Free",
+    "ctaHow": "See How It Works",
+    "preview": {
+      "title": "Organization Spend",
+      "period": "Current billing period",
+      "delta": "-12% vs last month",
+      "budgetUsed": "Budget Used"
+    }
+  },
+  "problem": {
+    "stat1Desc": "spent on enterprise LLM APIs in just the first half of 2025",
+    "stat2Desc": "of companies have no responsive AI controls in place",
+    "stat3Desc": "of executives say over a quarter of their spend delivers no value"
+  },
+  "solution": {
+    "label": "THE SOLUTION",
+    "title": "One control plane. Every AI provider. Total spend visibility.",
+    "subtitle": "Whether your team uses OpenAI for code generation, Anthropic for analysis, Gemini for research, or Azure for enterprise deployments — Allotly gives you a single pane of glass to manage budgets, distribute access, and track every dollar."
+  },
+  "features": {
+    "label": "TWO ACCESS MODELS",
+    "title": "Internal Teams. External Users. One Dashboard.",
+    "teams": {
+      "name": "Allotly Teams",
+      "subtitle": "Managed AI Access",
+      "tag": "Unified proxy with guardrails",
+      "desc": "Your team uses Allotly proxy keys to call OpenAI, Anthropic, Gemini, and Azure through one unified endpoint. Real-time budget enforcement, automatic token clamping, and per-member spend tracking — all built in.",
+      "bullet1": "One API key per member — works with every provider",
+      "bullet2": "Real-time budget enforcement on every request",
+      "bullet3": "Automatic token clamping prevents overspend",
+      "bullet4": "Model-level access restrictions",
+      "builtFor": "Built for: engineering teams, R&D groups, and internal governance workflows.",
+      "footnote": "Uses Allotly proxy keys with real-time budget enforcement on every request."
+    },
+    "vouchers": {
+      "name": "Allotly Vouchers",
+      "subtitle": "Instant Access Codes",
+      "tag": "Pre-paid AI access for anyone",
+      "desc": "Create voucher codes that give anyone instant AI access with hard budget limits. Recipients call one unified API that works with all providers. Real-time per-request metering ensures nobody goes over budget.",
+      "bullet1": "One API key, all providers",
+      "bullet2": "Hard per-request budget enforcement",
+      "bullet3": "No provider accounts needed for recipients",
+      "bullet4": "Shareable codes with QR",
+      "bullet5": "Works with any OpenAI-compatible SDK",
+      "builtFor": "Built for: hackathons, workshops, contractors, agencies, and partner programs.",
+      "footnote": "Uses Allotly thin proxy with real-time spend tracking. Budget enforced per-request."
+    }
+  },
+  "voucherCallout": {
+    "title": "Think Gift Card. But for AI.",
+    "desc": "Allotly Vouchers let you give anyone a pre-loaded AI budget — a code they redeem for instant API access. No accounts to create, no provider credentials to share. Just scan, redeem, and start prompting.",
+    "cta": "Create Your First Voucher",
+    "voucherLabel": "Allotly Voucher",
+    "voucherCodeLabel": "Voucher Code",
+    "budget": "Budget"
+  },
+  "howItWorks": {
+    "title": "How It Works",
+    "subtitle": "Three steps to AI spend control.",
+    "tabTeam": "Allotly Teams",
+    "tabVoucher": "Allotly Vouchers",
+    "team": {
+      "step1Title": "Connect Providers",
+      "step1Desc": "Link your OpenAI, Anthropic, Google, and Azure accounts. API keys encrypted with AES-256-GCM at rest.",
+      "step2Title": "Create Teams & Set Budgets",
+      "step2Desc": "Add members, assign per-person budgets, restrict models. Members get scoped provider keys automatically.",
+      "step3Title": "Monitor & Control",
+      "step3Desc": "Unified dashboard with spend tracking. Automatic alerts at 80%, key revocation at 100% budget."
+    },
+    "voucher": {
+      "step1Title": "Create Voucher Codes",
+      "step1Desc": "Generate voucher codes with budget limits and model restrictions. Attach to bundles for purchase.",
+      "step2Title": "Distribute",
+      "step2Desc": "Share via code, QR, or email. Recipients redeem and get an API key instantly — no provider accounts needed.",
+      "step3Title": "Real-Time Enforcement",
+      "step3Desc": "Per-request budget metering. Token clamping near limits. Auto-expiry when budget hits zero."
+    }
+  },
+  "arenaCallout": {
+    "badge": "Allotly Demo · No Signup Needed",
+    "title1": "Stop guessing which model is",
+    "title2": "actually worth it.",
+    "desc": "Pick a prompt, pick the contenders, and watch <strong>Allotly</strong> route the same request through every major provider on a single key. You see latency and quality side-by-side. We tally the cost in real time. It's the simplest way to feel what a unified AI proxy actually does for your team.",
+    "feature1Label": "Race any models",
+    "feature1Sub": "side-by-side",
+    "feature2Label": "Live $ per answer",
+    "feature2Sub": "to the cent",
+    "feature3Label": "Pick your winner",
+    "feature3Sub": "blind or open",
+    "ctaEnter": "Enter the Arena",
+    "ctaSubtext": "Free demo mode · Bring your own key for live races",
+    "mock": {
+      "round": "Round 1 · \"Summarize this contract\"",
+      "live": "Live",
+      "winner": "Winner",
+      "cheapest": "Cheapest:",
+      "bestAnswer": "Best answer:"
+    }
+  },
+  "trust": {
+    "badge": "Security First",
+    "title1": "Your prompts are none",
+    "title2": "of our business.",
+    "subtitle": "Allotly is a control plane, not a data plane. We manage access and budgets — your content flows directly between you and the AI provider.",
+    "card1Title": "Teams: Minimal Data Footprint",
+    "card1Subtitle": "Proxy processes, never persists",
+    "card1Desc": "The proxy forwards requests in real time and only records metadata: model, token count, and cost. No prompts, no completions, no conversation history is ever stored.",
+    "card2Title": "Vouchers: Process, Don't Persist",
+    "card2Subtitle": "In-flight only",
+    "card2Desc": "The proxy forwards requests in real time. Nothing is stored — no prompts, no completions, no conversation history. Only metadata: model, token count, cost.",
+    "card3Title": "Enterprise-Grade Security",
+    "card3Subtitle": "Built for compliance",
+    "card3Desc": "AES-256-GCM encryption for stored keys. Full audit trail for every admin action. GDPR-compliant architecture. SOC 2 Type II on the roadmap.",
+    "badge1": "AES-256-GCM",
+    "badge2": "SOC 2 (planned)",
+    "badge3": "GDPR Compliant",
+    "badge4": "Zero Data Retention"
+  },
+  "pricing": {
+    "title": "Simple, Transparent Pricing",
+    "subtitle": "Start free. Upgrade when you need more.",
+    "mostPopular": "Most Popular",
+    "free": {
+      "name": "Free",
+      "period": "/month",
+      "description": "For individuals getting started",
+      "feature1": "1 Root Admin (acts as Team Admin)",
+      "feature2": "Up to 5 direct members",
+      "feature3": "4 AI Provider connections",
+      "feature4": "Real-time usage tracking",
+      "feature5": "7-day data retention",
+      "feature6": "1 voucher code, 25 redemptions",
+      "feature7": "$10 Voucher Bundles available",
+      "cta": "Get Started"
+    },
+    "team": {
+      "name": "Team",
+      "period": "/mo per admin",
+      "description": "For growing teams with multiple admins",
+      "feature1": "1 Root Admin (included)",
+      "feature2": "$20 per each additional Team Admin, limited to 9 new teams",
+      "feature3": "Up to 20 members per team",
+      "feature4": "4 AI Provider connections",
+      "feature5": "Real-time usage tracking",
+      "feature6": "90-day retention + audit log",
+      "feature7": "5 voucher codes per admin, 50 redemptions",
+      "feature8": "AI Usage Analytics",
+      "feature9": "$10 Voucher Bundles available",
+      "cta": "Start Free, Upgrade Anytime"
+    },
+    "enterprise": {
+      "name": "Enterprise",
+      "price": "Custom",
+      "description": "For organizations at scale",
+      "feature1": "Unlimited everything",
+      "feature2": "Real-time usage tracking",
+      "feature3": "1-year data retention",
+      "feature4": "SSO + dedicated support",
+      "feature5": "Custom voucher limits",
+      "feature6": "Priority API access",
+      "feature7": "SLA guarantee",
+      "cta": "Contact Sales"
+    },
+    "voucherBundlesCta": "You can buy Vouchers from any plan. <link>Click here</link> to buy the $10 Voucher Bundle with pre-loaded AI credit packs you can buy and distribute."
+  },
+  "socialProof": {
+    "title": "Built for Teams Like Yours",
+    "challenge": "Challenge",
+    "solution": "Solution",
+    "result": "Result",
+    "testimonial1": {
+      "role": "Head of Developer Relations",
+      "org": "EdTech Company",
+      "challenge": "Runs workshops and hackathons monthly. Needs to give 200+ attendees instant AI access without creating accounts or managing credentials.",
+      "solution": "Creates voucher codes with per-person budgets and 24-hour expiry. Attendees redeem a link and start coding in 60 seconds. Jon sees every dollar from his dashboard.",
+      "result": "200 attendees onboarded in 5 minutes. Zero surprise bills."
+    },
+    "testimonial2": {
+      "role": "VP of Engineering",
+      "org": "Series B SaaS",
+      "challenge": "12-person engineering team using GPT-4o and Claude across three projects. Was burning $4K/month with zero visibility into who was spending what.",
+      "solution": "Connected OpenAI and Anthropic in Allotly, created project-based teams, and set per-engineer budgets of $200/month with model restrictions per role.",
+      "result": "40% cost reduction. Full spend visibility. No workflow changes for engineers."
+    },
+    "testimonial3": {
+      "role": "Managing Partner",
+      "org": "Digital Agency",
+      "challenge": "8 client teams, each needing different AI models and budgets. Billing was a nightmare — impossible to attribute spend to individual projects.",
+      "solution": "Uses voucher codes per client engagement — each team gets scoped access with project-specific budgets and model allowlists. Internal team uses direct keys.",
+      "result": "Crystal-clear per-client billing. Teams + Vouchers from one dashboard."
+    }
+  },
+  "finalCta": {
+    "title1": "Stop guessing.",
+    "title2": "Start governing.",
+    "subtitle": "Get full visibility and control over your organization's AI spend in minutes. No credit card required.",
+    "cta": "Start Free"
+  },
+  "footer": {
+    "tagline": "The AI spend control plane for teams and organizations.",
+    "product": "Product",
+    "company": "Company",
+    "legal": "Legal",
+    "howItWorks": "How It Works",
+    "pricing": "Pricing",
+    "documentation": "Documentation",
+    "getStarted": "Get Started",
+    "about": "About",
+    "careers": "Careers",
+    "contact": "Contact",
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Service",
+    "security": "Security",
+    "copyright": "© 2026 Allotly. All rights reserved."
+  },
+  "arenaHeader": {
+    "backToAllotly": "Back to Allotly",
+    "title": "Allotly Demo Arena",
+    "budget": "Budget",
+    "live": "Live",
+    "voucher": "Voucher",
+    "teams": "Teams",
+    "cached": "Cached",
+    "switchMode": "Switch mode",
+    "howThisWorks": "How this works",
+    "switchToLive": "Switch to Live",
+    "switchToCached": "Switch to Cached"
+  },
+  "language": {
+    "label": "Language",
+    "english": "English",
+    "portuguese": "Português (BR)",
+    "spanish": "Español"
+  }
+}
