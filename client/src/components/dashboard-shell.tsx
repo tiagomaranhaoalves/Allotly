@@ -12,7 +12,7 @@ import { Link, useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   LayoutDashboard, Plug, Users, UserCheck, Ticket, Package, BarChart3, FileText,
-  Settings, Sun, Moon, LogOut, ChevronDown, Key, BookOpen,
+  Settings, Sun, Moon, LogOut, ChevronDown, Key, BookOpen, Swords, ExternalLink,
 } from "lucide-react";
 import { AdminRoleBadge } from "./brand/role-badge";
 import { Skeleton } from "./ui/skeleton";
@@ -88,6 +88,29 @@ function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel className="text-[11px] uppercase tracking-wider font-semibold">Tools</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <a
+                    href="/arena"
+                    target="_blank"
+                    rel="noopener"
+                    title="Race your live key against any allowed model — same prompt, real cost."
+                    data-testid="link-nav-test-key-arena"
+                  >
+                    <Swords className="w-4 h-4" />
+                    <span>Test a Key (Arena)</span>
+                    <ExternalLink className="w-3 h-3 ml-auto opacity-60" />
+                  </a>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

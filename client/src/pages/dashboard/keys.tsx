@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Key, Copy, Shield, Clock, Search, Trash2, AlertTriangle, Settings2 } from "lucide-react";
+import { Key, Copy, Shield, Clock, Search, Trash2, AlertTriangle, Settings2, Swords, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -152,6 +152,8 @@ function KeyAuditView() {
         <h1 className="text-2xl font-bold tracking-tight" data-testid="text-keys-heading">API Keys</h1>
         <p className="text-muted-foreground mt-1">Audit and manage all API keys across your organization</p>
       </div>
+
+      <ArenaTestKeyCallout />
 
       <div className="grid grid-cols-3 gap-4">
         <Card className="p-4" data-testid="card-total-keys">
@@ -345,15 +347,34 @@ function KeyAuditView() {
                     </td>
                     <td className="p-3">
                       {k.status === "ACTIVE" && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 w-7 p-0"
-                          onClick={() => openEditProviders(k)}
-                          data-testid={`button-edit-providers-${k.id}`}
-                        >
-                          <Settings2 className="w-3.5 h-3.5" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0"
+                            onClick={() => openEditProviders(k)}
+                            title="Edit allowed providers"
+                            data-testid={`button-edit-providers-${k.id}`}
+                          >
+                            <Settings2 className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            asChild
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0"
+                            data-testid={`button-test-key-arena-${k.id}`}
+                          >
+                            <a
+                              href="/arena"
+                              target="_blank"
+                              rel="noopener"
+                              title="Test this key in Arena — paste it into a live race against any allowed model"
+                            >
+                              <Swords className="w-3.5 h-3.5" />
+                            </a>
+                          </Button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -466,6 +487,8 @@ function PersonalKeysView() {
         <p className="text-muted-foreground mt-1">Manage your API keys</p>
       </div>
 
+      <ArenaTestKeyCallout />
+
       <Card className="p-6" data-testid="card-api-access">
         <h2 className="text-base font-semibold mb-4">Your API Access</h2>
         <div className="p-4 rounded-lg bg-muted/50 flex items-center justify-between gap-2">
@@ -518,17 +541,38 @@ function PersonalKeysView() {
                     </div>
                   </div>
                 </div>
-                <Badge
-                  variant="secondary"
-                  className={`no-default-hover-elevate no-default-active-elevate ${
-                    k.status === "ACTIVE"
-                      ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
-                      : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
-                  }`}
-                  data-testid={`badge-key-status-${k.id}`}
-                >
-                  {k.status}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge
+                    variant="secondary"
+                    className={`no-default-hover-elevate no-default-active-elevate ${
+                      k.status === "ACTIVE"
+                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+                        : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+                    }`}
+                    data-testid={`badge-key-status-${k.id}`}
+                  >
+                    {k.status}
+                  </Badge>
+                  {k.status === "ACTIVE" && (
+                    <Button
+                      asChild
+                      size="sm"
+                      variant="ghost"
+                      className="gap-1.5"
+                      data-testid={`button-test-key-arena-${k.id}`}
+                    >
+                      <a
+                        href="/arena"
+                        target="_blank"
+                        rel="noopener"
+                        title="Test this key in Arena — race it against any allowed model on a single prompt"
+                      >
+                        <Swords className="w-3.5 h-3.5" />
+                        Test this key in Arena
+                      </a>
+                    </Button>
+                  )}
+                </div>
               </div>
             </Card>
           ))}
@@ -553,5 +597,38 @@ function PersonalKeysView() {
         </ul>
       </Card>
     </div>
+  );
+}
+
+function ArenaTestKeyCallout() {
+  return (
+    <Card
+      className="p-4 flex items-center gap-4 border-l-4 border-l-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/20"
+      data-testid="link-keys-arena-callout"
+    >
+      <div className="p-2 rounded-lg bg-indigo-100 dark:bg-indigo-900/40 shrink-0">
+        <Swords className="w-4 h-4 text-indigo-600 dark:text-indigo-300" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm">
+          <span className="font-semibold">Want to know what your key can actually do?</span>{" "}
+          <span className="text-muted-foreground">
+            Paste it into the Allotly Arena to race any allowed model on a single prompt — quality side-by-side, cost to the cent.
+          </span>
+        </p>
+      </div>
+      <Button
+        asChild
+        size="sm"
+        variant="outline"
+        className="shrink-0 gap-1.5 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/40"
+        data-testid="button-open-arena-callout"
+      >
+        <a href="/arena" target="_blank" rel="noopener">
+          Open Arena
+          <ExternalLink className="w-3.5 h-3.5" />
+        </a>
+      </Button>
+    </Card>
   );
 }
