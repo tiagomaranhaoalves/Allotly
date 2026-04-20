@@ -1,4 +1,5 @@
 import { Link } from "wouter";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LogoIcon } from "@/components/logo";
 import { useArenaSession, formatUSD } from "../session";
@@ -22,10 +23,22 @@ export function PersistentHeader({ onOpenLiveToggle, onOpenHowItWorks, onSwitchM
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-neutral-950/80 backdrop-blur">
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 px-4 py-3">
-        <Link href="/arena" className="flex items-center gap-2 text-white hover:opacity-90" data-testid="arena-home-link">
-          <LogoIcon size={28} />
-          <span className="font-semibold tracking-tight">Allotly Demo Arena</span>
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-white/60 hover:text-white hover:bg-white/5"
+            data-testid="link-back-to-allotly"
+            title="Back to Allotly"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span className="hidden sm:inline">Back to Allotly</span>
+          </Link>
+          <span className="hidden sm:inline-block h-5 w-px bg-white/10" aria-hidden />
+          <Link href="/arena" className="flex items-center gap-2 text-white hover:opacity-90" data-testid="arena-home-link">
+            <LogoIcon size={28} />
+            <span className="font-semibold tracking-tight">Allotly Demo Arena</span>
+          </Link>
+        </div>
 
         <div className="flex items-center gap-3">
           {showTicker && (
