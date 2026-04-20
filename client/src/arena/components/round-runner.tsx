@@ -283,18 +283,7 @@ export function RoundRunner({ persona, challenge, onPlayAgain, onSwitchMode, onE
       />
 
       {showSnippetAndAllowlist && (
-        <div className="grid gap-4 lg:grid-cols-5">
-          <div className="lg:col-span-3">
-            <PreflightSnippet
-              visible={true}
-              keyRedacted={state.keyValue ? redact(state.keyValue) : "allotly_sk_demo_arena"}
-              model={lineup[0]}
-            />
-          </div>
-          <div className="lg:col-span-2">
-            <AllowlistPanel allowedModels={state.allowedModels} lineup={lineup} />
-          </div>
-        </div>
+        <AllowlistPanel allowedModels={state.allowedModels} lineup={lineup} />
       )}
 
       {(phase === "streaming" || phase === "voting" || phase === "results") && (
@@ -321,6 +310,16 @@ export function RoundRunner({ persona, challenge, onPlayAgain, onSwitchMode, onE
 
       {phase === "briefing" && (
         <div className="text-center text-sm text-white/60">Briefing the models…</div>
+      )}
+
+      {showSnippetAndAllowlist && (
+        <div className="pt-6">
+          <PreflightSnippet
+            visible={true}
+            keyRedacted={state.keyValue ? redact(state.keyValue) : "allotly_sk_demo_arena"}
+            model={lineup[0]}
+          />
+        </div>
       )}
     </div>
   );
