@@ -29,7 +29,7 @@
   },
   "solution": {
     "label": "A SOLUÇÃO",
-    "title": "Um plano de controle. Todos os provedores de IA. Visibilidade total do gasto.",
+    "title": "Um painel de controle. Todos os provedores de IA. Visibilidade total do gasto.",
     "subtitle": "Seja sua equipe usando OpenAI para gerar código, Anthropic para análises, Gemini para pesquisa ou Azure para implantações corporativas — a Allotly oferece um único painel para gerenciar orçamentos, distribuir acessos e acompanhar cada centavo."
   },
   "features": {
@@ -116,7 +116,7 @@
     "badge": "Segurança em Primeiro Lugar",
     "title1": "Seus prompts não são",
     "title2": "da nossa conta.",
-    "subtitle": "A Allotly é um plano de controle, não um plano de dados. Nós cuidamos de acessos e orçamentos — seu conteúdo trafega direto entre você e o provedor de IA.",
+    "subtitle": "A Allotly é um painel de controle, não um plano de dados. Nós cuidamos de acessos e orçamentos — seu conteúdo trafega direto entre você e o provedor de IA.",
     "card1Title": "Teams: Pegada de Dados Mínima",
     "card1Subtitle": "O proxy processa, nunca persiste",
     "card1Desc": "O proxy encaminha as requisições em tempo real e registra apenas metadados: modelo, contagem de tokens e custo. Nenhum prompt, nenhuma resposta, nenhum histórico de conversa é armazenado.",
@@ -212,7 +212,7 @@
     "cta": "Começar Grátis"
   },
   "footer": {
-    "tagline": "O plano de controle de gasto com IA para equipes e organizações.",
+    "tagline": "O painel de controle de gasto com IA para equipes e organizações.",
     "product": "Produto",
     "company": "Empresa",
     "legal": "Legal",
