@@ -93,8 +93,8 @@
   },
   "arenaCallout": {
     "badge": "Demo da Allotly · Sem Cadastro",
-    "title1": "Pare de chutar qual modelo",
-    "title2": "realmente vale a pena.",
+    "title1": "Qual o modelo mais barato que ainda acerta seu prompt?",
+    "title2": "Descubra em 30 segundos.",
     "desc": "Escolha um prompt, escolha os concorrentes e veja a <strong>Allotly</strong> rotear a mesma requisição por todos os principais provedores com uma única chave. Você vê latência e qualidade lado a lado. Nós contamos o custo em tempo real. É o jeito mais simples de sentir o que um proxy de IA unificado realmente faz pela sua equipe.",
     "feature1Label": "Compare modelos",
     "feature1Sub": "lado a lado",

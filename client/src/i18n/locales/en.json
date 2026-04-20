@@ -93,8 +93,8 @@
   },
   "arenaCallout": {
     "badge": "Allotly Demo · No Signup Needed",
-    "title1": "Stop guessing which model is",
-    "title2": "actually worth it.",
+    "title1": "The cheapest model that still nails your prompt?",
+    "title2": "Find out in 30 seconds.",
     "desc": "Pick a prompt, pick the contenders, and watch <strong>Allotly</strong> route the same request through every major provider on a single key. You see latency and quality side-by-side. We tally the cost in real time. It's the simplest way to feel what a unified AI proxy actually does for your team.",
     "feature1Label": "Race any models",
     "feature1Sub": "side-by-side",
