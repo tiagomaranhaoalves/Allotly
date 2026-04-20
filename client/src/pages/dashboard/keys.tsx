@@ -604,7 +604,7 @@ function ArenaTestKeyCallout() {
   return (
     <Card
       className="p-4 flex items-center gap-4 border-l-4 border-l-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/20"
-      data-testid="link-keys-arena-callout"
+      data-testid="card-keys-arena-callout"
     >
       <div className="p-2 rounded-lg bg-indigo-100 dark:bg-indigo-900/40 shrink-0">
         <Swords className="w-4 h-4 text-indigo-600 dark:text-indigo-300" />
@@ -622,9 +622,13 @@ function ArenaTestKeyCallout() {
         size="sm"
         variant="outline"
         className="shrink-0 gap-1.5 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/40"
-        data-testid="button-open-arena-callout"
       >
-        <a href="/arena" target="_blank" rel="noopener">
+        <a
+          href="/arena"
+          target="_blank"
+          rel="noopener"
+          data-testid="link-keys-arena-callout"
+        >
           Open Arena
           <ExternalLink className="w-3.5 h-3.5" />
         </a>
