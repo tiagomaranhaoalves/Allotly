@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 
 interface QRCodeProps {
   value: string;
@@ -8,6 +9,7 @@ interface QRCodeProps {
 
 export function QRCode({ value, size = 200, className = "" }: QRCodeProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const { t } = useTranslation();
 
   useEffect(() => {
     if (!canvasRef.current || !value) return;
@@ -43,7 +45,7 @@ export function QRCode({ value, size = 200, className = "" }: QRCodeProps) {
   }, [value, size]);
 
   return (
-    <div className={`inline-block rounded-lg overflow-hidden border border-border dark:border-neutral-700 bg-white p-2 shadow-sm dark:shadow-none ${className}`} data-testid="qr-code" role="img" aria-label={`QR code for ${value}`}>
+    <div className={`inline-block rounded-lg overflow-hidden border border-border dark:border-neutral-700 bg-white p-2 shadow-sm dark:shadow-none ${className}`} data-testid="qr-code" role="img" aria-label={t("dashboard.components.qrCode.ariaLabel", { value })}>
       <canvas ref={canvasRef} style={{ width: size, height: size }} />
     </div>
   );

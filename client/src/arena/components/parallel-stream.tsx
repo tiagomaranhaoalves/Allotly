@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { ProviderBadge } from "@/components/brand/provider-badge";
 import type { ModelMeta } from "../types";
 import { CATALOG_BY_ID } from "../data/model-catalog";
@@ -21,6 +22,7 @@ interface Props {
 }
 
 export function ParallelStream({ panels }: Props) {
+  const { t } = useTranslation();
   const cols = panels.length === 1 ? "lg:grid-cols-1" : panels.length === 2 ? "lg:grid-cols-2" : "lg:grid-cols-3";
   return (
     <div className={`grid gap-4 ${cols}`}>
@@ -60,15 +62,15 @@ export function ParallelStream({ panels }: Props) {
             <div className="mt-3 flex items-center justify-between text-[11px] text-white/50 tabular-nums">
               <span>
                 {isPlaceholder
-                  ? "Skipped"
+                  ? t("arena.stream.skipped")
                   : state.status === "pending"
-                    ? "Waiting…"
+                    ? t("arena.stream.waiting")
                     : state.status === "streaming"
-                      ? "Streaming"
-                      : "Done"}
+                      ? t("arena.stream.streaming")
+                      : t("arena.stream.done")}
               </span>
               <span>
-                {state.tokens > 0 ? `${state.tokens} tokens` : ""}
+                {state.tokens > 0 ? t("arena.stream.tokens", { count: state.tokens }) : ""}
                 {state.durationMs !== null && state.durationMs > 0
                   ? ` · ${(state.durationMs / 1000).toFixed(1)}s`
                   : ""}

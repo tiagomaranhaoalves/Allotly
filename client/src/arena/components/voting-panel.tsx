@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { ProviderBadge } from "@/components/brand/provider-badge";
 import type { ModelMeta } from "../types";
@@ -15,6 +16,7 @@ interface Props {
 }
 
 export function VotingPanel({ slots, onSubmit }: Props) {
+  const { t } = useTranslation();
   const [best, setBest] = useState<string | null>(null);
   const [payMost, setPayMost] = useState<string | null>(null);
 
@@ -23,20 +25,19 @@ export function VotingPanel({ slots, onSubmit }: Props) {
     onSubmit({ bestSlotKey: best, payMostSlotKey: payMost });
   }
 
-  // Detect duplicate models in lineup so we can label slots disambiguatingly.
   const counts = new Map<string, number>();
   for (const s of slots) counts.set(s.model.id, (counts.get(s.model.id) ?? 0) + 1);
   const hasDupes = Array.from(counts.values()).some((n) => n > 1);
 
   return (
     <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-5">
-      <h3 className="text-white font-semibold">One click each.</h3>
+      <h3 className="text-white font-semibold">{t("arena.voting.title")}</h3>
       <p className="mt-1 text-sm text-white/60">
-        The gap between these two answers is the teaching moment.
+        {t("arena.voting.subtitle")}
       </p>
 
       <VoteRow
-        label="Which output is best?"
+        label={t("arena.voting.questionBest")}
         slots={slots}
         value={best}
         onChange={setBest}
@@ -44,7 +45,7 @@ export function VotingPanel({ slots, onSubmit }: Props) {
         testIdPrefix="vote-best"
       />
       <VoteRow
-        label="Which would you have paid the most for?"
+        label={t("arena.voting.questionPay")}
         slots={slots}
         value={payMost}
         onChange={setPayMost}
@@ -59,7 +60,7 @@ export function VotingPanel({ slots, onSubmit }: Props) {
           onClick={handleSubmit}
           data-testid="button-submit-votes"
         >
-          Reveal results
+          {t("arena.voting.submit")}
         </Button>
       </div>
     </div>
@@ -81,6 +82,7 @@ function VoteRow({
   showSlotLabel: boolean;
   testIdPrefix: string;
 }) {
+  const { t } = useTranslation();
   const cols = slots.length === 1 ? "sm:grid-cols-1" : slots.length === 2 ? "sm:grid-cols-2" : "sm:grid-cols-3";
   return (
     <div className="mt-4">
@@ -104,7 +106,7 @@ function VoteRow({
                 <ProviderBadge provider={s.model.provider} className="text-white" />
                 {showSlotLabel && (
                   <span className="text-[10px] uppercase tracking-wide text-white/50">
-                    Slot {s.index + 1}
+                    {t("arena.voting.slotLabel", { n: s.index + 1 })}
                   </span>
                 )}
               </div>

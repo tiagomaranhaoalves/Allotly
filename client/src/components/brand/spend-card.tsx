@@ -1,5 +1,6 @@
 import { Card } from "@/components/ui/card";
 import { TrendingUp, TrendingDown } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 const PROVIDER_COLORS: Record<string, string> = {
   OPENAI: "#10A37F",
@@ -7,10 +8,10 @@ const PROVIDER_COLORS: Record<string, string> = {
   GOOGLE: "#4285F4",
 };
 
-const PROVIDER_NAMES: Record<string, string> = {
-  OPENAI: "OpenAI",
-  ANTHROPIC: "Anthropic",
-  GOOGLE: "Google",
+const PROVIDER_NAME_KEYS: Record<string, string> = {
+  OPENAI: "dashboard.components.spendCard.providerOpenAi",
+  ANTHROPIC: "dashboard.components.spendCard.providerAnthropic",
+  GOOGLE: "dashboard.components.spendCard.providerGoogle",
 };
 
 type ProviderType = "OPENAI" | "ANTHROPIC" | "GOOGLE";
@@ -23,8 +24,10 @@ interface SpendCardProps {
 }
 
 export function SpendCard({ provider, amountCents, trend, className = "" }: SpendCardProps) {
+  const { t } = useTranslation();
   const color = PROVIDER_COLORS[provider] || "#6366F1";
-  const name = PROVIDER_NAMES[provider] || provider;
+  const nameKey = PROVIDER_NAME_KEYS[provider];
+  const name = nameKey ? t(nameKey) : provider;
 
   return (
     <Card className={`p-5 relative overflow-hidden ${className}`} data-testid={`spend-card-${provider.toLowerCase()}`}>
@@ -53,7 +56,7 @@ export function SpendCard({ provider, amountCents, trend, className = "" }: Spen
               <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">{trend}%</span>
             </div>
           )}
-          <span className="text-[11px] text-muted-foreground">vs last period</span>
+          <span className="text-[11px] text-muted-foreground">{t("dashboard.components.spendCard.vsLastPeriod")}</span>
         </div>
       )}
     </Card>

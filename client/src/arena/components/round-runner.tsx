@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { X } from "lucide-react";
 import { MockUIFrame } from "./mock-ui-frame";
 import { PreflightSnippet } from "./preflight-snippet";
 import { AllowlistPanel } from "./allowlist-panel";
@@ -50,8 +52,10 @@ function freshPanels(slots: SlotEntry[]): Record<string, StreamPanelState> {
 }
 
 export function RoundRunner({ persona, challenge, onPlayAgain, onSwitchMode, onEndSession }: Props) {
+  const { t } = useTranslation();
   const { state, spend, syncRemaining, recordVote, incrementRound } = useArenaSession();
   const [phase, setPhase] = useState<RoundPhase>("briefing");
+  const [cachedNoticeDismissed, setCachedNoticeDismissed] = useState(false);
   const lineup = state.lineup;
 
   const slots = useMemo(() => buildSlots(lineup), [lineup]);
@@ -97,7 +101,7 @@ export function RoundRunner({ persona, challenge, onPlayAgain, onSwitchMode, onE
         setPanels((p) => ({
           ...p,
           [s.slotKey]: {
-            text: `🚫 ${s.model.displayName} would have run here, but you blocked it on the allowlist screen.\n(In production: 403 model_not_allowed.)`,
+            text: t("arena.stream.blockedPlaceholder", { name: s.model.displayName }),
             status: "done",
             liveCostUSD: 0,
             tokens: 0,
@@ -113,7 +117,7 @@ export function RoundRunner({ persona, challenge, onPlayAgain, onSwitchMode, onE
           setPanels((p) => ({
             ...p,
             [s.slotKey]: {
-              text: `🚫 We don't have a cached response for ${s.model.displayName} on this challenge — in live mode it would race here.`,
+              text: t("arena.stream.noCachedPlaceholder", { name: s.model.displayName }),
               status: "done",
               liveCostUSD: 0,
               tokens: 0,
@@ -169,14 +173,12 @@ export function RoundRunner({ persona, challenge, onPlayAgain, onSwitchMode, onE
     if (!state.keyValue) {
       setPanels((p) => ({
         ...p,
-        [s.slotKey]: { ...p[s.slotKey], status: "done", text: "[no key — live mode unavailable]" },
+        [s.slotKey]: { ...p[s.slotKey], status: "done", text: t("arena.stream.noKey") },
       }));
       onDone();
       return;
     }
 
-    // Heuristic token estimator (~4 chars/token) so the running cost ticks up
-    // even when the upstream provider doesn't include `usage` in the SSE stream.
     const estimatedInputTokens = Math.max(
       1,
       Math.ceil(((challenge.systemPrompt?.length ?? 0) + challenge.prompt.length) / 4),
@@ -208,8 +210,6 @@ export function RoundRunner({ persona, challenge, onPlayAgain, onSwitchMode, onE
         }));
       },
       onDone: ({ inputTokens, outputTokens, durationMs, budgetRemainingUSD }) => {
-        // Prefer real usage from the proxy; fall back to our heuristic when
-        // the provider didn't include usage.
         const finalInput = inputTokens > 0 ? inputTokens : estimatedInputTokens;
         const finalOutput = outputTokens > 0 ? outputTokens : Math.ceil(outputCharCount / 4);
         const totalTokens = finalInput + finalOutput;
@@ -232,7 +232,7 @@ export function RoundRunner({ persona, challenge, onPlayAgain, onSwitchMode, onE
       onError: ({ message }) => {
         setPanels((p) => ({
           ...p,
-          [s.slotKey]: { ...p[s.slotKey], status: "done", text: p[s.slotKey].text + `\n[error: ${message}]` },
+          [s.slotKey]: { ...p[s.slotKey], status: "done", text: p[s.slotKey].text + `\n${t("arena.stream.error", { message })}` },
         }));
         onDone();
       },
@@ -273,6 +273,11 @@ export function RoundRunner({ persona, challenge, onPlayAgain, onSwitchMode, onE
   const showSnippetAndAllowlist =
     phase === "preflight" || phase === "streaming" || phase === "voting" || phase === "results";
 
+  const showCachedNotice =
+    state.mode === "cached" &&
+    !cachedNoticeDismissed &&
+    (phase === "streaming" || phase === "voting" || phase === "results");
+
   return (
     <div className="space-y-4">
       <MockUIFrame
@@ -284,6 +289,24 @@ export function RoundRunner({ persona, challenge, onPlayAgain, onSwitchMode, onE
 
       {showSnippetAndAllowlist && (
         <AllowlistPanel allowedModels={state.allowedModels} lineup={lineup} />
+      )}
+
+      {showCachedNotice && (
+        <div
+          className="flex items-start justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
+          data-testid="banner-cached-notice"
+        >
+          <span>{t("arena.cachedNotice")}</span>
+          <button
+            type="button"
+            onClick={() => setCachedNoticeDismissed(true)}
+            className="text-amber-100/70 hover:text-white"
+            aria-label={t("arena.dismiss")}
+            data-testid="button-dismiss-cached-notice"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       )}
 
       {(phase === "streaming" || phase === "voting" || phase === "results") && (
@@ -309,7 +332,7 @@ export function RoundRunner({ persona, challenge, onPlayAgain, onSwitchMode, onE
       )}
 
       {phase === "briefing" && (
-        <div className="text-center text-sm text-white/60">Briefing the models…</div>
+        <div className="text-center text-sm text-white/60">{t("arena.runner.briefing")}</div>
       )}
 
       {showSnippetAndAllowlist && (

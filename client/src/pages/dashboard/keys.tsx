@@ -1,4 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -60,6 +61,7 @@ export default function KeysPage() {
 
 function KeyAuditView() {
   const { toast } = useToast();
+  const { t } = useTranslation();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -95,10 +97,10 @@ function KeyAuditView() {
       const succeeded = data.results.filter((r: any) => r.success).length;
       queryClient.invalidateQueries({ queryKey: ["/api/keys"] });
       setSelected(new Set());
-      toast({ title: `${succeeded} key${succeeded !== 1 ? 's' : ''} revoked` });
+      toast({ title: t("dashboard.keys.toastBulkRevokedTitle", { count: succeeded }) });
     },
     onError: (err: any) => {
-      toast({ title: "Bulk revoke failed", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.keys.toastBulkRevokeFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -110,11 +112,11 @@ function KeyAuditView() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/keys"] });
-      toast({ title: "Providers updated" });
+      toast({ title: t("dashboard.keys.toastProvidersUpdated") });
       setEditProvidersKey(null);
     },
     onError: (err: any) => {
-      toast({ title: "Failed to update providers", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.keys.toastUpdateProvidersFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -149,23 +151,23 @@ function KeyAuditView() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-keys-heading">API Keys</h1>
-        <p className="text-muted-foreground mt-1">Audit and manage all API keys across your organization</p>
+        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-keys-heading">{t("dashboard.keys.auditHeading")}</h1>
+        <p className="text-muted-foreground mt-1">{t("dashboard.keys.auditSubheading")}</p>
       </div>
 
       <ArenaTestKeyCallout />
 
       <div className="grid grid-cols-3 gap-4">
         <Card className="p-4" data-testid="card-total-keys">
-          <p className="text-sm text-muted-foreground">Total Keys</p>
+          <p className="text-sm text-muted-foreground">{t("dashboard.keys.cardTotal")}</p>
           <p className="text-2xl font-bold mt-1">{keys?.length || 0}</p>
         </Card>
         <Card className="p-4" data-testid="card-active-keys">
-          <p className="text-sm text-muted-foreground">Active</p>
+          <p className="text-sm text-muted-foreground">{t("dashboard.keys.cardActive")}</p>
           <p className="text-2xl font-bold mt-1 text-emerald-600 dark:text-emerald-400">{activeCount}</p>
         </Card>
         <Card className="p-4" data-testid="card-revoked-keys">
-          <p className="text-sm text-muted-foreground">Revoked</p>
+          <p className="text-sm text-muted-foreground">{t("dashboard.keys.cardRevoked")}</p>
           <p className="text-2xl font-bold mt-1 text-red-600 dark:text-red-400">{revokedCount}</p>
         </Card>
       </div>
@@ -174,7 +176,7 @@ function KeyAuditView() {
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
-            placeholder="Search by name or email..."
+            placeholder={t("dashboard.keys.searchPlaceholder")}
             className="pl-9"
             value={search}
             onChange={e => setSearch(e.target.value)}
@@ -183,33 +185,33 @@ function KeyAuditView() {
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[140px]" data-testid="select-key-status">
-            <SelectValue placeholder="Status" />
+            <SelectValue placeholder={t("dashboard.keys.statusPlaceholder")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="ACTIVE">Active</SelectItem>
-            <SelectItem value="REVOKED">Revoked</SelectItem>
-            <SelectItem value="EXPIRED">Expired</SelectItem>
+            <SelectItem value="all">{t("dashboard.keys.statusAll")}</SelectItem>
+            <SelectItem value="ACTIVE">{t("dashboard.keys.statusActive")}</SelectItem>
+            <SelectItem value="REVOKED">{t("dashboard.keys.statusRevoked")}</SelectItem>
+            <SelectItem value="EXPIRED">{t("dashboard.keys.statusExpired")}</SelectItem>
           </SelectContent>
         </Select>
         <Select value={typeFilter} onValueChange={setTypeFilter}>
           <SelectTrigger className="w-[140px]" data-testid="select-key-type">
-            <SelectValue placeholder="Type" />
+            <SelectValue placeholder={t("dashboard.keys.typePlaceholder")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
-            <SelectItem value="team">Team</SelectItem>
-            <SelectItem value="voucher">Voucher</SelectItem>
+            <SelectItem value="all">{t("dashboard.keys.typeAll")}</SelectItem>
+            <SelectItem value="team">{t("dashboard.keys.typeTeam")}</SelectItem>
+            <SelectItem value="voucher">{t("dashboard.keys.typeVoucher")}</SelectItem>
           </SelectContent>
         </Select>
         <Select value={teamFilter} onValueChange={setTeamFilter}>
           <SelectTrigger className="w-[160px]" data-testid="select-key-team">
-            <SelectValue placeholder="Team" />
+            <SelectValue placeholder={t("dashboard.keys.teamPlaceholder")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Teams</SelectItem>
-            {teams?.map(t => (
-              <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+            <SelectItem value="all">{t("dashboard.keys.teamAll")}</SelectItem>
+            {teams?.map(team => (
+              <SelectItem key={team.id} value={team.id}>{team.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -218,7 +220,7 @@ function KeyAuditView() {
       {selected.size > 0 && (
         <div className="flex items-center gap-3 p-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800" data-testid="bulk-revoke-toolbar">
           <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400" />
-          <span className="text-sm font-medium text-red-700 dark:text-red-300">{selected.size} key{selected.size !== 1 ? 's' : ''} selected</span>
+          <span className="text-sm font-medium text-red-700 dark:text-red-300">{t("dashboard.keys.selectedCount", { count: selected.size })}</span>
           <Button
             size="sm"
             variant="destructive"
@@ -227,7 +229,7 @@ function KeyAuditView() {
             data-testid="button-bulk-revoke-keys"
           >
             <Trash2 className="w-3.5 h-3.5 mr-1.5" />
-            {bulkRevokeMutation.isPending ? "Revoking..." : "Revoke Selected"}
+            {bulkRevokeMutation.isPending ? t("dashboard.keys.revoking") : t("dashboard.keys.revokeSelected")}
           </Button>
         </div>
       )}
@@ -250,15 +252,15 @@ function KeyAuditView() {
                       data-testid="checkbox-select-all-keys"
                     />
                   </th>
-                  <th className="p-3 text-left font-medium">Key Prefix</th>
-                  <th className="p-3 text-left font-medium">Owner</th>
-                  <th className="p-3 text-left font-medium">Type</th>
-                  <th className="p-3 text-left font-medium">Team</th>
-                  <th className="p-3 text-left font-medium">Project</th>
-                  <th className="p-3 text-left font-medium">Providers</th>
-                  <th className="p-3 text-left font-medium">Status</th>
-                  <th className="p-3 text-left font-medium">Created</th>
-                  <th className="p-3 text-left font-medium">Last Used</th>
+                  <th className="p-3 text-left font-medium">{t("dashboard.keys.tableKeyPrefix")}</th>
+                  <th className="p-3 text-left font-medium">{t("dashboard.keys.tableOwner")}</th>
+                  <th className="p-3 text-left font-medium">{t("dashboard.keys.tableType")}</th>
+                  <th className="p-3 text-left font-medium">{t("dashboard.keys.tableTeam")}</th>
+                  <th className="p-3 text-left font-medium">{t("dashboard.keys.tableProject")}</th>
+                  <th className="p-3 text-left font-medium">{t("dashboard.keys.tableProviders")}</th>
+                  <th className="p-3 text-left font-medium">{t("dashboard.keys.tableStatus")}</th>
+                  <th className="p-3 text-left font-medium">{t("dashboard.keys.tableCreated")}</th>
+                  <th className="p-3 text-left font-medium">{t("dashboard.keys.tableLastUsed")}</th>
                   <th className="p-3 text-left font-medium w-10"></th>
                 </tr>
               </thead>
@@ -322,7 +324,7 @@ function KeyAuditView() {
                             );
                           })
                         ) : (
-                          <span className="text-[10px] text-muted-foreground/50">All</span>
+                          <span className="text-[10px] text-muted-foreground/50">{t("dashboard.keys.providersAll")}</span>
                         )}
                       </div>
                     </td>
@@ -343,7 +345,7 @@ function KeyAuditView() {
                       {new Date(k.createdAt).toLocaleDateString()}
                     </td>
                     <td className="p-3 text-xs text-muted-foreground">
-                      {k.lastUsed ? new Date(k.lastUsed).toLocaleDateString() : "Never"}
+                      {k.lastUsed ? new Date(k.lastUsed).toLocaleDateString() : t("dashboard.keys.lastUsedNever")}
                     </td>
                     <td className="p-3">
                       {k.status === "ACTIVE" && (
@@ -353,7 +355,7 @@ function KeyAuditView() {
                             size="sm"
                             className="h-7 w-7 p-0"
                             onClick={() => openEditProviders(k)}
-                            title="Edit allowed providers"
+                            title={t("dashboard.keys.titleEditProviders")}
                             data-testid={`button-edit-providers-${k.id}`}
                           >
                             <Settings2 className="w-3.5 h-3.5" />
@@ -369,7 +371,7 @@ function KeyAuditView() {
                               href="/arena"
                               target="_blank"
                               rel="noopener"
-                              title="Test this key in Arena — paste it into a live race against any allowed model"
+                              title={t("dashboard.keys.titleTestArenaCompact")}
                             >
                               <Swords className="w-3.5 h-3.5" />
                             </a>
@@ -386,27 +388,27 @@ function KeyAuditView() {
       ) : (
         <EmptyState
           icon={<Key className="w-10 h-10 text-muted-foreground" />}
-          title="No keys found"
-          description="No API keys match your current filters. Try adjusting the search or filters."
+          title={t("dashboard.keys.emptyTitle")}
+          description={t("dashboard.keys.emptyDescription")}
         />
       )}
 
       <AlertDialog open={confirmBulkRevoke} onOpenChange={setConfirmBulkRevoke}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Revoke {selected.size} API Key{selected.size !== 1 ? 's' : ''}?</AlertDialogTitle>
+            <AlertDialogTitle>{t("dashboard.keys.bulkRevokeTitle", { count: selected.size })}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will immediately revoke the selected keys. Users will no longer be able to make API requests with these keys. This action cannot be undone.
+              {t("dashboard.keys.bulkRevokeDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel data-testid="button-cancel-bulk-revoke">Cancel</AlertDialogCancel>
+            <AlertDialogCancel data-testid="button-cancel-bulk-revoke">{t("dashboard.keys.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => bulkRevokeMutation.mutate(Array.from(selected))}
               data-testid="button-confirm-bulk-revoke"
             >
-              Revoke Keys
+              {t("dashboard.keys.revokeKeys")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -415,14 +417,14 @@ function KeyAuditView() {
       <Dialog open={!!editProvidersKey} onOpenChange={(open) => { if (!open) setEditProvidersKey(null); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Providers</DialogTitle>
+            <DialogTitle>{t("dashboard.keys.editProvidersTitle")}</DialogTitle>
             <DialogDescription>
-              Select which AI providers this key ({editProvidersKey?.keyPrefix}) can access. Changes apply to all keys under this membership.
+              {t("dashboard.keys.editProvidersDescription", { prefix: editProvidersKey?.keyPrefix ?? "" })}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 pt-2">
             <div className="space-y-2">
-              <Label>Allowed Providers</Label>
+              <Label>{t("dashboard.keys.allowedProviders")}</Label>
               <div className="space-y-2">
                 {PROVIDERS.map(p => (
                   <label key={p.id} className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-muted/50" data-testid={`label-provider-${p.id.toLowerCase()}`}>
@@ -439,13 +441,13 @@ function KeyAuditView() {
                 ))}
               </div>
               {editProviders.length === 0 && (
-                <p className="text-xs text-muted-foreground">No providers selected means all providers will be accessible.</p>
+                <p className="text-xs text-muted-foreground">{t("dashboard.keys.noProvidersHelper")}</p>
               )}
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditProvidersKey(null)} data-testid="button-cancel-edit-providers">
-              Cancel
+              {t("dashboard.keys.cancel")}
             </Button>
             <Button
               onClick={() => {
@@ -459,7 +461,7 @@ function KeyAuditView() {
               disabled={updateProvidersMutation.isPending}
               data-testid="button-save-providers"
             >
-              {updateProvidersMutation.isPending ? "Saving..." : "Save"}
+              {updateProvidersMutation.isPending ? t("dashboard.keys.saving") : t("dashboard.keys.save")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -470,6 +472,7 @@ function KeyAuditView() {
 
 function PersonalKeysView() {
   const { toast } = useToast();
+  const { t } = useTranslation();
 
   const { data: keys, isLoading } = useQuery<any[]>({
     queryKey: ["/api/my-keys"],
@@ -477,23 +480,23 @@ function PersonalKeysView() {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    toast({ title: "API key copied to clipboard" });
+    toast({ title: t("dashboard.keys.toastKeyCopied") });
   };
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-keys-heading">API Keys</h1>
-        <p className="text-muted-foreground mt-1">Manage your API keys</p>
+        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-keys-heading">{t("dashboard.keys.auditHeading")}</h1>
+        <p className="text-muted-foreground mt-1">{t("dashboard.keys.personalSubheading")}</p>
       </div>
 
       <ArenaTestKeyCallout />
 
       <Card className="p-6" data-testid="card-api-access">
-        <h2 className="text-base font-semibold mb-4">Your API Access</h2>
+        <h2 className="text-base font-semibold mb-4">{t("dashboard.keys.apiAccessHeading")}</h2>
         <div className="p-4 rounded-lg bg-muted/50 flex items-center justify-between gap-2">
           <div>
-            <p className="text-sm text-muted-foreground mb-1">Base URL</p>
+            <p className="text-sm text-muted-foreground mb-1">{t("dashboard.keys.baseUrlLabel")}</p>
             <code className="font-mono text-sm" data-testid="text-base-url">{window.location.origin}/api/v1</code>
           </div>
           <Button
@@ -506,7 +509,7 @@ function PersonalKeysView() {
           </Button>
         </div>
         <p className="text-xs text-muted-foreground mt-3">
-          API keys are shown once during provisioning. Contact your team admin if you need a new key.
+          {t("dashboard.keys.apiKeysOnceHelper")}
         </p>
       </Card>
 
@@ -516,7 +519,7 @@ function PersonalKeysView() {
         </div>
       ) : keys && keys.length > 0 ? (
         <div className="space-y-4">
-          <h2 className="text-lg font-semibold">Your Keys</h2>
+          <h2 className="text-lg font-semibold">{t("dashboard.keys.yourKeysHeading")}</h2>
           {keys.map((k: any) => (
             <Card key={k.id} className="p-5" data-testid={`card-key-${k.id}`}>
               <div className="flex items-center justify-between gap-4">
@@ -531,11 +534,11 @@ function PersonalKeysView() {
                     <div className="flex items-center gap-2 mt-1">
                       <Clock className="w-3 h-3 text-muted-foreground" />
                       <span className="text-xs text-muted-foreground">
-                        Created {new Date(k.createdAt).toLocaleDateString()}
+                        {t("dashboard.keys.createdOn", { date: new Date(k.createdAt).toLocaleDateString() })}
                       </span>
                       {k.lastUsedAt && (
                         <span className="text-xs text-muted-foreground">
-                          · Last used {new Date(k.lastUsedAt).toLocaleDateString()}
+                          {t("dashboard.keys.lastUsedOn", { date: new Date(k.lastUsedAt).toLocaleDateString() })}
                         </span>
                       )}
                     </div>
@@ -565,10 +568,10 @@ function PersonalKeysView() {
                         href="/arena"
                         target="_blank"
                         rel="noopener"
-                        title="Test this key in Arena — race it against any allowed model on a single prompt"
+                        title={t("dashboard.keys.titleTestArena")}
                       >
                         <Swords className="w-3.5 h-3.5" />
-                        Test this key in Arena
+                        {t("dashboard.keys.testInArena")}
                       </a>
                     </Button>
                   )}
@@ -580,20 +583,20 @@ function PersonalKeysView() {
       ) : (
         <EmptyState
           icon={<Key className="w-10 h-10 text-muted-foreground" />}
-          title="No active keys"
-          description="Your team admin will provision API keys for you. Keys will appear here once they're created."
+          title={t("dashboard.keys.personalEmptyTitle")}
+          description={t("dashboard.keys.personalEmptyDescription")}
         />
       )}
 
       <Card className="p-5" data-testid="card-security-info">
         <div className="flex items-center gap-2 mb-3">
           <Shield className="w-4 h-4 text-primary" />
-          <h3 className="text-sm font-semibold">Security</h3>
+          <h3 className="text-sm font-semibold">{t("dashboard.keys.securityHeading")}</h3>
         </div>
         <ul className="space-y-2 text-sm text-muted-foreground">
-          <li>API keys are encrypted at rest with AES-256-GCM</li>
-          <li>Keys are only shown once during provisioning</li>
-          <li>Contact your team admin to revoke or regenerate keys</li>
+          <li>{t("dashboard.keys.securityItem1")}</li>
+          <li>{t("dashboard.keys.securityItem2")}</li>
+          <li>{t("dashboard.keys.securityItem3")}</li>
         </ul>
       </Card>
     </div>
@@ -601,6 +604,7 @@ function PersonalKeysView() {
 }
 
 function ArenaTestKeyCallout() {
+  const { t } = useTranslation();
   return (
     <Card
       className="p-4 flex items-center gap-4 border-l-4 border-l-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/20"
@@ -611,9 +615,9 @@ function ArenaTestKeyCallout() {
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm">
-          <span className="font-semibold">Want to know what your key can actually do?</span>{" "}
+          <span className="font-semibold">{t("dashboard.keys.arenaCalloutLead")}</span>{" "}
           <span className="text-muted-foreground">
-            Paste it into the Allotly Arena to race any allowed model on a single prompt — quality side-by-side, cost to the cent.
+            {t("dashboard.keys.arenaCalloutBody")}
           </span>
         </p>
       </div>
@@ -629,7 +633,7 @@ function ArenaTestKeyCallout() {
           rel="noopener"
           data-testid="link-keys-arena-callout"
         >
-          Open Arena
+          {t("dashboard.keys.openArena")}
           <ExternalLink className="w-3.5 h-3.5" />
         </a>
       </Button>

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Copy, Check } from "lucide-react";
+import { Trans, useTranslation } from "react-i18next";
 import type { ModelId } from "../types";
 
 type Tab = "python" | "node" | "curl";
@@ -53,6 +54,7 @@ const resp = await client.chat.completions.create({
 }
 
 export function PreflightSnippet({ visible, keyRedacted = "allotly_sk_demo_arena", model = "gpt-4o-mini" }: Props) {
+  const { t } = useTranslation();
   const [tab, setTab] = useState<Tab>("python");
   const [copied, setCopied] = useState(false);
 
@@ -80,38 +82,38 @@ export function PreflightSnippet({ visible, keyRedacted = "allotly_sk_demo_arena
         data-testid="snippet-explainer"
       >
         <div className="text-[11px] uppercase tracking-wide text-indigo-300 font-medium">
-          What your developers actually write
+          {t("arena.preflight.title")}
         </div>
         <p className="mt-1 text-xs text-white/70 leading-relaxed">
-          This is the only code change Allotly asks for: point your existing OpenAI SDK
-          (or a plain HTTP call) at <code className="font-mono text-white/85">allotly.ai</code> and
-          swap in your Allotly key. Every budget rule, allowlist, and audit log you set up
-          gets enforced from here — no model-specific SDKs, no rewrites.
+          <Trans
+            i18nKey="arena.preflight.desc"
+            components={{ code: <code className="font-mono text-white/85" /> }}
+          />
         </p>
       </div>
       <div className="flex items-center justify-between border-b border-white/10 bg-black/40 px-3 py-1.5">
         <div className="flex items-center gap-1">
-          {TABS.map(t => (
+          {TABS.map(tabItem => (
             <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
+              key={tabItem.id}
+              onClick={() => setTab(tabItem.id)}
               className={`px-2.5 py-1 text-[11px] rounded transition ${
-                tab === t.id ? "bg-white/15 text-white" : "text-white/60 hover:text-white/80"
+                tab === tabItem.id ? "bg-white/15 text-white" : "text-white/60 hover:text-white/80"
               }`}
-              data-testid={`tab-snippet-${t.id}`}
+              data-testid={`tab-snippet-${tabItem.id}`}
             >
-              {t.label}
+              {tabItem.label}
             </button>
           ))}
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-[10px] text-white/40 hidden sm:inline">Same OpenAI SDK · two lines changed</span>
+          <span className="text-[10px] text-white/40 hidden sm:inline">{t("arena.preflight.sameSDK")}</span>
           <button
             onClick={handleCopy}
             className="text-[11px] text-white/60 hover:text-white flex items-center gap-1"
             data-testid="button-copy-snippet"
           >
-            {copied ? <><Check className="w-3 h-3" /> Copied</> : <><Copy className="w-3 h-3" /> Copy</>}
+            {copied ? <><Check className="w-3 h-3" /> {t("arena.preflight.copied")}</> : <><Copy className="w-3 h-3" /> {t("arena.preflight.copy")}</>}
           </button>
         </div>
       </div>

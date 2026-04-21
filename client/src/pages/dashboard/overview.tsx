@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { useAuth } from "@/lib/auth";
 import { StatsCard } from "@/components/brand/stats-card";
 import { BudgetBar } from "@/components/brand/budget-bar";
@@ -41,20 +43,21 @@ const PROVIDER_NAMES: Record<string, string> = {
   GOOGLE: "Google",
 };
 
-function formatTimeAgo(date: string | Date) {
+function formatTimeAgo(date: string | Date, t: TFunction) {
   const now = new Date();
   const d = new Date(date);
   const diffMs = now.getTime() - d.getTime();
   const diffMins = Math.floor(diffMs / 60000);
-  if (diffMins < 1) return "just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffMins < 1) return t("dashboard.common.justNow");
+  if (diffMins < 60) return t("dashboard.common.minutesAgo", { count: diffMins });
   const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffHours < 24) return t("dashboard.common.hoursAgo", { count: diffHours });
   const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays}d ago`;
+  return t("dashboard.common.daysAgo", { count: diffDays });
 }
 
 function RootAdminOverview() {
+  const { t } = useTranslation();
   const { data, isLoading } = useQuery<any>({ queryKey: ["/api/dashboard/root-overview"] });
   const { data: vouchers } = useQuery<any[]>({ queryKey: ["/api/vouchers"] });
 
@@ -93,34 +96,34 @@ function RootAdminOverview() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-dashboard-title">Dashboard</h1>
-        <p className="text-muted-foreground mt-1">Organization overview and insights</p>
+        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-dashboard-title">{t("dashboard.overview.rootTitle")}</h1>
+        <p className="text-muted-foreground mt-1">{t("dashboard.overview.rootSubtitle")}</p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatsCard
-          title="Total Spend"
+          title={t("dashboard.overview.totalSpend")}
           value={`$${((data?.totalSpendCents || 0) / 100).toFixed(2)}`}
           icon={<DollarSign className="w-5 h-5" />}
         />
         <StatsCard
-          title="Team Admin Seats"
+          title={t("dashboard.overview.teamAdminSeats")}
           value={`${data?.activeTeamAdmins || 0} / ${data?.maxTeamAdmins || 0}`}
           icon={<ShieldCheck className="w-5 h-5" />}
         />
         <StatsCard
-          title="Active Members"
+          title={t("dashboard.overview.activeMembers")}
           value={String(data?.totalMembers || 0)}
           icon={<Users className="w-5 h-5" />}
         />
         <StatsCard
-          title="Active Vouchers"
+          title={t("dashboard.overview.activeVouchers")}
           value={String(data?.activeVouchers || 0)}
           icon={<Ticket className="w-5 h-5" />}
         />
         <Card className="p-5 relative overflow-hidden" data-testid="stats-card-provider-health">
           <div className="space-y-2">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Provider Health</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t("dashboard.overview.providerHealth")}</p>
             <div className="flex items-center gap-3 mt-3">
               {providerHealth.length > 0 ? providerHealth.map((p: any) => (
                 <div key={p.provider} className="flex items-center gap-1.5">
@@ -132,7 +135,7 @@ function RootAdminOverview() {
                   <span className="text-sm font-medium">{PROVIDER_NAMES[p.provider] || p.provider}</span>
                 </div>
               )) : (
-                <span className="text-sm text-muted-foreground">No providers</span>
+                <span className="text-sm text-muted-foreground">{t("dashboard.overview.noProviders")}</span>
               )}
             </div>
           </div>
@@ -141,7 +144,7 @@ function RootAdminOverview() {
 
       <div className="grid lg:grid-cols-2 gap-6">
         <Card className="p-5">
-          <h2 className="text-base font-semibold mb-4" data-testid="text-spend-by-team">Spend by Team</h2>
+          <h2 className="text-base font-semibold mb-4" data-testid="text-spend-by-team">{t("dashboard.overview.spendByTeam")}</h2>
           {chartTeamData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={chartTeamData}>
@@ -150,7 +153,7 @@ function RootAdminOverview() {
                 <YAxis tick={{ fill: 'currentColor', fontSize: 12 }} tickFormatter={(v) => `$${v}`} />
                 <Tooltip
                   contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px', color: 'hsl(var(--popover-foreground))' }}
-                  formatter={(value: number) => [`$${value.toFixed(2)}`, 'Spend']}
+                  formatter={(value: number) => [`$${value.toFixed(2)}`, t("dashboard.overview.spendLabel")]}
                 />
                 <Bar dataKey="spend" fill="#6366F1" radius={[4, 4, 0, 0]} />
               </BarChart>
@@ -158,14 +161,14 @@ function RootAdminOverview() {
           ) : (
             <EmptyState
               icon={<TrendingUp className="w-8 h-8 text-muted-foreground" />}
-              title="No spend data"
-              description="Spend data will appear once members start using AI"
+              title={t("dashboard.overview.noSpendData")}
+              description={t("dashboard.overview.noSpendDataDesc")}
             />
           )}
         </Card>
 
         <Card className="p-5">
-          <h2 className="text-base font-semibold mb-4" data-testid="text-spend-by-provider">Spend by Provider</h2>
+          <h2 className="text-base font-semibold mb-4" data-testid="text-spend-by-provider">{t("dashboard.overview.spendByProvider")}</h2>
           {chartProviderData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
@@ -190,15 +193,15 @@ function RootAdminOverview() {
                 </Pie>
                 <Tooltip
                   contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px', color: 'hsl(var(--popover-foreground))' }}
-                  formatter={(value: number) => [`$${value.toFixed(2)}`, 'Spend']}
+                  formatter={(value: number) => [`$${value.toFixed(2)}`, t("dashboard.overview.spendLabel")]}
                 />
               </PieChart>
             </ResponsiveContainer>
           ) : (
             <EmptyState
               icon={<Activity className="w-8 h-8 text-muted-foreground" />}
-              title="No provider data"
-              description="Provider spend will appear after usage"
+              title={t("dashboard.overview.noProviderData")}
+              description={t("dashboard.overview.noProviderDataDesc")}
             />
           )}
         </Card>
@@ -207,7 +210,7 @@ function RootAdminOverview() {
       <div className="grid lg:grid-cols-2 gap-6">
         <Card className="p-5">
           <div className="flex items-center justify-between gap-2 mb-4">
-            <h2 className="text-base font-semibold">Recent Alerts</h2>
+            <h2 className="text-base font-semibold">{t("dashboard.overview.recentAlerts")}</h2>
           </div>
           {recentAlerts.length > 0 ? (
             <div className="space-y-3 max-h-64 overflow-y-auto">
@@ -217,13 +220,13 @@ function RootAdminOverview() {
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium truncate">{alert.userName}</p>
                     <p className="text-xs text-muted-foreground">
-                      Budget {alert.thresholdPercent}% reached
+                      {t("dashboard.overview.budgetReached", { percent: alert.thresholdPercent })}
                       {alert.actionTaken && ` — ${alert.actionTaken}`}
                     </p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">{formatTimeAgo(alert.triggeredAt)}</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">{formatTimeAgo(alert.triggeredAt, t)}</p>
                   </div>
                   <Badge variant="outline" className="text-[10px] shrink-0">
-                    {alert.accessType === "VOUCHER" ? "Voucher" : "Team"}
+                    {alert.accessType === "VOUCHER" ? t("dashboard.overview.voucherBadge") : t("dashboard.overview.teamBadge")}
                   </Badge>
                 </div>
               ))}
@@ -231,18 +234,18 @@ function RootAdminOverview() {
           ) : (
             <EmptyState
               icon={<CheckCircle className="w-8 h-8 text-muted-foreground" />}
-              title="No alerts"
-              description="All budgets are within limits"
+              title={t("dashboard.overview.noAlerts")}
+              description={t("dashboard.overview.noAlertsDesc")}
             />
           )}
         </Card>
 
         <Card className="p-5">
           <div className="flex items-center justify-between gap-2 mb-4">
-            <h2 className="text-base font-semibold">Recent Vouchers</h2>
+            <h2 className="text-base font-semibold">{t("dashboard.overview.recentVouchers")}</h2>
             <Link href="/dashboard/vouchers">
               <Button variant="secondary" size="sm" data-testid="button-view-vouchers">
-                View All <ArrowRight className="w-3 h-3 ml-1" />
+                {t("dashboard.common.viewAll")} <ArrowRight className="w-3 h-3 ml-1" />
               </Button>
             </Link>
           </div>
@@ -263,42 +266,42 @@ function RootAdminOverview() {
           ) : (
             <EmptyState
               icon={<Ticket className="w-8 h-8 text-muted-foreground" />}
-              title="No vouchers yet"
-              description="Create vouchers to distribute AI access"
+              title={t("dashboard.overview.noVouchers")}
+              description={t("dashboard.overview.noVouchersDesc")}
             />
           )}
         </Card>
       </div>
 
       <Card className="p-5">
-        <h2 className="text-base font-semibold mb-4">Quick Actions</h2>
+        <h2 className="text-base font-semibold mb-4">{t("dashboard.overview.quickActions")}</h2>
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <Link href="/dashboard/teams">
             <div className="p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer" data-testid="action-add-team">
               <Users className="w-5 h-5 text-primary mb-2" />
-              <p className="text-sm font-medium">Add Team Admin</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Create a new team</p>
+              <p className="text-sm font-medium">{t("dashboard.overview.addTeamAdmin")}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{t("dashboard.overview.addTeamAdminDesc")}</p>
             </div>
           </Link>
           <Link href="/dashboard/providers">
             <div className="p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer" data-testid="action-connect-provider">
               <Plug className="w-5 h-5 text-primary mb-2" />
-              <p className="text-sm font-medium">Connect Provider</p>
-              <p className="text-xs text-muted-foreground mt-0.5">OpenAI, Anthropic, Google</p>
+              <p className="text-sm font-medium">{t("dashboard.overview.connectProvider")}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{t("dashboard.overview.connectProviderDesc")}</p>
             </div>
           </Link>
           <Link href="/dashboard/vouchers">
             <div className="p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer" data-testid="action-create-voucher">
               <Ticket className="w-5 h-5 text-cyan-500 mb-2" />
-              <p className="text-sm font-medium">Create Voucher</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Generate access codes</p>
+              <p className="text-sm font-medium">{t("dashboard.overview.createVoucher")}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{t("dashboard.overview.createVoucherDesc")}</p>
             </div>
           </Link>
           <Link href="/dashboard/bundles">
             <div className="p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer" data-testid="action-buy-bundle">
               <ShoppingCart className="w-5 h-5 text-cyan-500 mb-2" />
-              <p className="text-sm font-medium">Buy Bundle</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Purchase voucher bundles</p>
+              <p className="text-sm font-medium">{t("dashboard.overview.buyBundle")}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{t("dashboard.overview.buyBundleDesc")}</p>
             </div>
           </Link>
         </div>
@@ -308,6 +311,7 @@ function RootAdminOverview() {
 }
 
 function TeamAdminOverview() {
+  const { t } = useTranslation();
   const { data, isLoading } = useQuery<any>({ queryKey: ["/api/dashboard/team-overview"] });
   const { data: voucherStats } = useQuery<any>({ queryKey: ["/api/dashboard/voucher-stats"] });
 
@@ -333,22 +337,22 @@ function TeamAdminOverview() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-team-dashboard-title">Team Dashboard</h1>
-        <p className="text-muted-foreground mt-1">{data?.teamName || "Your team"} overview</p>
+        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-team-dashboard-title">{t("dashboard.overview.teamTitle")}</h1>
+        <p className="text-muted-foreground mt-1">{t("dashboard.overview.teamSubtitle", { teamName: data?.teamName || t("dashboard.overview.yourTeam") })}</p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatsCard title="Team Spend" value={`$${((stats.totalSpendCents || 0) / 100).toFixed(2)}`} icon={<DollarSign className="w-5 h-5" />} />
-        <StatsCard title="Direct Members" value={String(stats.directMemberCount || 0)} icon={<Key className="w-5 h-5" />} />
-        <StatsCard title="Voucher Recipients" value={String(stats.proxyMemberCount || 0)} icon={<Ticket className="w-5 h-5" />} />
-        <StatsCard title="Bundle Capacity" value={String(stats.bundleCapacityRemaining || 0)} icon={<ShoppingCart className="w-5 h-5" />} />
+        <StatsCard title={t("dashboard.overview.teamSpend")} value={`$${((stats.totalSpendCents || 0) / 100).toFixed(2)}`} icon={<DollarSign className="w-5 h-5" />} />
+        <StatsCard title={t("dashboard.overview.directMembers")} value={String(stats.directMemberCount || 0)} icon={<Key className="w-5 h-5" />} />
+        <StatsCard title={t("dashboard.overview.voucherRecipients")} value={String(stats.proxyMemberCount || 0)} icon={<Ticket className="w-5 h-5" />} />
+        <StatsCard title={t("dashboard.overview.bundleCapacity")} value={String(stats.bundleCapacityRemaining || 0)} icon={<ShoppingCart className="w-5 h-5" />} />
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
         <Card className="p-5">
           <div className="flex items-center gap-2 mb-4">
             <FeatureBadge type="TEAMS" />
-            <h2 className="text-base font-semibold">Team Members</h2>
+            <h2 className="text-base font-semibold">{t("dashboard.overview.teamMembers")}</h2>
           </div>
           {directMembers.length > 0 ? (
             <div className="space-y-3 max-h-80 overflow-y-auto">
@@ -370,9 +374,9 @@ function TeamAdminOverview() {
           ) : (
             <EmptyState
               icon={<Users className="w-8 h-8 text-muted-foreground" />}
-              title="Add your first team member"
-              description="Add team members to start managing AI access"
-              action={{ label: "Add Member", onClick: () => window.location.href = "/dashboard/members" }}
+              title={t("dashboard.overview.addFirstMember")}
+              description={t("dashboard.overview.addFirstMemberDesc")}
+              action={{ label: t("dashboard.overview.addMember"), onClick: () => window.location.href = "/dashboard/members" }}
             />
           )}
         </Card>
@@ -380,7 +384,7 @@ function TeamAdminOverview() {
         <Card className="p-5">
           <div className="flex items-center gap-2 mb-4">
             <FeatureBadge type="VOUCHERS" />
-            <h2 className="text-base font-semibold">Voucher Recipients</h2>
+            <h2 className="text-base font-semibold">{t("dashboard.overview.voucherRecipients")}</h2>
           </div>
           {proxyMembers.length > 0 ? (
             <div className="space-y-3 max-h-80 overflow-y-auto">
@@ -388,16 +392,16 @@ function TeamAdminOverview() {
                 <div key={m.id} className="p-3 rounded-lg bg-muted/50" data-testid={`member-proxy-${m.id}`}>
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <div>
-                      <p className="text-sm font-medium">{m.isVoucherUser ? "Anonymous" : m.userName}</p>
+                      <p className="text-sm font-medium">{m.isVoucherUser ? t("dashboard.overview.anonymous") : m.userName}</p>
                       {m.voucherCode && (
                         <code className="text-[11px] font-mono text-cyan-600 dark:text-cyan-400">{m.voucherCode}</code>
                       )}
                     </div>
                     <div className="text-right">
-                      <p className="text-xs text-muted-foreground">{m.proxyRequestCount} requests</p>
+                      <p className="text-xs text-muted-foreground">{t("dashboard.overview.requestsCount", { count: m.proxyRequestCount })}</p>
                       {m.periodEnd && (
                         <p className="text-[11px] text-muted-foreground">
-                          Expires {formatTimeAgo(m.periodEnd)}
+                          {t("dashboard.overview.expires", { when: formatTimeAgo(m.periodEnd, t) })}
                         </p>
                       )}
                     </div>
@@ -409,25 +413,25 @@ function TeamAdminOverview() {
           ) : (
             <EmptyState
               icon={<Ticket className="w-8 h-8 text-muted-foreground" />}
-              title="No voucher recipients"
-              description="Recipients will appear when vouchers are redeemed"
+              title={t("dashboard.overview.noVoucherRecipients")}
+              description={t("dashboard.overview.noVoucherRecipientsDesc")}
             />
           )}
         </Card>
       </div>
 
       <Card className="p-5" data-testid="card-spend-overview">
-        <h2 className="text-base font-semibold mb-4">Spend Comparison</h2>
+        <h2 className="text-base font-semibold mb-4">{t("dashboard.overview.spendComparison")}</h2>
         {(directMembers.length > 0 || proxyMembers.length > 0) ? (
           <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={[
               {
-                name: "Direct (Teams)",
+                name: t("dashboard.overview.directTeams"),
                 direct: directMembers.reduce((s: number, m: any) => s + m.currentPeriodSpendCents, 0) / 100,
                 proxy: 0,
               },
               {
-                name: "Proxy (Vouchers)",
+                name: t("dashboard.overview.proxyVouchers"),
                 direct: 0,
                 proxy: proxyMembers.reduce((s: number, m: any) => s + m.currentPeriodSpendCents, 0) / 100,
               },
@@ -459,8 +463,8 @@ function TeamAdminOverview() {
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-primary/10"><Users className="w-5 h-5 text-primary" /></div>
               <div>
-                <p className="font-medium">Manage Members</p>
-                <p className="text-sm text-muted-foreground">Add, modify, or suspend members</p>
+                <p className="font-medium">{t("dashboard.overview.manageMembers")}</p>
+                <p className="text-sm text-muted-foreground">{t("dashboard.overview.manageMembersDesc")}</p>
               </div>
             </div>
           </Card>
@@ -470,8 +474,8 @@ function TeamAdminOverview() {
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-cyan-100 dark:bg-cyan-900/40"><Ticket className="w-5 h-5 text-cyan-600 dark:text-cyan-400" /></div>
               <div>
-                <p className="font-medium">Manage Vouchers</p>
-                <p className="text-sm text-muted-foreground">Create and distribute access codes</p>
+                <p className="font-medium">{t("dashboard.overview.manageVouchers")}</p>
+                <p className="text-sm text-muted-foreground">{t("dashboard.overview.manageVouchersDesc")}</p>
               </div>
             </div>
           </Card>
@@ -482,6 +486,7 @@ function TeamAdminOverview() {
 }
 
 function ApiKeysManager({ data }: { data: any }) {
+  const { t } = useTranslation();
   const { toast } = useToast();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [projectMode, setProjectMode] = useState<"existing" | "new" | "none">("none");
@@ -498,10 +503,10 @@ function ApiKeysManager({ data }: { data: any }) {
       qc.invalidateQueries({ queryKey: ["/api/dashboard/member-overview"] });
       qc.invalidateQueries({ queryKey: ["/api/me/keys"] });
       setNewKeyRevealed(result.apiKey);
-      toast({ title: "API key created", description: result.projectName ? `Project: ${result.projectName}` : "No project assigned" });
+      toast({ title: t("dashboard.overview.apiKeyCreatedToast"), description: result.projectName ? t("dashboard.overview.projectAssignedToast", { name: result.projectName }) : t("dashboard.overview.noProjectAssignedToast") });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to create key", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.overview.failedCreateKey"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -512,16 +517,16 @@ function ApiKeysManager({ data }: { data: any }) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/dashboard/member-overview"] });
       qc.invalidateQueries({ queryKey: ["/api/me/keys"] });
-      toast({ title: "Key revoked" });
+      toast({ title: t("dashboard.overview.keyRevoked") });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to revoke key", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.overview.failedRevokeKey"), description: err.message, variant: "destructive" });
     },
   });
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    toast({ title: "Copied to clipboard" });
+    toast({ title: t("dashboard.common.copied") });
   };
 
   const handleCreate = () => {
@@ -550,8 +555,8 @@ function ApiKeysManager({ data }: { data: any }) {
       <Card className="p-6" data-testid="card-api-keys">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-base font-semibold">API Keys</h2>
-            <p className="text-sm text-muted-foreground">Use these with any OpenAI-compatible client</p>
+            <h2 className="text-base font-semibold">{t("dashboard.overview.apiKeysTitle")}</h2>
+            <p className="text-sm text-muted-foreground">{t("dashboard.overview.apiKeysSubtitle")}</p>
           </div>
           <Button
             size="sm"
@@ -559,14 +564,14 @@ function ApiKeysManager({ data }: { data: any }) {
             disabled={activeKeys.length >= 10}
             data-testid="button-create-project-key"
           >
-            <Plus className="w-4 h-4 mr-1" /> New Key
+            <Plus className="w-4 h-4 mr-1" /> {t("dashboard.overview.newKey")}
           </Button>
         </div>
 
         <div className="space-y-3 mb-4">
           <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50">
             <code className="font-mono text-sm flex-1" data-testid="text-base-url">
-              Base URL: {window.location.origin}/api/v1
+              {t("dashboard.overview.baseUrl", { url: `${window.location.origin}/api/v1` })}
             </code>
             <Button variant="ghost" size="sm" onClick={() => copyToClipboard(`${window.location.origin}/api/v1`)} data-testid="button-copy-url">
               <Copy className="w-4 h-4" />
@@ -586,10 +591,10 @@ function ApiKeysManager({ data }: { data: any }) {
                     {k.projectName}
                   </Badge>
                 ) : (
-                  <Badge variant="outline" className="text-xs text-muted-foreground">No project</Badge>
+                  <Badge variant="outline" className="text-xs text-muted-foreground">{t("dashboard.common.noProject")}</Badge>
                 )}
                 <span className="text-xs text-muted-foreground ml-auto">
-                  {k.lastUsedAt ? formatTimeAgo(k.lastUsedAt) : "Never used"}
+                  {k.lastUsedAt ? formatTimeAgo(k.lastUsedAt, t) : t("dashboard.common.neverUsed")}
                 </span>
                 <Button
                   variant="ghost"
@@ -604,7 +609,7 @@ function ApiKeysManager({ data }: { data: any }) {
                   size="sm"
                   className="text-destructive hover:text-destructive"
                   onClick={() => {
-                    if (confirm("Revoke this key? This cannot be undone.")) {
+                    if (confirm(t("dashboard.overview.confirmRevokeKey"))) {
                       revokeKeyMutation.mutate(k.id);
                     }
                   }}
@@ -615,13 +620,13 @@ function ApiKeysManager({ data }: { data: any }) {
                 </Button>
               </div>
             ))}
-            <p className="text-xs text-muted-foreground mt-2">{activeKeys.length}/10 keys active</p>
+            <p className="text-xs text-muted-foreground mt-2">{t("dashboard.overview.keysActive", { count: activeKeys.length })}</p>
           </div>
         ) : (
           <EmptyState
             icon={<Key className="w-8 h-8 text-muted-foreground" />}
-            title="No active keys"
-            description='Click "New Key" to create your first API key'
+            title={t("dashboard.overview.noActiveKeys")}
+            description={t("dashboard.overview.noActiveKeysDesc")}
           />
         )}
       </Card>
@@ -631,48 +636,48 @@ function ApiKeysManager({ data }: { data: any }) {
           {newKeyRevealed ? (
             <>
               <DialogHeader>
-                <DialogTitle>Key Created</DialogTitle>
-                <DialogDescription>Copy your key now — it won't be shown again.</DialogDescription>
+                <DialogTitle>{t("dashboard.overview.keyCreated")}</DialogTitle>
+                <DialogDescription>{t("dashboard.overview.keyCreatedDesc")}</DialogDescription>
               </DialogHeader>
               <div className="space-y-3">
                 <div className="p-3 rounded-lg bg-muted/50 font-mono text-sm break-all" data-testid="text-new-key">
                   {newKeyRevealed}
                 </div>
                 <Button className="w-full" onClick={() => { copyToClipboard(newKeyRevealed); }} data-testid="button-copy-new-key">
-                  <Copy className="w-4 h-4 mr-2" /> Copy Key
+                  <Copy className="w-4 h-4 mr-2" /> {t("dashboard.overview.copyKey")}
                 </Button>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={resetDialog} data-testid="button-close-key-dialog">Done</Button>
+                <Button variant="outline" onClick={resetDialog} data-testid="button-close-key-dialog">{t("dashboard.common.done")}</Button>
               </DialogFooter>
             </>
           ) : (
             <>
               <DialogHeader>
-                <DialogTitle>Create API Key</DialogTitle>
-                <DialogDescription>Optionally assign this key to a project for usage tracking.</DialogDescription>
+                <DialogTitle>{t("dashboard.overview.createApiKey")}</DialogTitle>
+                <DialogDescription>{t("dashboard.overview.createApiKeyDesc")}</DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Project Assignment</Label>
+                  <Label>{t("dashboard.overview.projectAssignment")}</Label>
                   <Select value={projectMode} onValueChange={(v) => { setProjectMode(v as any); setSelectedProjectId(""); setNewProjectName(""); }}>
                     <SelectTrigger data-testid="select-project-mode">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">No project</SelectItem>
-                      {projects.length > 0 && <SelectItem value="existing">Choose existing project</SelectItem>}
-                      <SelectItem value="new">Create new project</SelectItem>
+                      <SelectItem value="none">{t("dashboard.common.noProject")}</SelectItem>
+                      {projects.length > 0 && <SelectItem value="existing">{t("dashboard.overview.chooseExisting")}</SelectItem>}
+                      <SelectItem value="new">{t("dashboard.overview.createNewProject")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 {projectMode === "existing" && (
                   <div className="space-y-2">
-                    <Label>Select Project</Label>
+                    <Label>{t("dashboard.overview.selectProject")}</Label>
                     <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
                       <SelectTrigger data-testid="select-project">
-                        <SelectValue placeholder="Choose a project..." />
+                        <SelectValue placeholder={t("dashboard.overview.chooseProjectPlaceholder")} />
                       </SelectTrigger>
                       <SelectContent>
                         {projects.map((p: any) => (
@@ -685,9 +690,9 @@ function ApiKeysManager({ data }: { data: any }) {
 
                 {projectMode === "new" && (
                   <div className="space-y-2">
-                    <Label>Project Name</Label>
+                    <Label>{t("dashboard.overview.projectName")}</Label>
                     <Input
-                      placeholder="e.g. Internal Tools, Customer Bot"
+                      placeholder={t("dashboard.overview.projectNamePlaceholder")}
                       value={newProjectName}
                       onChange={(e) => setNewProjectName(e.target.value)}
                       maxLength={100}
@@ -697,13 +702,13 @@ function ApiKeysManager({ data }: { data: any }) {
                 )}
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={resetDialog}>Cancel</Button>
+                <Button variant="outline" onClick={resetDialog}>{t("dashboard.common.cancel")}</Button>
                 <Button
                   onClick={handleCreate}
                   disabled={createKeyMutation.isPending || (projectMode === "existing" && !selectedProjectId) || (projectMode === "new" && !newProjectName.trim())}
                   data-testid="button-confirm-create-key"
                 >
-                  {createKeyMutation.isPending ? "Creating..." : "Create Key"}
+                  {createKeyMutation.isPending ? t("dashboard.overview.creatingKey") : t("dashboard.overview.createKey")}
                 </Button>
               </DialogFooter>
             </>
@@ -715,6 +720,7 @@ function ApiKeysManager({ data }: { data: any }) {
 }
 
 function ProjectBreakdown({ proxyLogs }: { proxyLogs: any[] }) {
+  const { t } = useTranslation();
   if (!proxyLogs || proxyLogs.length === 0) return null;
 
   const byProject = new Map<string, { requests: number; costCents: number; inputTokens: number; outputTokens: number }>();
@@ -735,7 +741,7 @@ function ProjectBreakdown({ proxyLogs }: { proxyLogs: any[] }) {
 
   return (
     <Card className="p-5" data-testid="card-project-breakdown">
-      <h2 className="text-base font-semibold mb-4">Usage by Project</h2>
+      <h2 className="text-base font-semibold mb-4">{t("dashboard.overview.usageByProject")}</h2>
       <div className="space-y-3">
         {sorted.map(([name, stats]) => {
           const pct = totalCost > 0 ? (stats.costCents / totalCost) * 100 : 0;
@@ -745,7 +751,7 @@ function ProjectBreakdown({ proxyLogs }: { proxyLogs: any[] }) {
                 <div className="flex items-center gap-2">
                   <FolderOpen className="w-3.5 h-3.5 text-muted-foreground" />
                   <span className="font-medium">{name}</span>
-                  <span className="text-xs text-muted-foreground">{stats.requests} req</span>
+                  <span className="text-xs text-muted-foreground">{t("dashboard.overview.requestsAbbrev", { count: stats.requests })}</span>
                 </div>
                 <span className="font-mono text-sm">${(stats.costCents / 100).toFixed(4)}</span>
               </div>
@@ -761,6 +767,7 @@ function ProjectBreakdown({ proxyLogs }: { proxyLogs: any[] }) {
 }
 
 function ProxyMemberOverview({ data }: { data: any }) {
+  const { t } = useTranslation();
   const { toast } = useToast();
 
   const daysRemaining = data?.voucherInfo?.expiresAt
@@ -774,37 +781,37 @@ function ProxyMemberOverview({ data }: { data: any }) {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    toast({ title: "Copied to clipboard" });
+    toast({ title: t("dashboard.common.copied") });
   };
 
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-member-dashboard-title">My Dashboard</h1>
+        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-member-dashboard-title">{t("dashboard.overview.memberTitle")}</h1>
         <div className="flex items-center gap-2 mt-1">
           <FeatureBadge type="VOUCHERS" />
-          <span className="text-sm text-muted-foreground">Proxy-based access via Allotly</span>
+          <span className="text-sm text-muted-foreground">{t("dashboard.overview.memberProxySubtitle")}</span>
         </div>
       </div>
 
       <Card className="p-6" data-testid="card-budget">
-        <h2 className="text-base font-semibold mb-4">Budget</h2>
+        <h2 className="text-base font-semibold mb-4">{t("dashboard.overview.budget")}</h2>
         <div className="max-w-lg">
           <BudgetBar spent={data.spendCents} budget={data.budgetCents} />
         </div>
         <div className="grid grid-cols-3 gap-4 mt-6">
           <div>
-            <p className="text-sm text-muted-foreground">Remaining</p>
+            <p className="text-sm text-muted-foreground">{t("dashboard.overview.remaining")}</p>
             <p className="text-2xl font-bold" data-testid="text-budget-remaining">
               ${((data.budgetCents - data.spendCents) / 100).toFixed(2)}
             </p>
           </div>
           <div>
-            <p className="text-sm text-muted-foreground">Total Budget</p>
+            <p className="text-sm text-muted-foreground">{t("dashboard.overview.totalBudget")}</p>
             <p className="text-2xl font-bold">${(data.budgetCents / 100).toFixed(2)}</p>
           </div>
           <div>
-            <p className="text-sm text-muted-foreground">Requests Made</p>
+            <p className="text-sm text-muted-foreground">{t("dashboard.overview.requestsMade")}</p>
             <p className="text-2xl font-bold" data-testid="text-request-count">{data.proxyRequestCount || 0}</p>
           </div>
         </div>
@@ -815,9 +822,9 @@ function ProxyMemberOverview({ data }: { data: any }) {
           <div className="flex items-center gap-3">
             <Timer className={`w-5 h-5 ${expiryColor}`} />
             <div>
-              <p className="text-sm font-medium">Voucher Expiry</p>
+              <p className="text-sm font-medium">{t("dashboard.overview.voucherExpiry")}</p>
               <p className={`text-lg font-bold ${expiryColor}`} data-testid="text-days-remaining">
-                {daysRemaining === 0 ? "Expires today" : `${daysRemaining} day${daysRemaining === 1 ? '' : 's'} remaining`}
+                {daysRemaining === 0 ? t("dashboard.overview.expiresToday") : daysRemaining === 1 ? t("dashboard.overview.daysRemainingOne", { count: daysRemaining }) : t("dashboard.overview.daysRemainingOther", { count: daysRemaining })}
               </p>
             </div>
           </div>
@@ -829,7 +836,7 @@ function ProxyMemberOverview({ data }: { data: any }) {
       <ProjectBreakdown proxyLogs={data.proxyLogs} />
 
       <Card className="p-5" data-testid="card-models">
-        <h2 className="text-base font-semibold mb-4">Available Models</h2>
+        <h2 className="text-base font-semibold mb-4">{t("dashboard.overview.availableModels")}</h2>
         {data.availableModels && data.availableModels.length > 0 ? (
           <div className="grid sm:grid-cols-2 gap-2">
             {data.availableModels.map((m: any) => (
@@ -842,30 +849,30 @@ function ProxyMemberOverview({ data }: { data: any }) {
             ))}
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">No models available</p>
+          <p className="text-sm text-muted-foreground">{t("dashboard.overview.noModelsAvailable")}</p>
         )}
       </Card>
 
       <Card className="p-5" data-testid="card-recent-requests">
-        <h2 className="text-base font-semibold mb-4">Recent Requests</h2>
+        <h2 className="text-base font-semibold mb-4">{t("dashboard.overview.recentRequests")}</h2>
         {data.proxyLogs && data.proxyLogs.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b">
-                  <th className="text-left py-2 px-3 text-xs font-semibold text-muted-foreground uppercase">Time</th>
-                  <th className="text-left py-2 px-3 text-xs font-semibold text-muted-foreground uppercase">Model</th>
-                  <th className="text-left py-2 px-3 text-xs font-semibold text-muted-foreground uppercase">Project</th>
-                  <th className="text-right py-2 px-3 text-xs font-semibold text-muted-foreground uppercase">Tokens In</th>
-                  <th className="text-right py-2 px-3 text-xs font-semibold text-muted-foreground uppercase">Tokens Out</th>
-                  <th className="text-right py-2 px-3 text-xs font-semibold text-muted-foreground uppercase">Cost</th>
-                  <th className="text-right py-2 px-3 text-xs font-semibold text-muted-foreground uppercase">Duration</th>
+                  <th className="text-left py-2 px-3 text-xs font-semibold text-muted-foreground uppercase">{t("dashboard.overview.tableTime")}</th>
+                  <th className="text-left py-2 px-3 text-xs font-semibold text-muted-foreground uppercase">{t("dashboard.overview.tableModel")}</th>
+                  <th className="text-left py-2 px-3 text-xs font-semibold text-muted-foreground uppercase">{t("dashboard.overview.tableProject")}</th>
+                  <th className="text-right py-2 px-3 text-xs font-semibold text-muted-foreground uppercase">{t("dashboard.overview.tableTokensIn")}</th>
+                  <th className="text-right py-2 px-3 text-xs font-semibold text-muted-foreground uppercase">{t("dashboard.overview.tableTokensOut")}</th>
+                  <th className="text-right py-2 px-3 text-xs font-semibold text-muted-foreground uppercase">{t("dashboard.overview.tableCost")}</th>
+                  <th className="text-right py-2 px-3 text-xs font-semibold text-muted-foreground uppercase">{t("dashboard.overview.tableDuration")}</th>
                 </tr>
               </thead>
               <tbody>
                 {data.proxyLogs.slice(0, 20).map((log: any) => (
                   <tr key={log.id} className="border-b border-border/50 hover:bg-muted/30" data-testid={`proxy-log-${log.id}`}>
-                    <td className="py-2 px-3 text-muted-foreground">{formatTimeAgo(log.createdAt)}</td>
+                    <td className="py-2 px-3 text-muted-foreground">{formatTimeAgo(log.createdAt, t)}</td>
                     <td className="py-2 px-3">
                       <div className="flex items-center gap-1.5">
                         <ProviderBadge provider={log.provider} />
@@ -885,8 +892,8 @@ function ProxyMemberOverview({ data }: { data: any }) {
         ) : (
           <EmptyState
             icon={<Zap className="w-8 h-8 text-muted-foreground" />}
-            title="No requests yet"
-            description="Make your first API call using the quickstart above"
+            title={t("dashboard.overview.noRequestsYet")}
+            description={t("dashboard.overview.noRequestsYetDesc")}
           />
         )}
       </Card>
@@ -895,6 +902,7 @@ function ProxyMemberOverview({ data }: { data: any }) {
 }
 
 function DirectMemberOverview({ data }: { data: any }) {
+  const { t } = useTranslation();
   const usageSnapshots = data?.usageSnapshots || [];
 
   const chartData = usageSnapshots.slice(-30).map((s: any) => ({
@@ -905,31 +913,31 @@ function DirectMemberOverview({ data }: { data: any }) {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-member-dashboard-title">My Dashboard</h1>
+        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-member-dashboard-title">{t("dashboard.overview.memberTitle")}</h1>
         <div className="flex items-center gap-2 mt-1">
           <FeatureBadge type="TEAMS" />
-          <span className="text-sm text-muted-foreground">Team access — monthly resetting budget</span>
+          <span className="text-sm text-muted-foreground">{t("dashboard.overview.memberDirectSubtitle")}</span>
         </div>
       </div>
 
       <Card className="p-6" data-testid="card-budget">
-        <h2 className="text-base font-semibold mb-4">Budget</h2>
+        <h2 className="text-base font-semibold mb-4">{t("dashboard.overview.budget")}</h2>
         <div className="max-w-lg">
           <BudgetBar spent={data.spendCents} budget={data.budgetCents} />
         </div>
         <div className="grid grid-cols-3 gap-4 mt-6">
           <div>
-            <p className="text-sm text-muted-foreground">Remaining</p>
+            <p className="text-sm text-muted-foreground">{t("dashboard.overview.remaining")}</p>
             <p className="text-2xl font-bold" data-testid="text-budget-remaining">
               ${((data.budgetCents - data.spendCents) / 100).toFixed(2)}
             </p>
           </div>
           <div>
-            <p className="text-sm text-muted-foreground">Total Budget</p>
+            <p className="text-sm text-muted-foreground">{t("dashboard.overview.totalBudget")}</p>
             <p className="text-2xl font-bold">${(data.budgetCents / 100).toFixed(2)}</p>
           </div>
           <div>
-            <p className="text-sm text-muted-foreground">Period</p>
+            <p className="text-sm text-muted-foreground">{t("dashboard.overview.period")}</p>
             <p className="text-sm font-medium">
               {data.periodStart && new Date(data.periodStart).toLocaleDateString()} — {data.periodEnd && new Date(data.periodEnd).toLocaleDateString()}
             </p>
@@ -938,7 +946,7 @@ function DirectMemberOverview({ data }: { data: any }) {
       </Card>
 
       <Card className="p-5" data-testid="card-usage-chart">
-        <h2 className="text-base font-semibold mb-4">Usage Trend</h2>
+        <h2 className="text-base font-semibold mb-4">{t("dashboard.overview.usageTrend")}</h2>
         {chartData.length > 0 ? (
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={chartData}>
@@ -947,7 +955,7 @@ function DirectMemberOverview({ data }: { data: any }) {
               <YAxis tick={{ fill: 'currentColor', fontSize: 11 }} tickFormatter={(v) => `$${v}`} />
               <Tooltip
                 contentStyle={{ backgroundColor: 'var(--popover)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--popover-foreground)' }}
-                formatter={(value: number) => [`$${value.toFixed(2)}`, 'Cost']}
+                formatter={(value: number) => [`$${value.toFixed(2)}`, t("dashboard.overview.costLabel")]}
               />
               <Line type="monotone" dataKey="cost" stroke="#6366F1" strokeWidth={2} dot={false} />
             </LineChart>
@@ -955,8 +963,8 @@ function DirectMemberOverview({ data }: { data: any }) {
         ) : (
           <EmptyState
             icon={<TrendingUp className="w-8 h-8 text-muted-foreground" />}
-            title="No usage data yet"
-            description="Usage data will appear after your first billing period"
+            title={t("dashboard.overview.noUsageData")}
+            description={t("dashboard.overview.noUsageDataDesc")}
           />
         )}
       </Card>
@@ -969,6 +977,7 @@ function DirectMemberOverview({ data }: { data: any }) {
 }
 
 function MemberOverview() {
+  const { t } = useTranslation();
   const { data, isLoading } = useQuery<any>({ queryKey: ["/api/dashboard/member-overview"] });
 
   if (isLoading) {
@@ -985,11 +994,11 @@ function MemberOverview() {
   if (!data?.membership) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold tracking-tight">My Dashboard</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t("dashboard.overview.memberTitle")}</h1>
         <EmptyState
           icon={<Key className="w-8 h-8 text-muted-foreground" />}
-          title="No active membership"
-          description="You haven't been added to a team yet. Contact your administrator."
+          title={t("dashboard.overview.noActiveMembership")}
+          description={t("dashboard.overview.noActiveMembershipDesc")}
         />
       </div>
     );

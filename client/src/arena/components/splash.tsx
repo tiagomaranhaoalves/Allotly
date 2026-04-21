@@ -1,3 +1,4 @@
+import { useTranslation, Trans } from "react-i18next";
 import { Button } from "@/components/ui/button";
 
 interface Props {
@@ -8,23 +9,23 @@ interface Props {
 }
 
 export function Splash({ onStartCached, onEnterKey, hasRememberedKey, onResumeRemembered }: Props) {
+  const { t } = useTranslation();
   return (
     <div className="min-h-[calc(100vh-60px)] flex items-center justify-center px-4 py-16">
       <div className="max-w-2xl text-center">
         <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/70">
           <span className="h-1.5 w-1.5 rounded-full bg-indigo-400" />
-          Interactive demo
+          {t("arena.splash.badge")}
         </div>
         <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight text-white">
-          Try Allotly.
+          {t("arena.splash.title1")}
           <br />
           <span className="bg-gradient-to-r from-indigo-400 to-cyan-300 bg-clip-text text-transparent">
-            Three models, one budget, five minutes.
+            {t("arena.splash.title2")}
           </span>
         </h1>
         <p className="mt-5 text-lg text-white/70">
-          You&rsquo;re the admin. Allocate a budget. Watch it get spent across
-          OpenAI, Anthropic, and Google. See what real enforcement looks like.
+          {t("arena.splash.subtitle")}
         </p>
 
         <div className="mt-8 grid gap-3 sm:grid-cols-2 text-left">
@@ -34,14 +35,13 @@ export function Splash({ onStartCached, onEnterKey, hasRememberedKey, onResumeRe
           >
             <div className="flex items-center gap-2">
               <span className="text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 bg-white/10 text-white/80">
-                No key needed
+                {t("arena.splash.cachedTag")}
               </span>
-              <span className="text-xs text-white/60">~5 min</span>
+              <span className="text-xs text-white/60">{t("arena.splash.cachedDuration")}</span>
             </div>
-            <h3 className="mt-3 text-base font-semibold text-white">Try with cached responses</h3>
+            <h3 className="mt-3 text-base font-semibold text-white">{t("arena.splash.cachedTitle")}</h3>
             <p className="mt-1.5 text-sm text-white/70 leading-relaxed">
-              Instant. Walk the full flow in your browser with prerecorded outputs from the
-              eight catalog models — same UX, no API charges, no signup.
+              {t("arena.splash.cachedDesc")}
             </p>
             <Button
               size="lg"
@@ -49,7 +49,7 @@ export function Splash({ onStartCached, onEnterKey, hasRememberedKey, onResumeRe
               onClick={onStartCached}
               data-testid="button-start-cached"
             >
-              Start cached demo
+              {t("arena.splash.cachedCta")}
             </Button>
           </div>
 
@@ -59,14 +59,15 @@ export function Splash({ onStartCached, onEnterKey, hasRememberedKey, onResumeRe
           >
             <div className="flex items-center gap-2">
               <span className="text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 bg-emerald-500/15 text-emerald-300">
-                Real cost · real budget
+                {t("arena.splash.liveTag")}
               </span>
             </div>
-            <h3 className="mt-3 text-base font-semibold text-white">Use your Allotly key</h3>
+            <h3 className="mt-3 text-base font-semibold text-white">{t("arena.splash.liveTitle")}</h3>
             <p className="mt-1.5 text-sm text-white/70 leading-relaxed">
-              Bring a real key and race <strong className="text-white">any model your key
-              allows</strong> — including ones outside our demo catalog. Charges hit your real
-              budget; results stream from real providers.
+              <Trans
+                i18nKey="arena.splash.liveDesc"
+                components={{ strong: <strong className="text-white" /> }}
+              />
             </p>
             <Button
               size="lg"
@@ -75,7 +76,7 @@ export function Splash({ onStartCached, onEnterKey, hasRememberedKey, onResumeRe
               onClick={onEnterKey}
               data-testid="button-enter-key"
             >
-              I have an Allotly key
+              {t("arena.splash.liveCta")}
             </Button>
           </div>
         </div>
@@ -87,12 +88,12 @@ export function Splash({ onStartCached, onEnterKey, hasRememberedKey, onResumeRe
             className="mt-4 text-sm text-white/60 underline-offset-4 hover:text-white hover:underline"
             data-testid="link-resume-remembered"
           >
-            Resume with the key on this device
+            {t("arena.splash.resume")}
           </button>
         )}
 
         <p className="mt-6 text-xs text-white/50">
-          You can switch from cached to live anytime once a round is over.
+          {t("arena.splash.footer")}
         </p>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { useArenaSession, formatUSD, hasPlayed } from "../session";
@@ -11,17 +12,18 @@ interface Props {
 
 const MODE_CARDS: Array<{
   id: PersonaOrSecretKeeper;
-  title: string;
-  oneLiner: string;
+  titleKey: string;
+  oneLinerKey: string;
   icon: string;
 }> = [
-  { id: "marketing", title: "Marketing", oneLiner: "Race three models on a marketing brief.", icon: "✉️" },
-  { id: "research", title: "Research", oneLiner: "Summarise and critique with rigour.", icon: "📚" },
-  { id: "creative", title: "Creative", oneLiner: "Short, shareable, sometimes funny.", icon: "✨" },
-  { id: "secret-keeper", title: "Secret Keeper", oneLiner: "Attacker vs. Defender. One password.", icon: "🕵️" },
+  { id: "marketing", titleKey: "arena.allocation.modeMarketingTitle", oneLinerKey: "arena.allocation.modeMarketingOneLiner", icon: "✉️" },
+  { id: "research", titleKey: "arena.allocation.modeResearchTitle", oneLinerKey: "arena.allocation.modeResearchOneLiner", icon: "📚" },
+  { id: "creative", titleKey: "arena.allocation.modeCreativeTitle", oneLinerKey: "arena.allocation.modeCreativeOneLiner", icon: "✨" },
+  { id: "secret-keeper", titleKey: "arena.allocation.modeSecretKeeperTitle", oneLinerKey: "arena.allocation.modeSecretKeeperOneLiner", icon: "🕵️" },
 ];
 
 export function AllocationScreen({ onConfirm }: Props) {
+  const { t } = useTranslation();
   const { state, allocate } = useArenaSession();
   const defaultUSD = 1.5;
   const maxUSD = Math.max(0.5, state.totalBudgetUSD);
@@ -57,26 +59,28 @@ export function AllocationScreen({ onConfirm }: Props) {
       <div className="max-w-5xl mx-auto">
         <div className="mb-6 flex items-center gap-3 text-sm text-white/60">
           <span className="rounded-full bg-indigo-500/15 text-indigo-300 px-2.5 py-1 text-xs font-medium">
-            You are the admin
+            {t("arena.allocation.youAreAdmin")}
           </span>
-          <span>Decide how much this demo gets. The ticker will enforce it.</span>
+          <span>{t("arena.allocation.decideHowMuch")}</span>
         </div>
 
         <div className="grid gap-8 lg:grid-cols-[1fr_1.2fr]">
           <div className="rounded-2xl border border-white/10 bg-neutral-900/60 p-6">
-            <div className="text-white/70 text-sm">Key balance</div>
+            <div className="text-white/70 text-sm">{t("arena.allocation.keyBalance")}</div>
             <div className="mt-1 text-3xl font-semibold text-white tabular-nums">
               ${formatUSD(state.totalBudgetUSD)}
             </div>
             <div className="mt-1 text-xs text-white/50">
               {state.mode === "live"
-                ? state.keyType === "VOUCHER" ? "Voucher key" : "Teams key"
-                : "Mock balance (Cached Mode)"}
+                ? state.keyType === "VOUCHER"
+                  ? t("arena.allocation.voucherKey")
+                  : t("arena.allocation.teamsKey")
+                : t("arena.allocation.mockBalance")}
             </div>
 
             <div className="mt-6">
               <div className="flex items-baseline justify-between">
-                <div className="text-sm text-white/70">Allocate to this demo</div>
+                <div className="text-sm text-white/70">{t("arena.allocation.allocateLabel")}</div>
                 <div className="text-2xl font-semibold text-white tabular-nums">
                   ${formatUSD(amountUSD)}
                 </div>
@@ -96,14 +100,14 @@ export function AllocationScreen({ onConfirm }: Props) {
               </div>
 
               <div className="mt-5 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80">
-                <span className="text-white/60">Remainder after this session:</span>{" "}
+                <span className="text-white/60">{t("arena.allocation.remainder")}</span>{" "}
                 <span className="font-medium text-white tabular-nums">${formatUSD(remainderUSD)}</span>
               </div>
             </div>
           </div>
 
           <div>
-            <div className="text-white/80 text-sm mb-3">Pick a mode to start with</div>
+            <div className="text-white/80 text-sm mb-3">{t("arena.allocation.pickModeLabel")}</div>
             <div className="grid gap-3 sm:grid-cols-2">
               {MODE_CARDS.map((card) => {
                 const isSelected = selectedMode === card.id;
@@ -125,17 +129,17 @@ export function AllocationScreen({ onConfirm }: Props) {
                         <span className="text-xl" aria-hidden>
                           {card.icon}
                         </span>
-                        <span className="font-semibold text-white">{card.title}</span>
+                        <span className="font-semibold text-white">{t(card.titleKey)}</span>
                       </div>
                       {tried && (
                         <span className="text-[10px] uppercase tracking-wide text-emerald-300 bg-emerald-500/10 rounded px-1.5 py-0.5">
-                          ✓ tried
+                          {t("arena.allocation.tried")}
                         </span>
                       )}
                     </div>
-                    <p className="mt-2 text-sm text-white/70">{card.oneLiner}</p>
+                    <p className="mt-2 text-sm text-white/70">{t(card.oneLinerKey)}</p>
                     <p className="mt-3 text-xs text-white/50">
-                      Recommended spend: ~${recommendedSpendUSD(card.id).toFixed(2)}
+                      {t("arena.allocation.recommendedSpend", { amount: recommendedSpendUSD(card.id).toFixed(2) })}
                     </p>
                   </button>
                 );
@@ -150,7 +154,9 @@ export function AllocationScreen({ onConfirm }: Props) {
                 onClick={handleConfirm}
                 data-testid="button-confirm-allocation"
               >
-                {auditLogVisible ? "Allocated…" : `Allocate $${formatUSD(amountUSD)} and start`}
+                {auditLogVisible
+                  ? t("arena.allocation.allocated")
+                  : t("arena.allocation.allocateAndStart", { amount: formatUSD(amountUSD) })}
               </Button>
 
               {auditLogVisible && (
@@ -159,13 +165,13 @@ export function AllocationScreen({ onConfirm }: Props) {
                   aria-live="polite"
                   data-testid="audit-log-line"
                 >
-                  ✓ ${formatUSD(amountUSD)} allocated to demo session at {nowLabel}
+                  {t("arena.allocation.auditLog", { amount: formatUSD(amountUSD), time: nowLabel })}
                 </div>
               )}
             </div>
 
             <p className="mt-4 text-xs text-white/50">
-              Next you'll set the allowlist (admin role), then pick today's lineup (developer role). Both decisions are yours.
+              {t("arena.allocation.nextHint")}
             </p>
           </div>
         </div>

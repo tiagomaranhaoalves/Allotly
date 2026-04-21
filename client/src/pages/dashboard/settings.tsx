@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
 
 const PLAN_LIMITS = {
   FREE: {
@@ -40,6 +41,7 @@ const PLAN_LIMITS = {
 };
 
 export default function SettingsPage() {
+  const { t } = useTranslation();
   const { user, organization } = useAuth();
   const { toast } = useToast();
   const { data: orgData, isLoading } = useQuery<any>({ queryKey: ["/api/org/settings"] });
@@ -104,9 +106,9 @@ export default function SettingsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/org/settings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/billing/subscription"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/session"] });
-      toast({ title: "Upgrade successful!", description: "Your organization is now on the Team plan." });
+      toast({ title: t("dashboard.settings.toastUpgradeSuccessTitle"), description: t("dashboard.settings.toastUpgradeSuccessDescription") });
     } catch (e) {
-      toast({ title: "Verifying upgrade...", description: "Please refresh the page in a moment." });
+      toast({ title: t("dashboard.settings.toastUpgradeVerifyingTitle"), description: t("dashboard.settings.toastUpgradeVerifyingDescription") });
     }
   };
 
@@ -121,10 +123,10 @@ export default function SettingsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/org/settings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/session"] });
-      toast({ title: "Settings saved" });
+      toast({ title: t("dashboard.settings.toastSettingsSaved") });
     },
     onError: (err: any) => {
-      toast({ title: "Update failed", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.settings.toastUpdateFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -136,10 +138,10 @@ export default function SettingsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/org/settings"] });
-      toast({ title: "Notification preferences saved" });
+      toast({ title: t("dashboard.settings.toastNotificationsSaved") });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to save notifications", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.settings.toastNotificationsFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -158,10 +160,10 @@ export default function SettingsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/org/settings"] });
-      toast({ title: "Defaults saved" });
+      toast({ title: t("dashboard.settings.toastDefaultsSaved") });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to save defaults", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.settings.toastDefaultsFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -177,7 +179,7 @@ export default function SettingsPage() {
       if (data.url) window.location.href = data.url;
     },
     onError: (err: any) => {
-      toast({ title: "Upgrade failed", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.settings.toastUpgradeFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -198,13 +200,13 @@ export default function SettingsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/billing/subscription"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/session"] });
       toast({
-        title: "Seats added",
-        description: `Updated from ${data.previousSeats} to ${data.newSeats} Team Admin seat(s).`,
+        title: t("dashboard.settings.toastSeatsAdded"),
+        description: t("dashboard.settings.toastSeatsAddedDescription", { previous: data.previousSeats, current: data.newSeats }),
       });
       setAddSeatsCount("1");
     },
     onError: (err: any) => {
-      toast({ title: "Failed to add seats", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.settings.toastSeatsFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -217,7 +219,7 @@ export default function SettingsPage() {
       if (data.url) window.location.href = data.url;
     },
     onError: (err: any) => {
-      toast({ title: "Failed to open billing portal", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.settings.toastBillingPortalFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -228,12 +230,12 @@ export default function SettingsPage() {
       });
     },
     onSuccess: () => {
-      toast({ title: "Organization deleted" });
+      toast({ title: t("dashboard.settings.toastOrgDeleted") });
       setDeleteDialogOpen(false);
       navigate("/");
     },
     onError: (err: any) => {
-      toast({ title: "Failed to delete organization", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.settings.toastDeleteOrgFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -243,14 +245,14 @@ export default function SettingsPage() {
       return res.json();
     },
     onSuccess: (data: any) => {
-      toast({ title: "All keys revoked", description: `${data.revokedCount} API keys have been revoked.` });
+      toast({ title: t("dashboard.settings.toastRevokeAllSuccessTitle"), description: t("dashboard.settings.toastRevokeAllSuccessDescription", { count: data.revokedCount }) });
       setRevokeDialogOpen(false);
       setRevokeConfirmText("");
       queryClient.invalidateQueries({ queryKey: ["/api/keys"] });
       queryClient.invalidateQueries({ queryKey: ["/api/members"] });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to revoke keys", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.settings.toastRevokeAllFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -260,14 +262,14 @@ export default function SettingsPage() {
       return res.json();
     },
     onSuccess: (data: any) => {
-      toast({ title: "All providers disconnected", description: `${data.disconnectedCount} providers disconnected, ${data.revokedCount} keys revoked.` });
+      toast({ title: t("dashboard.settings.toastDisconnectAllSuccessTitle"), description: t("dashboard.settings.toastDisconnectAllSuccessDescription", { disconnected: data.disconnectedCount, revoked: data.revokedCount }) });
       setDisconnectDialogOpen(false);
       setDisconnectConfirmName("");
       queryClient.invalidateQueries({ queryKey: ["/api/providers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/keys"] });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to disconnect providers", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.settings.toastDisconnectAllFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -277,11 +279,11 @@ export default function SettingsPage() {
       return res.json();
     },
     onSuccess: (data: any) => {
-      const msg = data.deletedCount != null ? `${data.deletedCount} items cleaned up` : "Cleanup complete";
-      toast({ title: "Cleanup complete", description: msg });
+      const msg = data.deletedCount != null ? t("dashboard.settings.toastCleanupCompleteDescription", { count: data.deletedCount }) : t("dashboard.settings.toastCleanupCompleteFallback");
+      toast({ title: t("dashboard.settings.toastCleanupCompleteTitle"), description: msg });
     },
     onError: (err: any) => {
-      toast({ title: "Cleanup failed", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.settings.toastCleanupFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -296,9 +298,9 @@ export default function SettingsPage() {
       a.download = `${type}-export-${new Date().toISOString().slice(0, 10)}.csv`;
       a.click();
       window.URL.revokeObjectURL(url);
-      toast({ title: "Export downloaded", description: `${type} data exported as CSV.` });
+      toast({ title: t("dashboard.settings.toastExportDownloadedTitle"), description: t("dashboard.settings.toastExportDownloadedDescription", { type }) });
     } catch (e: any) {
-      toast({ title: "Export failed", description: e.message, variant: "destructive" });
+      toast({ title: t("dashboard.settings.toastExportFailed"), description: e.message, variant: "destructive" });
     }
   };
 
@@ -318,8 +320,8 @@ export default function SettingsPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-settings-title">Settings</h1>
-        <p className="text-muted-foreground mt-1">Manage your organization settings</p>
+        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-settings-title">{t("dashboard.settings.title")}</h1>
+        <p className="text-muted-foreground mt-1">{t("dashboard.settings.subtitle")}</p>
       </div>
 
       {graceEndsAt && (
@@ -327,10 +329,9 @@ export default function SettingsPage() {
           <div className="flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
             <div>
-              <p className="text-sm font-medium text-amber-700 dark:text-amber-400">Grace Period Active</p>
+              <p className="text-sm font-medium text-amber-700 dark:text-amber-400">{t("dashboard.settings.gracePeriodTitle")}</p>
               <p className="text-xs text-amber-600 dark:text-amber-500">
-                Your subscription requires attention. Grace period ends {new Date(graceEndsAt).toLocaleDateString()}.
-                Please update your payment method to avoid losing Team features.
+                {t("dashboard.settings.gracePeriodDescription", { date: new Date(graceEndsAt).toLocaleDateString() })}
               </p>
             </div>
           </div>
@@ -344,40 +345,40 @@ export default function SettingsPage() {
           <Card className="p-6">
             <div className="flex items-center gap-2 mb-4">
               <Building className="w-5 h-5 text-primary" />
-              <h2 className="text-base font-semibold">Organization</h2>
+              <h2 className="text-base font-semibold">{t("dashboard.settings.organizationHeading")}</h2>
             </div>
             <div className="space-y-4 max-w-md">
               <div className="space-y-2">
-                <Label>Organization Name</Label>
+                <Label>{t("dashboard.settings.orgNameLabel")}</Label>
                 <Input value={orgName} onChange={e => setOrgName(e.target.value)} data-testid="input-org-name-settings" />
               </div>
               <div className="space-y-2">
-                <Label>Billing Email</Label>
-                <Input type="email" placeholder="billing@company.com" value={billingEmail} onChange={e => setBillingEmail(e.target.value)} data-testid="input-billing-email" />
-                <p className="text-xs text-muted-foreground">Optional. Used for invoices and billing notifications.</p>
+                <Label>{t("dashboard.settings.billingEmailLabel")}</Label>
+                <Input type="email" placeholder={t("dashboard.settings.billingEmailPlaceholder")} value={billingEmail} onChange={e => setBillingEmail(e.target.value)} data-testid="input-billing-email" />
+                <p className="text-xs text-muted-foreground">{t("dashboard.settings.billingEmailHelper")}</p>
               </div>
               <div className="space-y-2">
-                <Label>Description</Label>
-                <Input placeholder="Brief description of your organization" value={description} onChange={e => setDescription(e.target.value)} data-testid="input-org-description" maxLength={500} />
-                <p className="text-xs text-muted-foreground">{description.length}/500 characters</p>
+                <Label>{t("dashboard.settings.descriptionLabel")}</Label>
+                <Input placeholder={t("dashboard.settings.descriptionPlaceholder")} value={description} onChange={e => setDescription(e.target.value)} data-testid="input-org-description" maxLength={500} />
+                <p className="text-xs text-muted-foreground">{t("dashboard.settings.descriptionCounter", { count: description.length })}</p>
               </div>
               <div className="space-y-2">
-                <Label>Plan</Label>
+                <Label>{t("dashboard.settings.planLabel")}</Label>
                 <div className="flex items-center gap-2">
                   <Badge variant="secondary" className="no-default-hover-elevate no-default-active-elevate">
                     {plan}
                   </Badge>
                   {plan === "TEAM" && sub && (
                     <span className="text-xs text-muted-foreground">
-                      {sub.seats || billing?.maxTeamAdmins || 0} seat(s)
-                      {sub.currentPeriodEnd && ` · Renews ${new Date(sub.currentPeriodEnd).toLocaleDateString()}`}
+                      {t("dashboard.settings.planSeats", { count: sub.seats || billing?.maxTeamAdmins || 0 })}
+                      {sub.currentPeriodEnd && ` ${t("dashboard.settings.planRenews", { date: new Date(sub.currentPeriodEnd).toLocaleDateString() })}`}
                     </span>
                   )}
                 </div>
               </div>
               {isRootAdmin && (
                 <Button onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending} data-testid="button-save-settings">
-                  {updateMutation.isPending ? "Saving..." : "Save Changes"}
+                  {updateMutation.isPending ? t("dashboard.settings.saving") : t("dashboard.settings.saveChanges")}
                 </Button>
               )}
             </div>
@@ -387,18 +388,18 @@ export default function SettingsPage() {
             <Card className="p-6">
               <div className="flex items-center gap-2 mb-4">
                 <Bell className="w-5 h-5 text-primary" />
-                <h2 className="text-base font-semibold">Notifications</h2>
+                <h2 className="text-base font-semibold">{t("dashboard.settings.notificationsHeading")}</h2>
               </div>
               <p className="text-sm text-muted-foreground mb-4">
-                Choose which events trigger email notifications to organization admins.
+                {t("dashboard.settings.notificationsDescription")}
               </p>
               <div className="space-y-4 max-w-lg">
                 {([
-                  { key: "budgetAlerts" as const, label: "Budget Alerts", desc: "When a member reaches 80% or 100% of their budget" },
-                  { key: "spendAnomalies" as const, label: "Spend Anomalies", desc: "When unusual spending patterns are detected" },
-                  { key: "providerKeyIssues" as const, label: "Provider Key Issues", desc: "When a provider API key becomes invalid or disconnected" },
-                  { key: "voucherRedemptions" as const, label: "Voucher Redemptions", desc: "When a voucher code is redeemed" },
-                  { key: "memberInvitesAccepted" as const, label: "Member Invites Accepted", desc: "When an invited member accepts and joins" },
+                  { key: "budgetAlerts" as const, label: t("dashboard.settings.notifBudgetAlertsLabel"), desc: t("dashboard.settings.notifBudgetAlertsDesc") },
+                  { key: "spendAnomalies" as const, label: t("dashboard.settings.notifSpendAnomaliesLabel"), desc: t("dashboard.settings.notifSpendAnomaliesDesc") },
+                  { key: "providerKeyIssues" as const, label: t("dashboard.settings.notifProviderKeyIssuesLabel"), desc: t("dashboard.settings.notifProviderKeyIssuesDesc") },
+                  { key: "voucherRedemptions" as const, label: t("dashboard.settings.notifVoucherRedemptionsLabel"), desc: t("dashboard.settings.notifVoucherRedemptionsDesc") },
+                  { key: "memberInvitesAccepted" as const, label: t("dashboard.settings.notifMemberInvitesAcceptedLabel"), desc: t("dashboard.settings.notifMemberInvitesAcceptedDesc") },
                 ]).map(item => (
                   <div key={item.key} className="flex items-center justify-between gap-4" data-testid={`notification-${item.key}`}>
                     <div>
@@ -420,43 +421,43 @@ export default function SettingsPage() {
             <Card className="p-6">
               <div className="flex items-center gap-2 mb-4">
                 <SlidersHorizontal className="w-5 h-5 text-primary" />
-                <h2 className="text-base font-semibold">Organization Defaults</h2>
+                <h2 className="text-base font-semibold">{t("dashboard.settings.defaultsHeading")}</h2>
               </div>
               <p className="text-sm text-muted-foreground mb-4">
-                Default values applied when creating new members or vouchers.
+                {t("dashboard.settings.defaultsDescription")}
               </p>
               <div className="space-y-4 max-w-md">
                 <div className="space-y-2">
-                  <Label>Default Member Budget ($)</Label>
+                  <Label>{t("dashboard.settings.defaultBudgetLabel")}</Label>
                   <Input
                     type="number"
                     min="0"
                     step="0.01"
-                    placeholder="e.g. 10.00"
+                    placeholder={t("dashboard.settings.defaultBudgetPlaceholder")}
                     value={defaults.defaultBudgetCents}
                     onChange={e => setDefaults(d => ({ ...d, defaultBudgetCents: e.target.value }))}
                     data-testid="input-default-budget"
                   />
-                  <p className="text-xs text-muted-foreground">Monthly budget for new members (in dollars). Leave empty to use the org-level default.</p>
+                  <p className="text-xs text-muted-foreground">{t("dashboard.settings.defaultBudgetHelper")}</p>
                 </div>
                 <div className="space-y-2">
-                  <Label>Default Voucher Expiry (days)</Label>
+                  <Label>{t("dashboard.settings.defaultExpiryLabel")}</Label>
                   <Input
                     type="number"
                     min="1"
-                    placeholder="e.g. 30"
+                    placeholder={t("dashboard.settings.defaultExpiryPlaceholder")}
                     value={defaults.defaultVoucherExpiryDays}
                     onChange={e => setDefaults(d => ({ ...d, defaultVoucherExpiryDays: e.target.value }))}
                     data-testid="input-default-voucher-expiry"
                   />
-                  <p className="text-xs text-muted-foreground">Days until new vouchers expire. Leave empty for no default.</p>
+                  <p className="text-xs text-muted-foreground">{t("dashboard.settings.defaultExpiryHelper")}</p>
                 </div>
                 <Button
                   onClick={() => defaultsMutation.mutate()}
                   disabled={defaultsMutation.isPending}
                   data-testid="button-save-defaults"
                 >
-                  {defaultsMutation.isPending ? "Saving..." : "Save Defaults"}
+                  {defaultsMutation.isPending ? t("dashboard.settings.saving") : t("dashboard.settings.saveDefaults")}
                 </Button>
               </div>
             </Card>
@@ -465,24 +466,24 @@ export default function SettingsPage() {
           <Card className="p-6">
             <div className="flex items-center gap-2 mb-4">
               <Zap className="w-5 h-5 text-primary" />
-              <h2 className="text-base font-semibold">Plan Limits</h2>
+              <h2 className="text-base font-semibold">{t("dashboard.settings.planLimitsHeading")}</h2>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
               {[
-                { label: "Teams", value: String(limits.maxTeams), icon: <Users className="w-4 h-4" /> },
-                { label: "Team Admins", value: plan === "FREE" ? "Root only" : String(limits.maxTeamAdmins), icon: <Shield className="w-4 h-4" /> },
-                { label: "Members/Team", value: String(limits.maxMembersPerTeam), icon: <Users className="w-4 h-4" /> },
-                { label: "Providers", value: String(limits.maxProviders), icon: <Database className="w-4 h-4" /> },
-                { label: "Vouchers", value: String(limits.maxActiveVouchers), icon: <CreditCard className="w-4 h-4" /> },
-                { label: "Retention", value: `${limits.retentionDays}d`, icon: <Clock className="w-4 h-4" /> },
-                { label: "Usage", value: limits.usageTracking, icon: <Clock className="w-4 h-4" /> },
+                { label: t("dashboard.settings.limitTeams"), testKey: "teams", value: String(limits.maxTeams), icon: <Users className="w-4 h-4" /> },
+                { label: t("dashboard.settings.limitTeamAdmins"), testKey: "team admins", value: plan === "FREE" ? t("dashboard.settings.limitTeamAdminsRootOnly") : String(limits.maxTeamAdmins), icon: <Shield className="w-4 h-4" /> },
+                { label: t("dashboard.settings.limitMembersPerTeam"), testKey: "members-team", value: String(limits.maxMembersPerTeam), icon: <Users className="w-4 h-4" /> },
+                { label: t("dashboard.settings.limitProviders"), testKey: "providers", value: String(limits.maxProviders), icon: <Database className="w-4 h-4" /> },
+                { label: t("dashboard.settings.limitVouchers"), testKey: "vouchers", value: String(limits.maxActiveVouchers), icon: <CreditCard className="w-4 h-4" /> },
+                { label: t("dashboard.settings.limitRetention"), testKey: "retention", value: t("dashboard.settings.limitRetentionValue", { days: limits.retentionDays }), icon: <Clock className="w-4 h-4" /> },
+                { label: t("dashboard.settings.limitUsage"), testKey: "usage", value: t("dashboard.settings.limitUsageRealtime"), icon: <Clock className="w-4 h-4" /> },
               ].map(item => (
-                <div key={item.label} className="p-3 rounded-lg bg-muted/50" data-testid={`card-plan-limit-${item.label.toLowerCase().replace(/\//g, '-')}`}>
+                <div key={item.testKey} className="p-3 rounded-lg bg-muted/50" data-testid={`card-plan-limit-${item.testKey}`}>
                   <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
                     {item.icon}
                     <span className="text-xs">{item.label}</span>
                   </div>
-                  <p className="text-sm font-semibold" data-testid={`text-plan-limit-${item.label.toLowerCase().replace(/\//g, '-')}`}>{item.value}</p>
+                  <p className="text-sm font-semibold" data-testid={`text-plan-limit-${item.testKey}`}>{item.value}</p>
                 </div>
               ))}
             </div>
@@ -491,28 +492,28 @@ export default function SettingsPage() {
           <Card className="p-6">
             <div className="flex items-center gap-2 mb-4">
               <Shield className="w-5 h-5 text-primary" />
-              <h2 className="text-base font-semibold">Security</h2>
+              <h2 className="text-base font-semibold">{t("dashboard.settings.securityHeading")}</h2>
             </div>
             <div className="space-y-3">
               <div className="p-3 rounded-lg bg-muted/50">
                 <div className="flex items-center justify-between gap-2">
                   <div>
-                    <p className="text-sm font-medium">AI Provider Key Encryption</p>
-                    <p className="text-xs text-muted-foreground">AES-256-GCM</p>
+                    <p className="text-sm font-medium">{t("dashboard.settings.securityKeyEncryption")}</p>
+                    <p className="text-xs text-muted-foreground">{t("dashboard.settings.securityKeyEncryptionDesc")}</p>
                   </div>
                   <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 no-default-hover-elevate no-default-active-elevate">
-                    Active
+                    {t("dashboard.settings.securityActive")}
                   </Badge>
                 </div>
               </div>
               <div className="p-3 rounded-lg bg-muted/50">
                 <div className="flex items-center justify-between gap-2">
                   <div>
-                    <p className="text-sm font-medium">API Key Hashing</p>
-                    <p className="text-xs text-muted-foreground">SHA-256</p>
+                    <p className="text-sm font-medium">{t("dashboard.settings.securityKeyHashing")}</p>
+                    <p className="text-xs text-muted-foreground">{t("dashboard.settings.securityKeyHashingDesc")}</p>
                   </div>
                   <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 no-default-hover-elevate no-default-active-elevate">
-                    Active
+                    {t("dashboard.settings.securityActive")}
                   </Badge>
                 </div>
               </div>
@@ -523,19 +524,19 @@ export default function SettingsPage() {
             <Card className="p-6">
               <div className="flex items-center gap-2 mb-4">
                 <Download className="w-5 h-5 text-primary" />
-                <h2 className="text-base font-semibold">Data Exports</h2>
+                <h2 className="text-base font-semibold">{t("dashboard.settings.dataExportsHeading")}</h2>
               </div>
               <p className="text-sm text-muted-foreground mb-4">
-                Export your organization data as CSV files for reporting and analysis.
+                {t("dashboard.settings.dataExportsDescription")}
               </p>
               <div className="flex flex-wrap gap-3">
                 <Button variant="outline" onClick={() => handleExport("usage")} data-testid="button-export-usage" className="gap-2">
                   <Download className="w-4 h-4" />
-                  Export Usage Data
+                  {t("dashboard.settings.exportUsage")}
                 </Button>
                 <Button variant="outline" onClick={() => handleExport("members")} data-testid="button-export-members" className="gap-2">
                   <Download className="w-4 h-4" />
-                  Export Members
+                  {t("dashboard.settings.exportMembers")}
                 </Button>
               </div>
             </Card>
@@ -545,16 +546,16 @@ export default function SettingsPage() {
             <Card className="p-6">
               <div className="flex items-center gap-2 mb-4">
                 <Wrench className="w-5 h-5 text-primary" />
-                <h2 className="text-base font-semibold">Admin Tools</h2>
+                <h2 className="text-base font-semibold">{t("dashboard.settings.adminToolsHeading")}</h2>
               </div>
               <p className="text-sm text-muted-foreground mb-4">
-                Maintenance and cleanup utilities for your organization.
+                {t("dashboard.settings.adminToolsDescription")}
               </p>
               <div className="space-y-3">
                 <div className="flex items-center justify-between gap-4 p-3 rounded-lg bg-muted/50">
                   <div>
-                    <p className="text-sm font-medium">Clean Up Expired Vouchers</p>
-                    <p className="text-xs text-muted-foreground">Remove vouchers expired more than 90 days ago</p>
+                    <p className="text-sm font-medium">{t("dashboard.settings.cleanupVouchersLabel")}</p>
+                    <p className="text-xs text-muted-foreground">{t("dashboard.settings.cleanupVouchersDesc")}</p>
                   </div>
                   <Button
                     variant="outline"
@@ -563,13 +564,13 @@ export default function SettingsPage() {
                     disabled={cleanupMutation.isPending}
                     data-testid="button-cleanup-vouchers"
                   >
-                    {cleanupMutation.isPending ? "Running..." : "Run"}
+                    {cleanupMutation.isPending ? t("dashboard.settings.runningButton") : t("dashboard.settings.runButton")}
                   </Button>
                 </div>
                 <div className="flex items-center justify-between gap-4 p-3 rounded-lg bg-muted/50">
                   <div>
-                    <p className="text-sm font-medium">Clean Up Revoked Keys</p>
-                    <p className="text-xs text-muted-foreground">Remove keys revoked more than 90 days ago</p>
+                    <p className="text-sm font-medium">{t("dashboard.settings.cleanupKeysLabel")}</p>
+                    <p className="text-xs text-muted-foreground">{t("dashboard.settings.cleanupKeysDesc")}</p>
                   </div>
                   <Button
                     variant="outline"
@@ -578,13 +579,13 @@ export default function SettingsPage() {
                     disabled={cleanupMutation.isPending}
                     data-testid="button-cleanup-keys"
                   >
-                    {cleanupMutation.isPending ? "Running..." : "Run"}
+                    {cleanupMutation.isPending ? t("dashboard.settings.runningButton") : t("dashboard.settings.runButton")}
                   </Button>
                 </div>
                 <div className="flex items-center justify-between gap-4 p-3 rounded-lg bg-muted/50">
                   <div>
-                    <p className="text-sm font-medium">Reconcile Redis Budgets</p>
-                    <p className="text-xs text-muted-foreground">Sync Redis budget counters with database values</p>
+                    <p className="text-sm font-medium">{t("dashboard.settings.cleanupRedisLabel")}</p>
+                    <p className="text-xs text-muted-foreground">{t("dashboard.settings.cleanupRedisDesc")}</p>
                   </div>
                   <Button
                     variant="outline"
@@ -595,7 +596,7 @@ export default function SettingsPage() {
                     className="gap-1.5"
                   >
                     <RefreshCcw className="w-3.5 h-3.5" />
-                    {cleanupMutation.isPending ? "Running..." : "Reconcile"}
+                    {cleanupMutation.isPending ? t("dashboard.settings.runningButton") : t("dashboard.settings.reconcileButton")}
                   </Button>
                 </div>
               </div>
@@ -605,29 +606,29 @@ export default function SettingsPage() {
           <Card className="p-6">
             <div className="flex items-center gap-2 mb-4">
               <CreditCard className="w-5 h-5 text-primary" />
-              <h2 className="text-base font-semibold">Billing</h2>
+              <h2 className="text-base font-semibold">{t("dashboard.settings.billingHeading")}</h2>
             </div>
             {plan === "FREE" ? (
               <div className="space-y-4">
                 <p className="text-sm text-muted-foreground">
-                  You're on the Free plan. Upgrade to Team for more features including up to 10 Team Admins, 20 members per team, 90-day retention, and expanded voucher limits.
+                  {t("dashboard.settings.freePlanDescription")}
                 </p>
                 <div className="p-4 rounded-lg border bg-muted/30">
                   <div className="flex items-center justify-between gap-4 mb-3">
                     <div>
-                      <p className="font-semibold">Team Plan</p>
-                      <p className="text-2xl font-bold">$20<span className="text-sm font-normal text-muted-foreground">/mo per Team Admin seat</span></p>
+                      <p className="font-semibold">{t("dashboard.settings.teamPlanName")}</p>
+                      <p className="text-2xl font-bold">{t("dashboard.settings.teamPlanPrice")}<span className="text-sm font-normal text-muted-foreground">{t("dashboard.settings.teamPlanPriceCaption")}</span></p>
                     </div>
                   </div>
                   <ul className="space-y-1.5 text-sm text-muted-foreground mb-4">
-                    <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-500" /> Up to 10 Team Admins, 20 members per team</li>
-                    <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-500" /> 4 AI Provider connections</li>
-                    <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-500" /> Real-time usage tracking, 90-day retention</li>
-                    <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-500" /> 5 voucher codes per admin, 50 redemptions each</li>
-                    <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-500" /> AI usage analytics + audit log</li>
+                    <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-500" /> {t("dashboard.settings.teamFeature1")}</li>
+                    <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-500" /> {t("dashboard.settings.teamFeature2")}</li>
+                    <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-500" /> {t("dashboard.settings.teamFeature3")}</li>
+                    <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-500" /> {t("dashboard.settings.teamFeature4")}</li>
+                    <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-500" /> {t("dashboard.settings.teamFeature5")}</li>
                   </ul>
                   <div className="flex items-center gap-3 mb-4">
-                    <Label className="text-sm shrink-0">Team Admin Seats:</Label>
+                    <Label className="text-sm shrink-0">{t("dashboard.settings.seatsLabel")}</Label>
                     <Select value={seatCount} onValueChange={setSeatCount}>
                       <SelectTrigger className="w-20" data-testid="select-seat-count">
                         <SelectValue />
@@ -639,7 +640,7 @@ export default function SettingsPage() {
                       </SelectContent>
                     </Select>
                     <span className="text-sm text-muted-foreground">
-                      = ${parseInt(seatCount) * 20}/mo
+                      {t("dashboard.settings.seatsTotal", { amount: parseInt(seatCount) * 20 })}
                     </span>
                   </div>
                   <Button
@@ -648,44 +649,44 @@ export default function SettingsPage() {
                     data-testid="button-upgrade"
                     className="gap-2"
                   >
-                    {upgradeMutation.isPending ? "Redirecting to checkout..." : `Upgrade to Team (${seatCount} seat${parseInt(seatCount) > 1 ? 's' : ''})`}
+                    {upgradeMutation.isPending ? t("dashboard.settings.upgradeButtonPending") : t("dashboard.settings.upgradeButton", { count: parseInt(seatCount) })}
                     <ExternalLink className="w-3.5 h-3.5" />
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Bundle purchases are available on all plans regardless of subscription.
+                  {t("dashboard.settings.bundleNote")}
                 </p>
               </div>
             ) : (
               <div className="space-y-4">
                 <div className="grid sm:grid-cols-3 gap-4">
                   <div className="p-3 rounded-lg bg-muted/50">
-                    <p className="text-xs text-muted-foreground">Plan</p>
+                    <p className="text-xs text-muted-foreground">{t("dashboard.settings.billingPlanLabel")}</p>
                     <p className="text-lg font-bold">{plan}</p>
                   </div>
                   <div className="p-3 rounded-lg bg-muted/50">
-                    <p className="text-xs text-muted-foreground">Seats</p>
+                    <p className="text-xs text-muted-foreground">{t("dashboard.settings.billingSeatsLabel")}</p>
                     <p className="text-lg font-bold">{sub?.seats || billing?.maxTeamAdmins || 0}</p>
                   </div>
                   <div className="p-3 rounded-lg bg-muted/50">
-                    <p className="text-xs text-muted-foreground">Next Billing</p>
+                    <p className="text-xs text-muted-foreground">{t("dashboard.settings.billingNextBillingLabel")}</p>
                     <p className="text-lg font-bold">
-                      {sub?.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString() : "—"}
+                      {sub?.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString() : t("dashboard.settings.billingNextBillingNone")}
                     </p>
                   </div>
                 </div>
                 {sub?.cancelAtPeriodEnd && (
                   <Card className="p-3 border-amber-500/50 bg-amber-50/50 dark:bg-amber-900/10">
                     <p className="text-sm text-amber-700 dark:text-amber-400">
-                      Your subscription will end at the current period. You'll be downgraded to Free after {sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString() : "the end of the period"}.
+                      {t("dashboard.settings.cancelAtPeriodEnd", { date: sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString() : t("dashboard.settings.cancelAtPeriodEndFallback") })}
                     </p>
                   </Card>
                 )}
                 {currentSeats < 10 && !sub?.cancelAtPeriodEnd && (
                   <div className="p-4 rounded-lg border bg-muted/30">
-                    <p className="text-sm font-medium mb-3">Add Team Admin Seats</p>
+                    <p className="text-sm font-medium mb-3">{t("dashboard.settings.addSeatsHeading")}</p>
                     <p className="text-xs text-muted-foreground mb-3">
-                      Each additional seat is $20/mo (prorated). You currently have {currentSeats} of 10 max seats.
+                      {t("dashboard.settings.addSeatsDescription", { current: currentSeats })}
                     </p>
                     <div className="flex items-center gap-3">
                       <Select value={addSeatsCount} onValueChange={setAddSeatsCount}>
@@ -704,10 +705,10 @@ export default function SettingsPage() {
                         data-testid="button-add-seats"
                         className="gap-2"
                       >
-                        {addSeatsMutation.isPending ? "Adding..." : (
+                        {addSeatsMutation.isPending ? t("dashboard.settings.addSeatsPending") : (
                           <>
                             <Plus className="w-3.5 h-3.5" />
-                            Add {addSeatsCount} Seat{parseInt(addSeatsCount) > 1 ? 's' : ''} (+${parseInt(addSeatsCount) * 20}/mo)
+                            {t("dashboard.settings.addSeatsButton", { count: parseInt(addSeatsCount), amount: parseInt(addSeatsCount) * 20 })}
                           </>
                         )}
                       </Button>
@@ -723,7 +724,7 @@ export default function SettingsPage() {
                       data-testid="button-manage-billing"
                       className="gap-2"
                     >
-                      {portalMutation.isPending ? "Opening..." : "Manage Billing"}
+                      {portalMutation.isPending ? t("dashboard.settings.manageBillingPending") : t("dashboard.settings.manageBillingButton")}
                       <ExternalLink className="w-3.5 h-3.5" />
                     </Button>
                   )}
@@ -736,13 +737,13 @@ export default function SettingsPage() {
             <Card className="p-6 border-destructive/50">
               <div className="flex items-center gap-2 mb-4">
                 <AlertTriangle className="w-5 h-5 text-destructive" />
-                <h2 className="text-base font-semibold text-destructive">Danger Zone</h2>
+                <h2 className="text-base font-semibold text-destructive">{t("dashboard.settings.dangerZoneHeading")}</h2>
               </div>
               <div className="space-y-4">
                 <div className="flex items-center justify-between gap-4 p-4 rounded-lg border border-destructive/20">
                   <div>
-                    <p className="text-sm font-medium">Revoke All API Keys</p>
-                    <p className="text-xs text-muted-foreground">Immediately revoke every active API key in the organization. Members will lose API access until new keys are issued.</p>
+                    <p className="text-sm font-medium">{t("dashboard.settings.revokeAllKeysLabel")}</p>
+                    <p className="text-xs text-muted-foreground">{t("dashboard.settings.revokeAllKeysDesc")}</p>
                   </div>
                   <Button
                     variant="destructive"
@@ -752,14 +753,14 @@ export default function SettingsPage() {
                     className="shrink-0 gap-1.5"
                   >
                     <KeyRound className="w-3.5 h-3.5" />
-                    Revoke All
+                    {t("dashboard.settings.revokeAllButton")}
                   </Button>
                 </div>
 
                 <div className="flex items-center justify-between gap-4 p-4 rounded-lg border border-destructive/20">
                   <div>
-                    <p className="text-sm font-medium">Disconnect All Providers</p>
-                    <p className="text-xs text-muted-foreground">Disconnect all AI provider connections and revoke all API keys. The proxy will stop routing requests.</p>
+                    <p className="text-sm font-medium">{t("dashboard.settings.disconnectAllLabel")}</p>
+                    <p className="text-xs text-muted-foreground">{t("dashboard.settings.disconnectAllDesc")}</p>
                   </div>
                   <Button
                     variant="destructive"
@@ -769,7 +770,7 @@ export default function SettingsPage() {
                     className="shrink-0 gap-1.5"
                   >
                     <Unplug className="w-3.5 h-3.5" />
-                    Disconnect All
+                    {t("dashboard.settings.disconnectAllButton")}
                   </Button>
                 </div>
 
@@ -777,8 +778,8 @@ export default function SettingsPage() {
 
                 <div className="flex items-center justify-between gap-4 p-4 rounded-lg border border-destructive/20">
                   <div>
-                    <p className="text-sm font-medium">Delete Organization</p>
-                    <p className="text-xs text-muted-foreground">Permanently delete this organization and all associated data. This action cannot be undone.</p>
+                    <p className="text-sm font-medium">{t("dashboard.settings.deleteOrgLabel")}</p>
+                    <p className="text-xs text-muted-foreground">{t("dashboard.settings.deleteOrgDesc")}</p>
                   </div>
                   <Button
                     variant="destructive"
@@ -788,7 +789,7 @@ export default function SettingsPage() {
                     className="shrink-0 gap-1.5"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                    Delete Org
+                    {t("dashboard.settings.deleteOrgButton")}
                   </Button>
                 </div>
               </div>
@@ -796,29 +797,29 @@ export default function SettingsPage() {
               <AlertDialog open={revokeDialogOpen} onOpenChange={setRevokeDialogOpen}>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Revoke All API Keys</AlertDialogTitle>
+                    <AlertDialogTitle>{t("dashboard.settings.revokeAllDialogTitle")}</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This will immediately revoke every active API key in your organization. All members will lose API access. This action cannot be undone.
+                      {t("dashboard.settings.revokeAllDialogDescription")}
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <div className="py-3">
-                    <Label className="text-sm text-muted-foreground mb-2 block">Type "REVOKE ALL" to confirm</Label>
+                    <Label className="text-sm text-muted-foreground mb-2 block">{t("dashboard.settings.revokeAllConfirmHelper")}</Label>
                     <Input
                       value={revokeConfirmText}
                       onChange={e => setRevokeConfirmText(e.target.value)}
-                      placeholder="REVOKE ALL"
+                      placeholder={t("dashboard.settings.revokeAllConfirmPlaceholder")}
                       data-testid="input-confirm-revoke-all"
                     />
                   </div>
                   <AlertDialogFooter>
-                    <AlertDialogCancel data-testid="button-cancel-revoke-all">Cancel</AlertDialogCancel>
+                    <AlertDialogCancel data-testid="button-cancel-revoke-all">{t("dashboard.settings.cancel")}</AlertDialogCancel>
                     <AlertDialogAction
                       onClick={() => revokeAllKeysMutation.mutate()}
                       disabled={revokeConfirmText !== "REVOKE ALL" || revokeAllKeysMutation.isPending}
                       className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                       data-testid="button-confirm-revoke-all"
                     >
-                      {revokeAllKeysMutation.isPending ? "Revoking..." : "Revoke All Keys"}
+                      {revokeAllKeysMutation.isPending ? t("dashboard.settings.revokeAllPending") : t("dashboard.settings.revokeAllSubmit")}
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
@@ -827,13 +828,13 @@ export default function SettingsPage() {
               <AlertDialog open={disconnectDialogOpen} onOpenChange={setDisconnectDialogOpen}>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Disconnect All Providers</AlertDialogTitle>
+                    <AlertDialogTitle>{t("dashboard.settings.disconnectAllDialogTitle")}</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This will disconnect all AI provider connections and revoke all API keys. The proxy will stop routing requests. Type your organization name to confirm.
+                      {t("dashboard.settings.disconnectAllDialogDescription")}
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <div className="py-3">
-                    <Label className="text-sm text-muted-foreground mb-2 block">Type "{orgData?.name}" to confirm</Label>
+                    <Label className="text-sm text-muted-foreground mb-2 block">{t("dashboard.settings.confirmOrgNameHelper", { name: orgData?.name })}</Label>
                     <Input
                       value={disconnectConfirmName}
                       onChange={e => setDisconnectConfirmName(e.target.value)}
@@ -842,14 +843,14 @@ export default function SettingsPage() {
                     />
                   </div>
                   <AlertDialogFooter>
-                    <AlertDialogCancel data-testid="button-cancel-disconnect-all">Cancel</AlertDialogCancel>
+                    <AlertDialogCancel data-testid="button-cancel-disconnect-all">{t("dashboard.settings.cancel")}</AlertDialogCancel>
                     <AlertDialogAction
                       onClick={() => disconnectAllMutation.mutate()}
                       disabled={disconnectConfirmName !== orgData?.name || disconnectAllMutation.isPending}
                       className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                       data-testid="button-confirm-disconnect-all"
                     >
-                      {disconnectAllMutation.isPending ? "Disconnecting..." : "Disconnect All"}
+                      {disconnectAllMutation.isPending ? t("dashboard.settings.disconnectAllPending") : t("dashboard.settings.disconnectAllSubmit")}
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
@@ -858,13 +859,13 @@ export default function SettingsPage() {
               <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Delete Organization</AlertDialogTitle>
+                    <AlertDialogTitle>{t("dashboard.settings.deleteOrgDialogTitle")}</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This will permanently delete <strong>{orgData?.name}</strong> and all associated data. This action cannot be undone. Type the organization name to confirm.
+                      {t("dashboard.settings.deleteOrgDialogDescription", { name: orgData?.name })}
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <div className="py-3">
-                    <Label className="text-sm text-muted-foreground mb-2 block">Type "{orgData?.name}" to confirm</Label>
+                    <Label className="text-sm text-muted-foreground mb-2 block">{t("dashboard.settings.confirmOrgNameHelper", { name: orgData?.name })}</Label>
                     <Input
                       value={deleteConfirmName}
                       onChange={e => setDeleteConfirmName(e.target.value)}
@@ -873,14 +874,14 @@ export default function SettingsPage() {
                     />
                   </div>
                   <AlertDialogFooter>
-                    <AlertDialogCancel data-testid="button-cancel-delete-org">Cancel</AlertDialogCancel>
+                    <AlertDialogCancel data-testid="button-cancel-delete-org">{t("dashboard.settings.cancel")}</AlertDialogCancel>
                     <AlertDialogAction
                       onClick={() => deleteOrgMutation.mutate()}
                       disabled={deleteConfirmName !== orgData?.name || deleteOrgMutation.isPending}
                       className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                       data-testid="button-confirm-delete-org"
                     >
-                      {deleteOrgMutation.isPending ? "Deleting..." : "Delete Organization"}
+                      {deleteOrgMutation.isPending ? t("dashboard.settings.deleteOrgPending") : t("dashboard.settings.deleteOrgSubmit")}
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>

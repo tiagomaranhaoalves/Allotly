@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { ProviderBadge } from "@/components/brand/provider-badge";
 import { pickBattle } from "../content";
@@ -23,6 +24,7 @@ interface TranscriptTurn {
 }
 
 export function SecretKeeper({ onSwitchMode, onEndSession }: Props) {
+  const { t } = useTranslation();
   const { state, enterMode, spend, incrementRound } = useArenaSession();
   const [difficulty, setDifficulty] = useState<SecretKeeperDifficulty>("easy");
   const [phase, setPhase] = useState<Phase>("setup");
@@ -63,8 +65,8 @@ export function SecretKeeper({ onSwitchMode, onEndSession }: Props) {
       const meta = modelLookup[exchange.model];
       idx += 1;
 
-      setTranscript((t) => [
-        ...t,
+      setTranscript((tt) => [
+        ...tt,
         {
           role: exchange.role,
           model: meta,
@@ -78,17 +80,17 @@ export function SecretKeeper({ onSwitchMode, onEndSession }: Props) {
       const ctrl = streamCachedBattleExchange(
         exchange,
         (delta) => {
-          setTranscript((t) => {
-            if (t.length === 0) return t;
-            const last = t[t.length - 1];
-            return [...t.slice(0, -1), { ...last, text: last.text + delta }];
+          setTranscript((tt) => {
+            if (tt.length === 0) return tt;
+            const last = tt[tt.length - 1];
+            return [...tt.slice(0, -1), { ...last, text: last.text + delta }];
           });
         },
         () => {
-          setTranscript((t) => {
-            if (t.length === 0) return t;
-            const last = t[t.length - 1];
-            return [...t.slice(0, -1), { ...last, costUSD: runningCost, done: true }];
+          setTranscript((tt) => {
+            if (tt.length === 0) return tt;
+            const last = tt[tt.length - 1];
+            return [...tt.slice(0, -1), { ...last, costUSD: runningCost, done: true }];
           });
           spend(runningCost);
           window.setTimeout(playNext, 500);
@@ -115,10 +117,10 @@ export function SecretKeeper({ onSwitchMode, onEndSession }: Props) {
     <div className="px-4 py-6 max-w-5xl mx-auto">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <div className="text-xs uppercase tracking-wide text-white/50">Mode</div>
-          <h2 className="text-xl font-semibold text-white">Secret Keeper</h2>
+          <div className="text-xs uppercase tracking-wide text-white/50">{t("arena.secretKeeper.modeLabel")}</div>
+          <h2 className="text-xl font-semibold text-white">{t("arena.secretKeeper.title")}</h2>
         </div>
-        <div className="text-xs text-white/50">Attacker vs. Defender — one password.</div>
+        <div className="text-xs text-white/50">{t("arena.secretKeeper.subtitle")}</div>
       </div>
 
       {phase === "setup" && (
@@ -152,17 +154,18 @@ function SetupPanel({
   onDifficultyChange: (d: SecretKeeperDifficulty) => void;
   onStart: () => void;
 }) {
+  const { t } = useTranslation();
   const options: Array<{ id: SecretKeeperDifficulty; title: string; desc: string }> = [
-    { id: "easy", title: "Easy", desc: "One short common word." },
-    { id: "medium", title: "Medium", desc: "A short phrase." },
-    { id: "hard", title: "Hard", desc: "A rule-based challenge (e.g. no colours)." },
+    { id: "easy", title: t("arena.secretKeeper.easyTitle"), desc: t("arena.secretKeeper.easyDesc") },
+    { id: "medium", title: t("arena.secretKeeper.mediumTitle"), desc: t("arena.secretKeeper.mediumDesc") },
+    { id: "hard", title: t("arena.secretKeeper.hardTitle"), desc: t("arena.secretKeeper.hardDesc") },
   ];
 
   return (
     <div className="rounded-2xl border border-white/10 bg-neutral-900/60 p-6">
-      <h3 className="text-lg font-semibold text-white">Choose password difficulty</h3>
+      <h3 className="text-lg font-semibold text-white">{t("arena.secretKeeper.chooseDifficulty")}</h3>
       <p className="mt-1 text-sm text-white/60">
-        The defender will know the password. The attacker will try to extract it in five exchanges.
+        {t("arena.secretKeeper.chooseDesc")}
       </p>
 
       <div className="mt-5 grid gap-3 sm:grid-cols-3">
@@ -193,7 +196,7 @@ function SetupPanel({
           onClick={onStart}
           data-testid="button-start-battle"
         >
-          Start battle
+          {t("arena.secretKeeper.startBattle")}
         </Button>
       </div>
     </div>
@@ -215,21 +218,29 @@ function BattleView({
   onSwitchMode: () => void;
   onEndSession: () => void;
 }) {
+  const { t } = useTranslation();
   const leakedRound = battle.leakedAtRound;
-  const totalCost = transcript.reduce((acc, t) => acc + t.costUSD, 0);
+  const totalCost = transcript.reduce((acc, tt) => acc + tt.costUSD, 0);
+
+  const difficultyLabel =
+    battle.difficulty === "easy"
+      ? t("arena.secretKeeper.difficultyEasy")
+      : battle.difficulty === "medium"
+        ? t("arena.secretKeeper.difficultyMedium")
+        : t("arena.secretKeeper.difficultyHard");
 
   return (
     <div>
       <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-4 mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <div className="text-xs uppercase tracking-wide text-white/50">The password is</div>
+          <div className="text-xs uppercase tracking-wide text-white/50">{t("arena.secretKeeper.passwordIs")}</div>
           <div className="text-lg font-mono font-semibold text-amber-300">
             {battle.password}
             {battle.rule && <span className="ml-2 text-xs text-white/60 font-sans">({battle.rule})</span>}
           </div>
         </div>
         <div className="text-sm text-white/70">
-          Difficulty: <span className="text-white">{battle.difficulty}</span>
+          {t("arena.secretKeeper.difficultyLabel")} <span className="text-white">{difficultyLabel}</span>
         </div>
       </div>
 
@@ -253,7 +264,9 @@ function BattleView({
                       : "bg-emerald-500/15 text-emerald-300"
                   }`}
                 >
-                  {turn.role}
+                  {turn.role === "attacker"
+                    ? t("arena.secretKeeper.roleAttacker")
+                    : t("arena.secretKeeper.roleDefender")}
                 </span>
                 <ProviderBadge provider={turn.model.provider} className="text-white" />
                 <span className="text-xs text-white/50">{turn.model.displayName}</span>
@@ -276,11 +289,11 @@ function BattleView({
         <div className="mt-6 rounded-2xl border border-white/10 bg-neutral-900/60 p-6">
           <h3 className="text-xl font-semibold text-white">
             {battle.outcome === "defender_wins"
-              ? "Password held — defender wins after 5 rounds"
-              : `Password leaked in round ${leakedRound} — attacker wins`}
+              ? t("arena.secretKeeper.defenderWins")
+              : t("arena.secretKeeper.attackerWins", { n: leakedRound })}
           </h3>
           <p className="mt-2 text-sm text-white/70">
-            Total cost of this battle:{" "}
+            {t("arena.secretKeeper.totalCost")}{" "}
             <span className="font-mono text-white tabular-nums">${totalCost.toFixed(5)}</span>
           </p>
           <div className="mt-5 flex flex-col sm:flex-row gap-2">
@@ -289,7 +302,7 @@ function BattleView({
               onClick={onReplay}
               data-testid="button-sk-replay"
             >
-              Play again
+              {t("arena.secretKeeper.playAgain")}
             </Button>
             <Button
               variant="outline"
@@ -297,7 +310,7 @@ function BattleView({
               onClick={onSwitchMode}
               data-testid="button-sk-switch"
             >
-              Switch mode
+              {t("arena.secretKeeper.switchMode")}
             </Button>
             <Button
               variant="ghost"
@@ -305,7 +318,7 @@ function BattleView({
               onClick={onEndSession}
               data-testid="button-sk-end"
             >
-              End session
+              {t("arena.secretKeeper.endSession")}
             </Button>
           </div>
         </div>

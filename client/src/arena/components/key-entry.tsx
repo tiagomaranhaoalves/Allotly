@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export function KeyEntry({ onValidated, onFallbackToCached, onCancel }: Props) {
+  const { t } = useTranslation();
   const { setLiveKey } = useArenaSession();
   const [key, setKey] = useState("");
   const [remember, setRemember] = useState(false);
@@ -37,7 +39,12 @@ export function KeyEntry({ onValidated, onFallbackToCached, onCancel }: Props) {
     }
     setVerifiedInfo({
       balance: res.budgetRemainingUSD,
-      type: res.keyType === "VOUCHER" ? "Voucher" : res.keyType === "TEAM" ? "Teams" : "Key",
+      type:
+        res.keyType === "VOUCHER"
+          ? t("arena.keyEntry.typeVoucher")
+          : res.keyType === "TEAM"
+            ? t("arena.keyEntry.typeTeams")
+            : t("arena.keyEntry.typeKey"),
       expires: res.expiresAt,
     });
     setStatus("verified");
@@ -57,15 +64,15 @@ export function KeyEntry({ onValidated, onFallbackToCached, onCancel }: Props) {
   return (
     <div className="min-h-[calc(100vh-60px)] flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-neutral-900/70 p-8">
-        <h2 className="text-2xl font-semibold text-white">Enter your Allotly key</h2>
+        <h2 className="text-2xl font-semibold text-white">{t("arena.keyEntry.title")}</h2>
         <p className="mt-2 text-white/70">
-          We&rsquo;ll verify it against the proxy and show your current balance before you start.
+          {t("arena.keyEntry.desc")}
         </p>
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <div>
             <Label htmlFor="allotly-key" className="text-white/80">
-              Key
+              {t("arena.keyEntry.keyLabel")}
             </Label>
             <Input
               id="allotly-key"
@@ -74,7 +81,7 @@ export function KeyEntry({ onValidated, onFallbackToCached, onCancel }: Props) {
               spellCheck={false}
               value={key}
               onChange={(e) => setKey(e.target.value)}
-              placeholder="allotly_sk_..."
+              placeholder={t("arena.keyEntry.placeholder")}
               className="mt-1.5 bg-neutral-950 border-white/10 text-white"
               disabled={isBusy}
               data-testid="input-allotly-key"
@@ -87,7 +94,7 @@ export function KeyEntry({ onValidated, onFallbackToCached, onCancel }: Props) {
               onCheckedChange={(v) => setRemember(Boolean(v))}
               data-testid="checkbox-remember-key"
             />
-            Remember this key on this device
+            {t("arena.keyEntry.remember")}
           </label>
 
           {status === "verified" && verifiedInfo && (
@@ -95,8 +102,15 @@ export function KeyEntry({ onValidated, onFallbackToCached, onCancel }: Props) {
               className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200"
               data-testid="key-verified-banner"
             >
-              Key verified &middot; ${formatUSD(verifiedInfo.balance)} available &middot; {verifiedInfo.type}
-              {verifiedInfo.expires ? ` · expires ${new Date(verifiedInfo.expires).toLocaleDateString()}` : ""}
+              {t("arena.keyEntry.verifiedBanner", {
+                balance: formatUSD(verifiedInfo.balance),
+                type: verifiedInfo.type,
+              })}
+              {verifiedInfo.expires
+                ? t("arena.keyEntry.verifiedExpires", {
+                    date: new Date(verifiedInfo.expires).toLocaleDateString(),
+                  })
+                : ""}
             </div>
           )}
 
@@ -105,14 +119,16 @@ export function KeyEntry({ onValidated, onFallbackToCached, onCancel }: Props) {
               className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200"
               data-testid="key-error-banner"
             >
-              We couldn&rsquo;t verify that key. {errorMsg ? `(${errorMsg})` : "Double-check it"}, or{" "}
+              {t("arena.keyEntry.errorIntro")}{" "}
+              {errorMsg ? `(${errorMsg})` : t("arena.keyEntry.errorDoubleCheck")}
+              {t("arena.keyEntry.errorOr")}{" "}
               <button
                 type="button"
                 onClick={onFallbackToCached}
                 className="underline underline-offset-4 hover:text-rose-100"
                 data-testid="link-fallback-cached"
               >
-                start with a cached demo instead
+                {t("arena.keyEntry.errorFallback")}
               </button>
               .
             </div>
@@ -127,7 +143,7 @@ export function KeyEntry({ onValidated, onFallbackToCached, onCancel }: Props) {
               disabled={isBusy}
               data-testid="button-key-cancel"
             >
-              Cancel
+              {t("arena.keyEntry.cancel")}
             </Button>
             <Button
               type="submit"
@@ -135,7 +151,11 @@ export function KeyEntry({ onValidated, onFallbackToCached, onCancel }: Props) {
               disabled={!key.trim() || isBusy}
               data-testid="button-key-verify"
             >
-              {status === "validating" ? "Verifying…" : status === "verified" ? "Verified" : "Verify key"}
+              {status === "validating"
+                ? t("arena.keyEntry.verifying")
+                : status === "verified"
+                  ? t("arena.keyEntry.verified")
+                  : t("arena.keyEntry.verify")}
             </Button>
           </div>
         </form>

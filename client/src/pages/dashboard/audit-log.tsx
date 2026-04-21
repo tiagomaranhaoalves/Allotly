@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/brand/empty-state";
@@ -53,62 +54,61 @@ const ACTION_COLORS: Record<string, string> = {
   "billing.payment_failed": "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
 };
 
-const ACTION_LABELS: Record<string, string> = {
-  "org.created": "Organization Created",
-  "provider.connected": "Provider Connected",
-  "provider.disconnected": "Provider Disconnected",
-  "provider.validated": "Provider Validated",
-  "provider.validation_failed": "Provider Validation Failed",
-  "provider.key_rotated": "Provider Key Rotated",
-  "provider.test_connection": "Provider Test Connection",
-  "team.created": "Team Created",
-  "team.removed": "Team Removed",
-  "member.created": "Member Added",
-  "member.updated": "Member Updated",
-  "member.suspended": "Member Suspended",
-  "member.reactivated": "Member Reactivated",
-  "member.removed": "Member Removed",
-  "member.transferred": "Member Transferred",
-  "member.role_changed": "Role Changed",
-  "key.provisioned": "API Key Provisioned",
-  "key.revoked": "API Key Revoked",
-  "key.regenerated": "API Key Regenerated",
-  "key.bulk_revoked": "Keys Bulk Revoked",
-  "voucher.created": "Voucher Created",
-  "voucher.redeemed": "Voucher Redeemed",
-  "voucher.revoked": "Voucher Revoked",
-  "voucher.expired": "Voucher Expired",
-  "voucher.extended": "Voucher Extended",
-  "voucher.topped_up": "Voucher Topped Up",
-  "voucher.bulk_created": "Vouchers Bulk Created",
-  "voucher.bulk_revoked": "Vouchers Bulk Revoked",
-  "bundle.purchased": "Bundle Purchased",
-  "bundle.expired": "Bundle Expired",
-  "budget.period_reset": "Budget Period Reset",
-  "budget.manual_reset": "Budget Manual Reset",
-  "budget.credit": "Budget Credit Applied",
-  "budget.reset_reactivated": "Budget Reset & Reactivated",
-  "budget.exhausted": "Budget Exhausted",
-  "plan.upgraded": "Plan Upgraded",
-  "plan.downgraded": "Plan Downgraded",
-  "settings.updated": "Settings Updated",
-  "spend.anomaly_detected": "Spend Anomaly Detected",
-  "billing.payment_failed": "Payment Failed",
+const ACTION_LABEL_KEYS: Record<string, string> = {
+  "org.created": "actionOrgCreated",
+  "provider.connected": "actionProviderConnected",
+  "provider.disconnected": "actionProviderDisconnected",
+  "provider.validated": "actionProviderValidated",
+  "provider.validation_failed": "actionProviderValidationFailed",
+  "provider.key_rotated": "actionProviderKeyRotated",
+  "provider.test_connection": "actionProviderTestConnection",
+  "team.created": "actionTeamCreated",
+  "team.removed": "actionTeamRemoved",
+  "member.created": "actionMemberCreated",
+  "member.updated": "actionMemberUpdated",
+  "member.suspended": "actionMemberSuspended",
+  "member.reactivated": "actionMemberReactivated",
+  "member.removed": "actionMemberRemoved",
+  "member.transferred": "actionMemberTransferred",
+  "member.role_changed": "actionMemberRoleChanged",
+  "key.provisioned": "actionKeyProvisioned",
+  "key.revoked": "actionKeyRevoked",
+  "key.regenerated": "actionKeyRegenerated",
+  "key.bulk_revoked": "actionKeyBulkRevoked",
+  "voucher.created": "actionVoucherCreated",
+  "voucher.redeemed": "actionVoucherRedeemed",
+  "voucher.revoked": "actionVoucherRevoked",
+  "voucher.expired": "actionVoucherExpired",
+  "voucher.extended": "actionVoucherExtended",
+  "voucher.topped_up": "actionVoucherToppedUp",
+  "voucher.bulk_created": "actionVoucherBulkCreated",
+  "voucher.bulk_revoked": "actionVoucherBulkRevoked",
+  "bundle.purchased": "actionBundlePurchased",
+  "bundle.expired": "actionBundleExpired",
+  "budget.period_reset": "actionBudgetPeriodReset",
+  "budget.manual_reset": "actionBudgetManualReset",
+  "budget.credit": "actionBudgetCredit",
+  "budget.reset_reactivated": "actionBudgetResetReactivated",
+  "budget.exhausted": "actionBudgetExhausted",
+  "plan.upgraded": "actionPlanUpgraded",
+  "plan.downgraded": "actionPlanDowngraded",
+  "settings.updated": "actionSettingsUpdated",
+  "spend.anomaly_detected": "actionSpendAnomalyDetected",
+  "billing.payment_failed": "actionBillingPaymentFailed",
 };
 
-const ACTION_CATEGORIES: Record<string, string[]> = {
-  "Organization": ["org.created", "settings.updated"],
-  "Providers": ["provider.connected", "provider.disconnected", "provider.validated", "provider.validation_failed", "provider.key_rotated", "provider.test_connection"],
-  "Teams": ["team.created", "team.removed"],
-  "Members": ["member.created", "member.updated", "member.suspended", "member.reactivated", "member.removed", "member.transferred", "member.role_changed"],
-  "API Keys": ["key.provisioned", "key.revoked", "key.regenerated", "key.bulk_revoked"],
-  "Vouchers": ["voucher.created", "voucher.redeemed", "voucher.revoked", "voucher.expired", "voucher.extended", "voucher.topped_up", "voucher.bulk_created", "voucher.bulk_revoked"],
-  "Bundles": ["bundle.purchased", "bundle.expired"],
-  "Budget": ["budget.period_reset", "budget.manual_reset", "budget.credit", "budget.reset_reactivated", "budget.exhausted"],
-  "Billing": ["plan.upgraded", "plan.downgraded", "billing.payment_failed", "spend.anomaly_detected"],
+const ACTION_CATEGORIES: Record<string, { key: string; actions: string[] }> = {
+  Organization: { key: "categoryOrganization", actions: ["org.created", "settings.updated"] },
+  Providers: { key: "categoryProviders", actions: ["provider.connected", "provider.disconnected", "provider.validated", "provider.validation_failed", "provider.key_rotated", "provider.test_connection"] },
+  Teams: { key: "categoryTeams", actions: ["team.created", "team.removed"] },
+  Members: { key: "categoryMembers", actions: ["member.created", "member.updated", "member.suspended", "member.reactivated", "member.removed", "member.transferred", "member.role_changed"] },
+  ApiKeys: { key: "categoryApiKeys", actions: ["key.provisioned", "key.revoked", "key.regenerated", "key.bulk_revoked"] },
+  Vouchers: { key: "categoryVouchers", actions: ["voucher.created", "voucher.redeemed", "voucher.revoked", "voucher.expired", "voucher.extended", "voucher.topped_up", "voucher.bulk_created", "voucher.bulk_revoked"] },
+  Bundles: { key: "categoryBundles", actions: ["bundle.purchased", "bundle.expired"] },
+  Budget: { key: "categoryBudget", actions: ["budget.period_reset", "budget.manual_reset", "budget.credit", "budget.reset_reactivated", "budget.exhausted"] },
+  Billing: { key: "categoryBilling", actions: ["plan.upgraded", "plan.downgraded", "billing.payment_failed", "spend.anomaly_detected"] },
 };
 
-const ALL_ACTIONS = Object.values(ACTION_CATEGORIES).flat();
 const TARGET_TYPES = ["organization", "team", "team_membership", "provider_connection", "voucher", "voucher_bundle", "allotly_api_key"];
 
 function formatCents(cents: number): string {
@@ -133,11 +133,12 @@ function MetadataDetail({ label, value }: { label: string; value: any }) {
 }
 
 function ExpandedMetadata({ metadata, action }: { metadata: Record<string, any>; action: string }) {
+  const { t } = useTranslation();
   if (action === "member.updated" && metadata.changes) {
     const changes = metadata.changes as Record<string, { from: any; to: any }>;
     return (
       <div className="space-y-2">
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Changes</p>
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t("dashboard.auditLog.changes")}</p>
         {Object.entries(changes).map(([field, change]) => (
           <div key={field} className="flex items-center gap-2 text-xs">
             <span className="text-muted-foreground min-w-[120px]">{field.replace(/([A-Z])/g, " $1").trim()}</span>
@@ -167,6 +168,7 @@ function ExpandedMetadata({ metadata, action }: { metadata: Record<string, any>;
 }
 
 export default function AuditLogPage() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [page, setPage] = useState(1);
   const [actionFilter, setActionFilter] = useState("");
@@ -190,7 +192,7 @@ export default function AuditLogPage() {
     queryKey: ["/api/audit-log", actionFilter, targetTypeFilter, actorFilter, startDate, endDate, page],
     queryFn: async () => {
       const res = await fetch(`/api/audit-log?${queryParams.toString()}`);
-      if (!res.ok) throw new Error("Failed to fetch audit logs");
+      if (!res.ok) throw new Error(t("dashboard.auditLog.fetchError"));
       return res.json();
     },
     enabled: user?.orgRole === "ROOT_ADMIN",
@@ -239,47 +241,50 @@ export default function AuditLogPage() {
     return (
       <EmptyState
         icon={<Shield className="w-8 h-8 text-muted-foreground" />}
-        title="Access Restricted"
-        description="Only Root Admins can view the audit log"
+        title={t("dashboard.auditLog.accessRestricted")}
+        description={t("dashboard.auditLog.accessRestrictedDesc")}
       />
     );
   }
+
+  const actionLabel = (action: string) =>
+    ACTION_LABEL_KEYS[action] ? t(`dashboard.auditLog.${ACTION_LABEL_KEYS[action]}`) : action;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-audit-log-title">Audit Log</h1>
-          <p className="text-muted-foreground mt-1">Complete history of organization actions ({total} entries)</p>
+          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-audit-log-title">{t("dashboard.auditLog.title")}</h1>
+          <p className="text-muted-foreground mt-1">{t("dashboard.auditLog.subtitle", { count: total })}</p>
         </div>
         <Button variant="outline" onClick={handleExport} className="gap-2" data-testid="button-export-csv">
           <Download className="w-4 h-4" />
-          Export CSV
+          {t("dashboard.auditLog.exportCsv")}
         </Button>
       </div>
 
       <Card className="p-4">
         <div className="flex items-center gap-2 mb-3">
           <Filter className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Filters</span>
+          <span className="text-sm font-medium">{t("dashboard.auditLog.filters")}</span>
           {hasFilters && (
             <Button variant="ghost" size="sm" onClick={clearFilters} className="text-xs ml-auto" data-testid="button-clear-filters">
-              Clear all
+              {t("dashboard.auditLog.clearAll")}
             </Button>
           )}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           <Select value={actionFilter} onValueChange={(v) => { setActionFilter(v === "all" ? "" : v); setPage(1); }}>
             <SelectTrigger data-testid="select-action-filter">
-              <SelectValue placeholder="Action type" />
+              <SelectValue placeholder={t("dashboard.auditLog.actionType")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All actions</SelectItem>
-              {Object.entries(ACTION_CATEGORIES).map(([category, actions]) => (
+              <SelectItem value="all">{t("dashboard.auditLog.allActions")}</SelectItem>
+              {Object.entries(ACTION_CATEGORIES).map(([category, { key, actions }]) => (
                 <div key={category}>
-                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">{category}</div>
+                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">{t(`dashboard.auditLog.${key}`)}</div>
                   {actions.map(a => (
-                    <SelectItem key={a} value={a}>{ACTION_LABELS[a] || a}</SelectItem>
+                    <SelectItem key={a} value={a}>{actionLabel(a)}</SelectItem>
                   ))}
                 </div>
               ))}
@@ -287,22 +292,22 @@ export default function AuditLogPage() {
           </Select>
           <Select value={targetTypeFilter} onValueChange={(v) => { setTargetTypeFilter(v === "all" ? "" : v); setPage(1); }}>
             <SelectTrigger data-testid="select-target-filter">
-              <SelectValue placeholder="Target type" />
+              <SelectValue placeholder={t("dashboard.auditLog.targetType")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All targets</SelectItem>
-              {TARGET_TYPES.map(t => (
-                <SelectItem key={t} value={t}>{t.replace(/_/g, " ")}</SelectItem>
+              <SelectItem value="all">{t("dashboard.auditLog.allTargets")}</SelectItem>
+              {TARGET_TYPES.map(tt => (
+                <SelectItem key={tt} value={tt}>{tt.replace(/_/g, " ")}</SelectItem>
               ))}
             </SelectContent>
           </Select>
           <Select value={actorFilter} onValueChange={(v) => { setActorFilter(v === "all" ? "" : v); setPage(1); }}>
             <SelectTrigger data-testid="select-actor-filter">
-              <SelectValue placeholder="Actor" />
+              <SelectValue placeholder={t("dashboard.auditLog.actor")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All actors</SelectItem>
-              <SelectItem value="system">System</SelectItem>
+              <SelectItem value="all">{t("dashboard.auditLog.allActors")}</SelectItem>
+              <SelectItem value="system">{t("dashboard.auditLog.system")}</SelectItem>
               {(actors || []).filter((a: any) => a.id !== "system").map((a: any) => (
                 <SelectItem key={a.id} value={a.id}>{a.name || a.id}</SelectItem>
               ))}
@@ -312,14 +317,14 @@ export default function AuditLogPage() {
             type="date"
             value={startDate}
             onChange={e => { setStartDate(e.target.value); setPage(1); }}
-            placeholder="Start date"
+            placeholder={t("dashboard.auditLog.startDate")}
             data-testid="input-start-date"
           />
           <Input
             type="date"
             value={endDate}
             onChange={e => { setEndDate(e.target.value); setPage(1); }}
-            placeholder="End date"
+            placeholder={t("dashboard.auditLog.endDate")}
             data-testid="input-end-date"
           />
         </div>
@@ -331,7 +336,7 @@ export default function AuditLogPage() {
         <Card className="divide-y divide-border">
           {logs.map((log: any) => {
             const actor = actorMap.get(log.actorId);
-            const actorName = log.actorId === "system" ? "System" : (actor?.name || log.actorId);
+            const actorName = log.actorId === "system" ? t("dashboard.auditLog.system") : (actor?.name || log.actorId);
             const actorRole = log.actorId === "system" ? "SYSTEM" : (actor?.role || "");
             const metadata = log.metadata as Record<string, any> | null;
             const isExpanded = expandedIds.has(log.id);
@@ -350,7 +355,7 @@ export default function AuditLogPage() {
                       variant="secondary"
                       className={`${ACTION_COLORS[log.action] || "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"} no-default-hover-elevate no-default-active-elevate text-xs shrink-0`}
                     >
-                      {ACTION_LABELS[log.action] || log.action}
+                      {actionLabel(log.action)}
                     </Badge>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
@@ -392,15 +397,15 @@ export default function AuditLogPage() {
       ) : (
         <EmptyState
           icon={<FileText className="w-10 h-10 text-muted-foreground" />}
-          title="No audit entries found"
-          description={hasFilters ? "Try adjusting your filters" : "Admin actions will be logged here"}
+          title={t("dashboard.auditLog.noEntries")}
+          description={hasFilters ? t("dashboard.auditLog.noEntriesAdjust") : t("dashboard.auditLog.noEntriesEmpty")}
         />
       )}
 
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            Page {page} of {totalPages} ({total} total entries)
+            {t("dashboard.auditLog.pageOf", { page, total: totalPages, entries: total })}
           </p>
           <div className="flex items-center gap-2">
             <Button
@@ -411,7 +416,7 @@ export default function AuditLogPage() {
               data-testid="button-prev-page"
             >
               <ChevronLeft className="w-4 h-4" />
-              Previous
+              {t("dashboard.auditLog.previous")}
             </Button>
             <Button
               variant="outline"
@@ -420,7 +425,7 @@ export default function AuditLogPage() {
               onClick={() => setPage(p => p + 1)}
               data-testid="button-next-page"
             >
-              Next
+              {t("dashboard.auditLog.next")}
               <ChevronRight className="w-4 h-4" />
             </Button>
           </div>

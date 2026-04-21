@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
@@ -8,17 +9,12 @@ interface Props {
 }
 
 export function ShareForwardPanel({ open, onOpenChange }: Props) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const url = typeof window !== "undefined" ? `${window.location.origin}/arena` : "/arena";
-  const emailSubject = encodeURIComponent("Allotly demo — worth two minutes");
-  const emailBody = encodeURIComponent(
-    `I played with Allotly's interactive demo — three models racing against a budget, ` +
-      `with a voucher exhaustion flow that actually makes the governance story click. ` +
-      `Try it: ${url}`,
-  );
-  const slackText = encodeURIComponent(
-    `Allotly demo worth a look — three models, one budget, voucher exhaustion flow. ${url}`,
-  );
+  const emailSubject = encodeURIComponent(t("arena.share.emailSubject"));
+  const emailBody = encodeURIComponent(t("arena.share.emailBody", { url }));
+  const slackText = encodeURIComponent(t("arena.share.slackText", { url }));
 
   async function copyLink() {
     try {
@@ -34,9 +30,9 @@ export function ShareForwardPanel({ open, onOpenChange }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-neutral-900 border-white/10 text-white max-w-lg">
         <DialogHeader>
-          <DialogTitle className="text-xl">Forward this demo</DialogTitle>
+          <DialogTitle className="text-xl">{t("arena.share.title")}</DialogTitle>
           <DialogDescription className="text-white/70">
-            The exhaustion flow only clicks when someone hits it themselves.
+            {t("arena.share.desc")}
           </DialogDescription>
         </DialogHeader>
 
@@ -53,7 +49,7 @@ export function ShareForwardPanel({ open, onOpenChange }: Props) {
               onClick={copyLink}
               data-testid="button-share-copy"
             >
-              {copied ? "Copied" : "Copy link"}
+              {copied ? t("arena.share.copied") : t("arena.share.copyLink")}
             </Button>
           </div>
 
@@ -67,7 +63,7 @@ export function ShareForwardPanel({ open, onOpenChange }: Props) {
                 href={`mailto:?subject=${emailSubject}&body=${emailBody}`}
                 data-testid="button-share-email"
               >
-                Email
+                {t("arena.share.email")}
               </a>
             </Button>
             <Button
@@ -91,7 +87,7 @@ export function ShareForwardPanel({ open, onOpenChange }: Props) {
                 }}
                 data-testid="button-share-slack"
               >
-                Copy for Slack
+                {t("arena.share.slack")}
               </a>
             </Button>
           </div>
@@ -99,7 +95,7 @@ export function ShareForwardPanel({ open, onOpenChange }: Props) {
 
         <div className="mt-4 flex justify-end">
           <Button variant="ghost" className="text-white/70 hover:text-white" onClick={() => onOpenChange(false)}>
-            Close
+            {t("arena.share.close")}
           </Button>
         </div>
       </DialogContent>

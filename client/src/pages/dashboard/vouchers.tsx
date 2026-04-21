@@ -23,6 +23,7 @@ import {
   ChevronUp, User, Key, Activity, Layers,
 } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 const PROVIDERS = [
   { id: "OPENAI", label: "OpenAI", color: "#10A37F" },
@@ -32,6 +33,7 @@ const PROVIDERS = [
 ];
 
 export default function VouchersPage() {
+  const { t } = useTranslation();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [label, setLabel] = useState("");
@@ -94,10 +96,10 @@ export default function VouchersPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/voucher-limits"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bundles"] });
       setCreatedCode(data.code);
-      toast({ title: "Voucher created", description: "Make sure to copy the voucher code before closing this dialog." });
+      toast({ title: t("dashboard.vouchers.toastVoucherCreatedTitle"), description: t("dashboard.vouchers.toastVoucherCreatedDescription") });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to create voucher", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.vouchers.toastVoucherCreateFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -119,10 +121,10 @@ export default function VouchersPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/vouchers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/voucher-limits"] });
       setBulkCreatedCodes(data.vouchers);
-      toast({ title: `${data.vouchers.length} vouchers created`, description: "Copy or download the codes below." });
+      toast({ title: t("dashboard.vouchers.toastBulkCreatedTitle", { count: data.vouchers.length }), description: t("dashboard.vouchers.toastBulkCreatedDescription") });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to bulk create vouchers", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.vouchers.toastBulkCreateFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -136,12 +138,12 @@ export default function VouchersPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vouchers"] });
-      toast({ title: "Voucher extended" });
+      toast({ title: t("dashboard.vouchers.toastExtended") });
       setExtendVoucherId(null);
       setExtendDate("");
     },
     onError: (err: any) => {
-      toast({ title: "Failed to extend voucher", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.vouchers.toastExtendFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -155,12 +157,12 @@ export default function VouchersPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vouchers"] });
-      toast({ title: "Voucher topped up" });
+      toast({ title: t("dashboard.vouchers.toastToppedUp") });
       setTopUpVoucherId(null);
       setTopUpAmount("5");
     },
     onError: (err: any) => {
-      toast({ title: "Failed to top up voucher", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.vouchers.toastTopUpFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -223,11 +225,11 @@ export default function VouchersPage() {
         email: emailTo,
         code: createdCode,
       });
-      toast({ title: "Invite sent", description: `Voucher link sent to ${emailTo}` });
+      toast({ title: t("dashboard.vouchers.toastInviteSentTitle"), description: t("dashboard.vouchers.toastInviteSentDescription", { email: emailTo }) });
       setEmailTo("");
       setShowEmailForm(false);
     } catch (err: any) {
-      toast({ title: "Failed to send", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.vouchers.toastSendFailed"), description: err.message, variant: "destructive" });
     } finally {
       setSendingEmail(false);
     }
@@ -262,11 +264,11 @@ export default function VouchersPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vouchers"] });
-      toast({ title: "Voucher updated" });
+      toast({ title: t("dashboard.vouchers.toastVoucherUpdated") });
       setEditVoucherId(null);
     },
     onError: (err: any) => {
-      toast({ title: "Failed to update voucher", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.vouchers.toastUpdateFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -281,10 +283,10 @@ export default function VouchersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vouchers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/voucher-limits"] });
-      toast({ title: "Voucher revoked" });
+      toast({ title: t("dashboard.vouchers.toastVoucherRevoked") });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to revoke voucher", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.vouchers.toastRevokeFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -297,11 +299,11 @@ export default function VouchersPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/vouchers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/voucher-limits"] });
       const succeeded = data.results.filter((r: any) => r.success).length;
-      toast({ title: `${succeeded} voucher(s) revoked` });
+      toast({ title: t("dashboard.vouchers.toastBulkRevokedTitle", { count: succeeded }) });
       setSelectedIds(new Set());
     },
     onError: (err: any) => {
-      toast({ title: "Failed to bulk revoke", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.vouchers.toastBulkRevokeFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -312,10 +314,10 @@ export default function VouchersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vouchers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/voucher-limits"] });
-      toast({ title: "Voucher deleted" });
+      toast({ title: t("dashboard.vouchers.toastVoucherDeleted") });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to delete voucher", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.vouchers.toastDeleteFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -402,9 +404,9 @@ export default function VouchersPage() {
       a.download = `allotly-vouchers-${new Date().toISOString().split("T")[0]}.csv`;
       a.click();
       URL.revokeObjectURL(url);
-      toast({ title: "Export complete" });
+      toast({ title: t("dashboard.vouchers.toastExportComplete") });
     } catch (err: any) {
-      toast({ title: "Export failed", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.vouchers.toastExportFailed"), description: err.message, variant: "destructive" });
     }
   };
 
@@ -416,8 +418,8 @@ export default function VouchersPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-vouchers-heading">Vouchers</h1>
-          <p className="text-muted-foreground mt-1">Create and manage voucher codes for AI access</p>
+          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-vouchers-heading">{t("dashboard.vouchers.heading")}</h1>
+          <p className="text-muted-foreground mt-1">{t("dashboard.vouchers.subheading")}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-2">
@@ -426,16 +428,16 @@ export default function VouchersPage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="ACTIVE">Active</SelectItem>
-                <SelectItem value="FULLY_REDEEMED">Redeemed</SelectItem>
-                <SelectItem value="EXPIRED">Expired</SelectItem>
-                <SelectItem value="REVOKED">Revoked</SelectItem>
+                <SelectItem value="all">{t("dashboard.vouchers.exportStatusAll")}</SelectItem>
+                <SelectItem value="ACTIVE">{t("dashboard.vouchers.exportStatusActive")}</SelectItem>
+                <SelectItem value="FULLY_REDEEMED">{t("dashboard.vouchers.exportStatusRedeemed")}</SelectItem>
+                <SelectItem value="EXPIRED">{t("dashboard.vouchers.exportStatusExpired")}</SelectItem>
+                <SelectItem value="REVOKED">{t("dashboard.vouchers.exportStatusRevoked")}</SelectItem>
               </SelectContent>
             </Select>
             <Button variant="outline" size="sm" onClick={exportVouchers} data-testid="button-export-csv">
               <Download className="w-4 h-4 mr-1.5" />
-              Export CSV
+              {t("dashboard.vouchers.exportCsvButton")}
             </Button>
           </div>
 
@@ -443,14 +445,14 @@ export default function VouchersPage() {
             <DialogTrigger asChild>
               <Button variant="outline" data-testid="button-bulk-create-vouchers">
                 <Layers className="w-4 h-4 mr-1.5" />
-                Bulk Create
+                {t("dashboard.vouchers.bulkCreateButton")}
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>{bulkCreatedCodes.length > 0 ? `${bulkCreatedCodes.length} Vouchers Created!` : "Bulk Create Vouchers"}</DialogTitle>
+                <DialogTitle>{bulkCreatedCodes.length > 0 ? t("dashboard.vouchers.bulkCreatedTitle", { count: bulkCreatedCodes.length }) : t("dashboard.vouchers.bulkCreateDialogTitle")}</DialogTitle>
                 <DialogDescription>
-                  {bulkCreatedCodes.length > 0 ? "Copy or download all generated codes." : "Create multiple vouchers at once for hackathons and workshops."}
+                  {bulkCreatedCodes.length > 0 ? t("dashboard.vouchers.bulkCreatedDescription") : t("dashboard.vouchers.bulkCreateDialogDescription")}
                 </DialogDescription>
               </DialogHeader>
               {bulkCreatedCodes.length > 0 ? (
@@ -467,42 +469,42 @@ export default function VouchersPage() {
                   <div className="grid grid-cols-2 gap-2">
                     <Button variant="outline" onClick={copyAllBulkCodes} data-testid="button-copy-all-codes">
                       {copiedBulk ? <Check className="w-4 h-4 mr-1.5" /> : <Copy className="w-4 h-4 mr-1.5" />}
-                      {copiedBulk ? "Copied!" : "Copy All"}
+                      {copiedBulk ? t("dashboard.vouchers.copied") : t("dashboard.vouchers.copyAll")}
                     </Button>
                     <Button variant="outline" onClick={downloadBulkCsv} data-testid="button-download-bulk-csv">
                       <Download className="w-4 h-4 mr-1.5" />
-                      Download CSV
+                      {t("dashboard.vouchers.downloadCsv")}
                     </Button>
                   </div>
                   <Button variant="secondary" className="w-full" onClick={() => handleBulkOpenChange(false)} data-testid="button-bulk-done">
-                    Done
+                    {t("dashboard.vouchers.done")}
                   </Button>
                 </div>
               ) : (
                 <div className="space-y-4 pt-2">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="bulk-count">Number of Vouchers</Label>
+                      <Label htmlFor="bulk-count">{t("dashboard.vouchers.bulkCount")}</Label>
                       <Input id="bulk-count" type="number" min="1" max="500" value={bulkCount} onChange={e => setBulkCount(e.target.value)} data-testid="input-bulk-count" />
-                      <p className="text-xs text-muted-foreground">1-500</p>
+                      <p className="text-xs text-muted-foreground">{t("dashboard.vouchers.bulkCountHelper")}</p>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="bulk-budget">Budget per Voucher ($)</Label>
+                      <Label htmlFor="bulk-budget">{t("dashboard.vouchers.bulkBudget")}</Label>
                       <Input id="bulk-budget" type="number" min="1" value={bulkBudget} onChange={e => setBulkBudget(e.target.value)} data-testid="input-bulk-budget" />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="bulk-expiry">Expires In (days)</Label>
+                      <Label htmlFor="bulk-expiry">{t("dashboard.vouchers.bulkExpiry")}</Label>
                       <Input id="bulk-expiry" type="number" min="1" value={bulkExpiryDays} onChange={e => setBulkExpiryDays(e.target.value)} data-testid="input-bulk-expiry" />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="bulk-label">Label (optional)</Label>
-                      <Input id="bulk-label" placeholder="Workshop batch" value={bulkLabel} onChange={e => setBulkLabel(e.target.value)} data-testid="input-bulk-label" />
+                      <Label htmlFor="bulk-label">{t("dashboard.vouchers.bulkLabelOptional")}</Label>
+                      <Input id="bulk-label" placeholder={t("dashboard.vouchers.bulkLabelPlaceholder")} value={bulkLabel} onChange={e => setBulkLabel(e.target.value)} data-testid="input-bulk-label" />
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label>Allowed AI Providers</Label>
+                    <Label>{t("dashboard.vouchers.allowedProviders")}</Label>
                     <div className="flex flex-wrap gap-3">
                       {PROVIDERS.map(p => (
                         <label key={p.id} className="flex items-center gap-2 cursor-pointer">
@@ -520,13 +522,13 @@ export default function VouchersPage() {
                     </div>
                   </div>
                   <div className="p-3 rounded-lg bg-cyan-50 dark:bg-cyan-950/30 text-sm">
-                    <p className="font-medium text-cyan-700 dark:text-cyan-300">Summary</p>
+                    <p className="font-medium text-cyan-700 dark:text-cyan-300">{t("dashboard.vouchers.bulkSummaryTitle")}</p>
                     <p className="text-xs text-cyan-600 dark:text-cyan-400 mt-0.5">
-                      {bulkCount} vouchers x ${bulkBudget}/each = ${(parseInt(bulkCount || "0") * parseFloat(bulkBudget || "0")).toFixed(2)} total budget
+                      {t("dashboard.vouchers.bulkSummaryDescription", { count: bulkCount, budget: bulkBudget, total: (parseInt(bulkCount || "0") * parseFloat(bulkBudget || "0")).toFixed(2) })}
                     </p>
                   </div>
                   <Button className="w-full" onClick={() => bulkCreateMutation.mutate()} disabled={bulkProviders.length === 0 || bulkCreateMutation.isPending} data-testid="button-submit-bulk-create">
-                    {bulkCreateMutation.isPending ? "Creating..." : `Create ${bulkCount} Vouchers`}
+                    {bulkCreateMutation.isPending ? t("dashboard.vouchers.bulkSubmitPending") : t("dashboard.vouchers.bulkSubmit", { count: bulkCount })}
                   </Button>
                 </div>
               )}
@@ -537,20 +539,20 @@ export default function VouchersPage() {
             <DialogTrigger asChild>
               <Button data-testid="button-create-voucher" disabled={!canCreateMore}>
                 <Plus className="w-4 h-4 mr-1.5" />
-                Create Voucher
+                {t("dashboard.vouchers.createButton")}
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>{createdCode ? "Voucher Created!" : "Create Voucher"}</DialogTitle>
+                <DialogTitle>{createdCode ? t("dashboard.vouchers.createdTitle") : t("dashboard.vouchers.createDialogTitle")}</DialogTitle>
                 <DialogDescription>
-                  {createdCode ? "Share this code with your recipient." : "Set a budget, expiry, and allowed providers for a new voucher."}
+                  {createdCode ? t("dashboard.vouchers.createdDescription") : t("dashboard.vouchers.createDialogDescription")}
                 </DialogDescription>
               </DialogHeader>
               {createdCode ? (
                 <div className="space-y-4 pt-2">
                   <div className="text-center p-6 rounded-lg bg-muted/50">
-                    <p className="text-sm text-muted-foreground mb-2">Voucher Code</p>
+                    <p className="text-sm text-muted-foreground mb-2">{t("dashboard.vouchers.voucherCodeLabel")}</p>
                     <code className="text-2xl font-mono font-bold text-primary tracking-widest" data-testid="text-created-voucher-code">
                       {createdCode}
                     </code>
@@ -558,35 +560,35 @@ export default function VouchersPage() {
                   <div className="grid grid-cols-2 gap-2">
                     <Button variant="outline" onClick={copyCode} data-testid="button-copy-created-code">
                       {copied ? <Check className="w-4 h-4 mr-1.5" /> : <Copy className="w-4 h-4 mr-1.5" />}
-                      {copied ? "Copied!" : "Copy Code"}
+                      {copied ? t("dashboard.vouchers.copied") : t("dashboard.vouchers.copyCode")}
                     </Button>
                     <Button variant="outline" onClick={copyLink} data-testid="button-copy-redeem-link">
                       {copiedLink ? <Check className="w-4 h-4 mr-1.5" /> : <Link2 className="w-4 h-4 mr-1.5" />}
-                      {copiedLink ? "Copied!" : "Copy Activation Link"}
+                      {copiedLink ? t("dashboard.vouchers.copied") : t("dashboard.vouchers.copyActivationLink")}
                     </Button>
                   </div>
 
                   {showEmailForm ? (
                     <div className="space-y-2 p-3 rounded-lg border bg-muted/30">
-                      <Label className="text-xs">Recipient email</Label>
+                      <Label className="text-xs">{t("dashboard.vouchers.recipientEmailLabel")}</Label>
                       <div className="flex gap-2">
                         <Input
                           type="email"
-                          placeholder="recipient@company.com"
+                          placeholder={t("dashboard.vouchers.recipientEmailPlaceholder")}
                           value={emailTo}
                           onChange={e => setEmailTo(e.target.value)}
                           className="h-9 text-sm"
                           data-testid="input-voucher-email"
                         />
                         <Button size="sm" className="h-9 shrink-0" onClick={sendVoucherEmail} disabled={!emailTo || sendingEmail} data-testid="button-send-voucher-email">
-                          {sendingEmail ? "Sending..." : <><Send className="w-3.5 h-3.5 mr-1" /> Send</>}
+                          {sendingEmail ? t("dashboard.vouchers.sendingEmail") : <><Send className="w-3.5 h-3.5 mr-1" /> {t("dashboard.vouchers.sendButton")}</>}
                         </Button>
                       </div>
                     </div>
                   ) : (
                     <Button variant="outline" className="w-full" onClick={() => setShowEmailForm(true)} data-testid="button-show-email-form">
                       <Mail className="w-4 h-4 mr-1.5" />
-                      Send via Email
+                      {t("dashboard.vouchers.sendViaEmail")}
                     </Button>
                   )}
 
@@ -596,29 +598,29 @@ export default function VouchersPage() {
                     data-testid="button-activate-now"
                   >
                     <ExternalLink className="w-4 h-4 mr-1.5" />
-                    Activate Code Now
+                    {t("dashboard.vouchers.activateNow")}
                   </Button>
 
                   <Button variant="secondary" className="w-full" onClick={() => handleOpenChange(false)} data-testid="button-done">
-                    Done
+                    {t("dashboard.vouchers.done")}
                   </Button>
                 </div>
               ) : (
                 <div className="space-y-4 pt-2">
                   {activeBundles.length > 0 && (
                     <div className="space-y-2">
-                      <Label>Voucher Source</Label>
+                      <Label>{t("dashboard.vouchers.voucherSourceLabel")}</Label>
                       <Select value={selectedBundleId || "none"} onValueChange={handleBundleChange}>
                         <SelectTrigger data-testid="select-voucher-source">
-                          <SelectValue placeholder="Select source" />
+                          <SelectValue placeholder={t("dashboard.vouchers.voucherSourcePlaceholder")} />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none">
-                            {voucherLimits?.plan === "FREE" ? "Free Plan Voucher" : "Team Plan Voucher"}
+                            {voucherLimits?.plan === "FREE" ? t("dashboard.vouchers.sourceFreePlan") : t("dashboard.vouchers.sourceTeamPlan")}
                           </SelectItem>
                           {activeBundles.map((b: any) => (
                             <SelectItem key={b.id} value={b.id}>
-                              Voucher Bundle (expires {new Date(b.expiresAt).toLocaleDateString()})
+                              {t("dashboard.vouchers.sourceBundle", { date: new Date(b.expiresAt).toLocaleDateString() })}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -630,35 +632,35 @@ export default function VouchersPage() {
                     <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
                     <div>
                       <p className="font-medium text-blue-700 dark:text-blue-300">
-                        {selectedBundleId ? "Bundle Voucher" : `${voucherLimits?.plan || "FREE"} Plan`} Limits
+                        {selectedBundleId ? t("dashboard.vouchers.limitsTitleBundle") : t("dashboard.vouchers.limitsTitlePlan", { plan: voucherLimits?.plan || "FREE" })}
                       </p>
                       <p className="text-blue-600 dark:text-blue-400 text-xs mt-0.5">
-                        Max ${maxBudget}/recipient, {maxRedemptionLimit} redemptions, {maxExpiry} day{maxExpiry !== 1 ? 's' : ''} expiry
+                        {t("dashboard.vouchers.limitsDescription", { maxBudget, maxRedemptions: maxRedemptionLimit, maxExpiry })}
                       </p>
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="voucher-label">Label (optional)</Label>
-                    <Input id="voucher-label" placeholder="AI Workshop March 2026" value={label} onChange={e => setLabel(e.target.value)} data-testid="input-voucher-label" />
+                    <Label htmlFor="voucher-label">{t("dashboard.vouchers.labelOptional")}</Label>
+                    <Input id="voucher-label" placeholder={t("dashboard.vouchers.labelPlaceholder")} value={label} onChange={e => setLabel(e.target.value)} data-testid="input-voucher-label" />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="voucher-budget">Budget per Recipient ($)</Label>
+                    <Label htmlFor="voucher-budget">{t("dashboard.vouchers.budgetLabel")}</Label>
                     <Input id="voucher-budget" type="number" min="1" max={maxBudget} value={budgetDollars} onChange={e => setBudgetDollars(e.target.value)} data-testid="input-voucher-budget" />
-                    <p className="text-xs text-muted-foreground">Max ${maxBudget}</p>
+                    <p className="text-xs text-muted-foreground">{t("dashboard.vouchers.maxLabel", { amount: maxBudget })}</p>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="voucher-redemptions">Max Redemptions</Label>
+                    <Label htmlFor="voucher-redemptions">{t("dashboard.vouchers.redemptionsLabel")}</Label>
                     <Input id="voucher-redemptions" type="number" min="1" max={maxRedemptionLimit} value={maxRedemptions} onChange={e => setMaxRedemptions(e.target.value)} data-testid="input-voucher-redemptions" />
-                    <p className="text-xs text-muted-foreground">Max {maxRedemptionLimit}</p>
+                    <p className="text-xs text-muted-foreground">{t("dashboard.vouchers.maxLabelCount", { count: maxRedemptionLimit })}</p>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="voucher-expiry">Expires In (days)</Label>
+                    <Label htmlFor="voucher-expiry">{t("dashboard.vouchers.expiryLabel")}</Label>
                     <Input id="voucher-expiry" type="number" min="1" max={maxExpiry} value={expiryDays} onChange={e => setExpiryDays(e.target.value)} data-testid="input-voucher-expiry" />
-                    <p className="text-xs text-muted-foreground">Max {maxExpiry} day{maxExpiry !== 1 ? 's' : ''}</p>
+                    <p className="text-xs text-muted-foreground">{t("dashboard.vouchers.maxLabelDays", { count: maxExpiry })}</p>
                   </div>
                   <div className="space-y-2">
-                    <Label>Allowed AI Providers</Label>
+                    <Label>{t("dashboard.vouchers.allowedProviders")}</Label>
                     <div className="flex flex-wrap gap-3">
                       {PROVIDERS.map(p => (
                         <label key={p.id} className="flex items-center gap-2 cursor-pointer">
@@ -676,16 +678,16 @@ export default function VouchersPage() {
                     </div>
                   </div>
                   <div className="p-3 rounded-lg bg-muted/50">
-                    <p className="text-sm font-medium">Summary</p>
+                    <p className="text-sm font-medium">{t("dashboard.vouchers.summaryTitle")}</p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      ${budgetDollars} x {maxRedemptions} redemptions = ${(parseFloat(budgetDollars || "0") * parseInt(maxRedemptions || "0")).toFixed(2)} total
+                      {t("dashboard.vouchers.summaryDescription", { budget: budgetDollars, redemptions: maxRedemptions, total: (parseFloat(budgetDollars || "0") * parseInt(maxRedemptions || "0")).toFixed(2) })}
                     </p>
                     {selectedBundleId && (
-                      <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-1">From Voucher Bundle</p>
+                      <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-1">{t("dashboard.vouchers.fromBundle")}</p>
                     )}
                   </div>
                   <Button className="w-full" onClick={() => createMutation.mutate()} disabled={providers.length === 0 || createMutation.isPending} data-testid="button-submit-voucher">
-                    {createMutation.isPending ? "Creating..." : "Create Voucher"}
+                    {createMutation.isPending ? t("dashboard.vouchers.submitCreatePending") : t("dashboard.vouchers.submitCreate")}
                   </Button>
                 </div>
               )}
@@ -698,15 +700,15 @@ export default function VouchersPage() {
         <Card className="p-4">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <Badge variant="secondary" className="no-default-hover-elevate no-default-active-elevate text-xs">{voucherLimits.plan} Plan</Badge>
+              <Badge variant="secondary" className="no-default-hover-elevate no-default-active-elevate text-xs">{t("dashboard.vouchers.planBadge", { plan: voucherLimits.plan })}</Badge>
               <span className="text-sm text-muted-foreground">
-                {voucherLimits.activeVouchers}/{voucherLimits.plan === "FREE" ? 1 : 5} active voucher code{voucherLimits.plan === "FREE" ? '' : 's'}
+                {t("dashboard.vouchers.activeCounter", { active: voucherLimits.activeVouchers, max: voucherLimits.plan === "FREE" ? 1 : 5 })}
               </span>
             </div>
             {voucherLimits.remainingCodes === 0 && (
               <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 text-xs">
                 <AlertTriangle className="w-3.5 h-3.5" />
-                Limit reached — purchase a Voucher Bundle for more
+                {t("dashboard.vouchers.limitReached")}
               </div>
             )}
           </div>
@@ -717,7 +719,7 @@ export default function VouchersPage() {
         <Card className="p-3 border-cyan-200 dark:border-cyan-800 bg-cyan-50/50 dark:bg-cyan-950/30">
           <div className="flex items-center justify-between gap-2">
             <span className="text-sm font-medium text-cyan-700 dark:text-cyan-300">
-              {selectedIds.size} voucher{selectedIds.size !== 1 ? "s" : ""} selected
+              {t("dashboard.vouchers.selectedCount", { count: selectedIds.size })}
             </span>
             <div className="flex items-center gap-2">
               <AlertDialog>
@@ -729,30 +731,30 @@ export default function VouchersPage() {
                     data-testid="button-bulk-revoke"
                   >
                     <Ban className="w-3.5 h-3.5 mr-1" />
-                    {bulkRevokeMutation.isPending ? "Revoking..." : "Revoke Selected"}
+                    {bulkRevokeMutation.isPending ? t("dashboard.vouchers.revoking") : t("dashboard.vouchers.revokeSelected")}
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Revoke {selectedIds.size} voucher{selectedIds.size !== 1 ? "s" : ""}?</AlertDialogTitle>
+                    <AlertDialogTitle>{t("dashboard.vouchers.bulkRevokeTitle", { count: selectedIds.size })}</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This will revoke all selected vouchers and disable any associated API keys. This action cannot be undone.
+                      {t("dashboard.vouchers.bulkRevokeDescription")}
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
-                    <AlertDialogCancel data-testid="button-cancel-bulk-revoke">Cancel</AlertDialogCancel>
+                    <AlertDialogCancel data-testid="button-cancel-bulk-revoke">{t("dashboard.vouchers.cancel")}</AlertDialogCancel>
                     <AlertDialogAction
                       onClick={() => bulkRevokeMutation.mutate(Array.from(selectedIds))}
                       className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                       data-testid="button-confirm-bulk-revoke"
                     >
-                      Revoke {selectedIds.size} Voucher{selectedIds.size !== 1 ? "s" : ""}
+                      {t("dashboard.vouchers.bulkRevokeSubmit", { count: selectedIds.size })}
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
               <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())} data-testid="button-clear-selection">
-                Clear
+                {t("dashboard.vouchers.clearSelection")}
               </Button>
             </div>
           </div>
@@ -762,28 +764,28 @@ export default function VouchersPage() {
       <Dialog open={!!editVoucherId} onOpenChange={(o) => { if (!o) setEditVoucherId(null); }}>
         <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Edit Voucher</DialogTitle>
-            <DialogDescription>Update this voucher's settings. Only unredeemed vouchers can be edited.</DialogDescription>
+            <DialogTitle>{t("dashboard.vouchers.editDialogTitle")}</DialogTitle>
+            <DialogDescription>{t("dashboard.vouchers.editDialogDescription")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 pt-2">
             <div className="space-y-2">
-              <Label>Label</Label>
-              <Input placeholder="Optional label" value={editVoucherLabel} onChange={e => setEditVoucherLabel(e.target.value)} data-testid="input-edit-voucher-label" />
+              <Label>{t("dashboard.vouchers.editLabel")}</Label>
+              <Input placeholder={t("dashboard.vouchers.editLabelPlaceholder")} value={editVoucherLabel} onChange={e => setEditVoucherLabel(e.target.value)} data-testid="input-edit-voucher-label" />
             </div>
             <div className="space-y-2">
-              <Label>Budget per Recipient ($)</Label>
+              <Label>{t("dashboard.vouchers.editBudget")}</Label>
               <Input type="number" min="1" value={editVoucherBudget} onChange={e => setEditVoucherBudget(e.target.value)} data-testid="input-edit-voucher-budget" />
             </div>
             <div className="space-y-2">
-              <Label>Max Redemptions</Label>
+              <Label>{t("dashboard.vouchers.editRedemptions")}</Label>
               <Input type="number" min="1" value={editVoucherMaxRedemptions} onChange={e => setEditVoucherMaxRedemptions(e.target.value)} data-testid="input-edit-voucher-redemptions" />
             </div>
             <div className="space-y-2">
-              <Label>Expires At</Label>
+              <Label>{t("dashboard.vouchers.editExpiresAt")}</Label>
               <Input type="datetime-local" value={editVoucherExpiry} onChange={e => setEditVoucherExpiry(e.target.value)} data-testid="input-edit-voucher-expiry" />
             </div>
             <div className="space-y-2">
-              <Label>Allowed AI Providers</Label>
+              <Label>{t("dashboard.vouchers.allowedProviders")}</Label>
               <div className="flex flex-wrap gap-3">
                 {PROVIDERS.map(p => (
                   <label key={p.id} className="flex items-center gap-2 cursor-pointer">
@@ -801,7 +803,7 @@ export default function VouchersPage() {
               </div>
             </div>
             <Button className="w-full" onClick={() => editVoucherMutation.mutate()} disabled={editVoucherProviders.length === 0 || editVoucherMutation.isPending} data-testid="button-save-voucher-edit">
-              {editVoucherMutation.isPending ? "Saving..." : "Save Changes"}
+              {editVoucherMutation.isPending ? t("dashboard.vouchers.savingChanges") : t("dashboard.vouchers.saveChanges")}
             </Button>
           </div>
         </DialogContent>
@@ -810,16 +812,16 @@ export default function VouchersPage() {
       <Dialog open={!!extendVoucherId} onOpenChange={(o) => { if (!o) { setExtendVoucherId(null); setExtendDate(""); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Extend Voucher Expiry</DialogTitle>
-            <DialogDescription>Set a new expiry date for this voucher and its associated memberships.</DialogDescription>
+            <DialogTitle>{t("dashboard.vouchers.extendDialogTitle")}</DialogTitle>
+            <DialogDescription>{t("dashboard.vouchers.extendDialogDescription")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 pt-2">
             <div className="space-y-2">
-              <Label>New Expiry Date</Label>
+              <Label>{t("dashboard.vouchers.extendDateLabel")}</Label>
               <Input type="datetime-local" value={extendDate} onChange={e => setExtendDate(e.target.value)} data-testid="input-extend-date" />
             </div>
             <Button className="w-full" onClick={() => extendMutation.mutate()} disabled={!extendDate || extendMutation.isPending} data-testid="button-submit-extend">
-              {extendMutation.isPending ? "Extending..." : "Extend Expiry"}
+              {extendMutation.isPending ? t("dashboard.vouchers.extendingPending") : t("dashboard.vouchers.extendSubmit")}
             </Button>
           </div>
         </DialogContent>
@@ -828,16 +830,16 @@ export default function VouchersPage() {
       <Dialog open={!!topUpVoucherId} onOpenChange={(o) => { if (!o) { setTopUpVoucherId(null); setTopUpAmount("5"); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Top Up Voucher Budget</DialogTitle>
-            <DialogDescription>Add more budget to this voucher. If the user was budget-exhausted, they will be reactivated.</DialogDescription>
+            <DialogTitle>{t("dashboard.vouchers.topUpDialogTitle")}</DialogTitle>
+            <DialogDescription>{t("dashboard.vouchers.topUpDialogDescription")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 pt-2">
             <div className="space-y-2">
-              <Label>Additional Budget ($)</Label>
+              <Label>{t("dashboard.vouchers.topUpAmountLabel")}</Label>
               <Input type="number" min="1" value={topUpAmount} onChange={e => setTopUpAmount(e.target.value)} data-testid="input-topup-amount" />
             </div>
             <Button className="w-full" onClick={() => topUpMutation.mutate()} disabled={!topUpAmount || parseFloat(topUpAmount) <= 0 || topUpMutation.isPending} data-testid="button-submit-topup">
-              {topUpMutation.isPending ? "Topping up..." : `Add $${topUpAmount}`}
+              {topUpMutation.isPending ? t("dashboard.vouchers.topUpPending") : t("dashboard.vouchers.topUpSubmit", { amount: topUpAmount })}
             </Button>
           </div>
         </DialogContent>
@@ -845,17 +847,17 @@ export default function VouchersPage() {
 
       {vouchers && vouchers.length > 0 && (
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-muted-foreground">Filter:</span>
+          <span className="text-sm font-medium text-muted-foreground">{t("dashboard.vouchers.filterLabel")}</span>
           <Select value={listFilter} onValueChange={(val) => { setListFilter(val); setSelectedIds(new Set()); }}>
             <SelectTrigger className="w-[160px] h-9" data-testid="select-voucher-list-filter">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Vouchers ({vouchers.length})</SelectItem>
-              <SelectItem value="ACTIVE">Active ({vouchers.filter((v: any) => v.status === "ACTIVE").length})</SelectItem>
-              <SelectItem value="FULLY_REDEEMED">Redeemed ({vouchers.filter((v: any) => v.status === "FULLY_REDEEMED").length})</SelectItem>
-              <SelectItem value="EXPIRED">Expired ({vouchers.filter((v: any) => v.status === "EXPIRED").length})</SelectItem>
-              <SelectItem value="REVOKED">Revoked ({vouchers.filter((v: any) => v.status === "REVOKED").length})</SelectItem>
+              <SelectItem value="all">{t("dashboard.vouchers.filterAllVouchers", { count: vouchers.length })}</SelectItem>
+              <SelectItem value="ACTIVE">{t("dashboard.vouchers.filterActive", { count: vouchers.filter((v: any) => v.status === "ACTIVE").length })}</SelectItem>
+              <SelectItem value="FULLY_REDEEMED">{t("dashboard.vouchers.filterRedeemed", { count: vouchers.filter((v: any) => v.status === "FULLY_REDEEMED").length })}</SelectItem>
+              <SelectItem value="EXPIRED">{t("dashboard.vouchers.filterExpired", { count: vouchers.filter((v: any) => v.status === "EXPIRED").length })}</SelectItem>
+              <SelectItem value="REVOKED">{t("dashboard.vouchers.filterRevoked", { count: vouchers.filter((v: any) => v.status === "REVOKED").length })}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -872,7 +874,7 @@ export default function VouchersPage() {
                 onCheckedChange={toggleSelectAll}
                 data-testid="checkbox-select-all-vouchers"
               />
-              <span className="text-xs text-muted-foreground">Select all</span>
+              <span className="text-xs text-muted-foreground">{t("dashboard.vouchers.selectAll")}</span>
             </div>
           )}
           <div className="grid sm:grid-cols-2 gap-4">
@@ -914,7 +916,7 @@ export default function VouchersPage() {
                                 data-testid={`button-extend-voucher-${v.id}`}
                               >
                                 <Clock className="w-3.5 h-3.5 mr-1" />
-                                Extend
+                                {t("dashboard.vouchers.extendAction")}
                               </Button>
                               <Button
                                 size="sm"
@@ -924,7 +926,7 @@ export default function VouchersPage() {
                                 data-testid={`button-topup-voucher-${v.id}`}
                               >
                                 <DollarSign className="w-3.5 h-3.5 mr-1" />
-                                Top Up
+                                {t("dashboard.vouchers.topUpAction")}
                               </Button>
                             </>
                           )}
@@ -937,7 +939,7 @@ export default function VouchersPage() {
                               data-testid={`button-edit-voucher-${v.id}`}
                             >
                               <Pencil className="w-3.5 h-3.5 mr-1" />
-                              Edit
+                              {t("dashboard.vouchers.editAction")}
                             </Button>
                           )}
                           {canRevoke(v) && (
@@ -951,27 +953,27 @@ export default function VouchersPage() {
                                   data-testid={`button-revoke-voucher-${v.id}`}
                                 >
                                   <Ban className="w-3.5 h-3.5 mr-1" />
-                                  Revoke
+                                  {t("dashboard.vouchers.revokeAction")}
                                 </Button>
                               </AlertDialogTrigger>
                               <AlertDialogContent>
                                 <AlertDialogHeader>
-                                  <AlertDialogTitle>Revoke Voucher?</AlertDialogTitle>
+                                  <AlertDialogTitle>{t("dashboard.vouchers.revokeDialogTitle")}</AlertDialogTitle>
                                   <AlertDialogDescription>
                                     {v.currentRedemptions > 0
-                                      ? <>Revoking <strong>{v.code}</strong> will disable API keys for {v.currentRedemptions} active member(s). This cannot be undone.</>
-                                      : <>Are you sure you want to revoke voucher <strong>{v.code}</strong>? This will prevent any new redemptions. This action cannot be undone.</>
+                                      ? t("dashboard.vouchers.revokeDescriptionRedeemed", { code: v.code, count: v.currentRedemptions })
+                                      : t("dashboard.vouchers.revokeDescriptionUnredeemed", { code: v.code })
                                     }
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
-                                  <AlertDialogCancel data-testid="button-cancel-revoke-voucher">Cancel</AlertDialogCancel>
+                                  <AlertDialogCancel data-testid="button-cancel-revoke-voucher">{t("dashboard.vouchers.cancel")}</AlertDialogCancel>
                                   <AlertDialogAction
                                     onClick={() => revokeMutation.mutate(v.id)}
                                     className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                     data-testid="button-confirm-revoke-voucher"
                                   >
-                                    Revoke Voucher
+                                    {t("dashboard.vouchers.revokeSubmit")}
                                   </AlertDialogAction>
                                 </AlertDialogFooter>
                               </AlertDialogContent>
@@ -987,27 +989,27 @@ export default function VouchersPage() {
                                 data-testid={`button-delete-voucher-${v.id}`}
                               >
                                 <Trash2 className="w-3.5 h-3.5 mr-1" />
-                                Delete
+                                {t("dashboard.vouchers.deleteAction")}
                               </Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                               <AlertDialogHeader>
-                                <AlertDialogTitle>Delete Voucher?</AlertDialogTitle>
+                                <AlertDialogTitle>{t("dashboard.vouchers.deleteDialogTitle")}</AlertDialogTitle>
                                 <AlertDialogDescription>
                                   {v.currentRedemptions > 0
-                                    ? <>This voucher has been redeemed {v.currentRedemptions} time(s). Deleting it will also revoke the recipient's API key and remove their membership. This cannot be undone.</>
-                                    : <>This will permanently delete voucher <strong>{v.code}</strong>. This cannot be undone.</>
+                                    ? t("dashboard.vouchers.deleteDescriptionRedeemed", { count: v.currentRedemptions })
+                                    : t("dashboard.vouchers.deleteDescriptionUnredeemed", { code: v.code })
                                   }
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
-                                <AlertDialogCancel data-testid="button-cancel-delete-voucher">Cancel</AlertDialogCancel>
+                                <AlertDialogCancel data-testid="button-cancel-delete-voucher">{t("dashboard.vouchers.cancel")}</AlertDialogCancel>
                                 <AlertDialogAction
                                   onClick={() => deleteVoucherMutation.mutate(v.id)}
                                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                   data-testid="button-confirm-delete-voucher"
                                 >
-                                  Delete Voucher
+                                  {t("dashboard.vouchers.deleteSubmit")}
                                 </AlertDialogAction>
                               </AlertDialogFooter>
                             </AlertDialogContent>
@@ -1021,7 +1023,7 @@ export default function VouchersPage() {
                               data-testid={`button-details-voucher-${v.id}`}
                             >
                               {expandedVoucherId === v.id ? <ChevronUp className="w-3.5 h-3.5 mr-1" /> : <ChevronDown className="w-3.5 h-3.5 mr-1" />}
-                              Details
+                              {t("dashboard.vouchers.detailsAction")}
                             </Button>
                           )}
                         </div>
@@ -1037,15 +1039,15 @@ export default function VouchersPage() {
       ) : vouchers && vouchers.length > 0 && filteredVouchers?.length === 0 ? (
         <EmptyState
           icon={<Ticket className="w-10 h-10 text-muted-foreground" />}
-          title="No vouchers match this filter"
-          description={`No ${listFilter === "FULLY_REDEEMED" ? "redeemed" : listFilter.toLowerCase()} vouchers found. Try a different filter.`}
+          title={t("dashboard.vouchers.emptyFilterTitle")}
+          description={t("dashboard.vouchers.emptyFilterDescription", { status: listFilter === "FULLY_REDEEMED" ? "redeemed" : listFilter.toLowerCase() })}
         />
       ) : (
         <EmptyState
           icon={<Ticket className="w-10 h-10 text-muted-foreground" />}
-          title="Create your first voucher"
-          description="Create voucher codes to distribute AI access to anyone"
-          action={{ label: "Create Voucher", onClick: () => setOpen(true) }}
+          title={t("dashboard.vouchers.emptyTitle")}
+          description={t("dashboard.vouchers.emptyDescription")}
+          action={{ label: t("dashboard.vouchers.emptyAction"), onClick: () => setOpen(true) }}
         />
       )}
     </div>
@@ -1053,6 +1055,7 @@ export default function VouchersPage() {
 }
 
 function VoucherDetailsPanel({ voucherId }: { voucherId: string }) {
+  const { t } = useTranslation();
   const { data, isLoading } = useQuery<any>({
     queryKey: ["/api/vouchers", voucherId, "details"],
     queryFn: async () => {
@@ -1063,7 +1066,7 @@ function VoucherDetailsPanel({ voucherId }: { voucherId: string }) {
   });
 
   if (isLoading) return <div className="p-3 mt-1"><Skeleton className="h-20" /></div>;
-  if (!data?.details?.length) return <div className="p-3 mt-1 text-xs text-muted-foreground">No redemption details available.</div>;
+  if (!data?.details?.length) return <div className="p-3 mt-1 text-xs text-muted-foreground">{t("dashboard.vouchers.detailsNoData")}</div>;
 
   return (
     <div className="mt-1 rounded-lg border bg-muted/20 p-3 space-y-3" data-testid={`panel-voucher-details-${voucherId}`}>
@@ -1073,33 +1076,33 @@ function VoucherDetailsPanel({ voucherId }: { voucherId: string }) {
           <div className="grid grid-cols-2 gap-x-4 gap-y-1">
             <div className="flex items-center gap-1.5">
               <User className="w-3 h-3 text-muted-foreground" />
-              <span className="text-muted-foreground">Redeemed by:</span>
+              <span className="text-muted-foreground">{t("dashboard.vouchers.detailsRedeemedBy")}</span>
               <span className="font-medium" data-testid={`text-redeemed-by-${i}`}>{d.redeemedBy}</span>
             </div>
             <div className="flex items-center gap-1.5">
               <Clock className="w-3 h-3 text-muted-foreground" />
-              <span className="text-muted-foreground">At:</span>
+              <span className="text-muted-foreground">{t("dashboard.vouchers.detailsAt")}</span>
               <span data-testid={`text-redeemed-at-${i}`}>{new Date(d.redeemedAt).toLocaleString()}</span>
             </div>
             <div className="flex items-center gap-1.5">
               <Key className="w-3 h-3 text-muted-foreground" />
-              <span className="text-muted-foreground">Key:</span>
+              <span className="text-muted-foreground">{t("dashboard.vouchers.detailsKey")}</span>
               <code className="text-xs font-mono" data-testid={`text-key-prefix-${i}`}>{d.keyPrefix || "—"}...</code>
             </div>
             <div className="flex items-center gap-1.5">
               <DollarSign className="w-3 h-3 text-muted-foreground" />
-              <span className="text-muted-foreground">Spent:</span>
+              <span className="text-muted-foreground">{t("dashboard.vouchers.detailsSpent")}</span>
               <span data-testid={`text-current-spend-${i}`}>${(d.currentSpendCents / 100).toFixed(2)}</span>
             </div>
             <div className="flex items-center gap-1.5">
               <Activity className="w-3 h-3 text-muted-foreground" />
-              <span className="text-muted-foreground">Requests:</span>
+              <span className="text-muted-foreground">{t("dashboard.vouchers.detailsRequests")}</span>
               <span data-testid={`text-requests-made-${i}`}>{d.requestsMade}</span>
             </div>
             <div className="flex items-center gap-1.5">
               <Activity className="w-3 h-3 text-muted-foreground" />
-              <span className="text-muted-foreground">Last request:</span>
-              <span data-testid={`text-last-request-${i}`}>{d.lastRequestAt ? new Date(d.lastRequestAt).toLocaleString() : "Never"}</span>
+              <span className="text-muted-foreground">{t("dashboard.vouchers.detailsLastRequest")}</span>
+              <span data-testid={`text-last-request-${i}`}>{d.lastRequestAt ? new Date(d.lastRequestAt).toLocaleString() : t("dashboard.vouchers.detailsNever")}</span>
             </div>
           </div>
           <Badge variant="secondary" className="text-[10px] no-default-hover-elevate no-default-active-elevate" data-testid={`badge-membership-status-${i}`}>

@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -29,16 +30,20 @@ export function DataTable<T extends Record<string, any>>({
   data,
   columns,
   searchable = false,
-  searchPlaceholder = "Search...",
+  searchPlaceholder,
   searchKeys = [],
   pageSize = 10,
-  emptyMessage = "No data found",
+  emptyMessage,
   className = "",
 }: DataTableProps<T>) {
+  const { t } = useTranslation();
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(0);
+
+  const placeholderText = searchPlaceholder ?? t("dashboard.components.dataTable.searchPlaceholder");
+  const emptyText = emptyMessage ?? t("dashboard.components.dataTable.emptyMessage");
 
   const filtered = useMemo(() => {
     if (!search || !searchKeys.length) return data;
@@ -83,7 +88,7 @@ export function DataTable<T extends Record<string, any>>({
           <Input
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(0); }}
-            placeholder={searchPlaceholder}
+            placeholder={placeholderText}
             className="pl-9"
             data-testid="input-table-search"
           />
@@ -120,7 +125,7 @@ export function DataTable<T extends Record<string, any>>({
             {paged.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={columns.length} className="text-center py-12 text-muted-foreground">
-                  {emptyMessage}
+                  {emptyText}
                 </TableCell>
               </TableRow>
             ) : (
@@ -141,7 +146,11 @@ export function DataTable<T extends Record<string, any>>({
       {totalPages > 1 && (
         <div className="flex items-center justify-between gap-2 mt-3 px-1">
           <span className="text-xs text-muted-foreground">
-            Showing {page * pageSize + 1}–{Math.min((page + 1) * pageSize, sorted.length)} of {sorted.length}
+            {t("dashboard.components.dataTable.showingRange", {
+              from: page * pageSize + 1,
+              to: Math.min((page + 1) * pageSize, sorted.length),
+              total: sorted.length,
+            })}
           </span>
           <div className="flex items-center gap-1">
             <Button
@@ -151,12 +160,12 @@ export function DataTable<T extends Record<string, any>>({
               disabled={page === 0}
               onClick={() => setPage(p => p - 1)}
               data-testid="button-table-prev"
-              aria-label="Previous page"
+              aria-label={t("dashboard.components.dataTable.previousPage")}
             >
               <ChevronLeft className="w-4 h-4" />
             </Button>
             <span className="text-xs font-medium px-2" aria-live="polite">
-              {page + 1} / {totalPages}
+              {t("dashboard.components.dataTable.pageOf", { page: page + 1, total: totalPages })}
             </span>
             <Button
               size="icon"
@@ -165,7 +174,7 @@ export function DataTable<T extends Record<string, any>>({
               disabled={page >= totalPages - 1}
               onClick={() => setPage(p => p + 1)}
               data-testid="button-table-next"
-              aria-label="Next page"
+              aria-label={t("dashboard.components.dataTable.nextPage")}
             >
               <ChevronRight className="w-4 h-4" />
             </Button>

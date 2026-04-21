@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { ArrowRight, Check, ChevronDown, ChevronRight, ChevronsUpDown, Lock, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,6 +42,7 @@ interface Props {
 const PROVIDER_ORDER: Provider[] = ["OPENAI", "ANTHROPIC", "GOOGLE"];
 
 export function DualRoleStep({ onConfirm }: Props) {
+  const { t } = useTranslation();
   const session = useArenaSession();
   const { state, setAllowlist, setLineup, clearRepairs, confirmSetup } = session;
 
@@ -52,24 +54,15 @@ export function DualRoleStep({ onConfirm }: Props) {
   const repairs = state.lastRepairs;
   const isLive = state.mode === "live";
 
-  // In live mode, any allowed id that isn't in the catalog is a user-added
-  // custom model. We show it under its own group so it's clearly user-added.
   const customAllowed = useMemo(
     () => allowed.filter((id) => !CATALOG_BY_ID[id]),
     [allowed],
   );
 
-  // Live mode: fetch the actual list of models this key is allowed to call
-  // from /api/v1/models so users can pick from a typo-proof dropdown instead
-  // of typing model ids by hand.
   const [keyModels, setKeyModels] = useState<KeyAllowedModel[]>([]);
   const [keyModelsState, setKeyModelsState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [keyModelsError, setKeyModelsError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
-  // Hold the setter in a ref because the session provider rebuilds its
-  // value object on every state change — depending on it directly would
-  // refire this effect in an infinite loop and keep the picker stuck on
-  // "Loading models from your key…" forever.
   const setKeyModelPricingRef = useRef(session.setKeyModelPricing);
   setKeyModelPricingRef.current = session.setKeyModelPricing;
 
@@ -89,8 +82,6 @@ export function DualRoleStep({ onConfirm }: Props) {
       if (res.ok) {
         setKeyModels(res.models);
         setKeyModelsState("ready");
-        // Stash pricing in session so the round runner can compute real
-        // $ cost for any model the key allows — including custom adds.
         const pricing: Record<string, { input: number; output: number }> = {};
         for (const m of res.models) {
           pricing[m.id] = { input: m.inputPerM, output: m.outputPerM };
@@ -111,8 +102,8 @@ export function DualRoleStep({ onConfirm }: Props) {
 
   function addCustomModel(id: string) {
     if (!id) return;
-    if (allowed.includes(id)) return; // silent: already on list
-    if (customAtCap) return; // hard cap: 3 custom models
+    if (allowed.includes(id)) return;
+    if (customAtCap) return;
     setAllowlist([...allowed, id]);
     setPickerOpen(false);
   }
@@ -122,8 +113,6 @@ export function DualRoleStep({ onConfirm }: Props) {
     setAllowlist(allowed.filter((m) => m !== id));
   }
 
-  // Models the key can call that aren't in our static catalog AND haven't
-  // already been added — these are the candidates shown in the picker.
   const pickerCandidates = useMemo(
     () =>
       keyModels.filter(
@@ -132,7 +121,6 @@ export function DualRoleStep({ onConfirm }: Props) {
     [keyModels, allowed],
   );
 
-  // Auto-fade the inline repair note(s) ~5s after the allowlist toggle.
   useEffect(() => {
     if (repairs.length === 0) return;
     const timer = setTimeout(() => clearRepairs(), 5000);
@@ -143,8 +131,6 @@ export function DualRoleStep({ onConfirm }: Props) {
 
   const summary = useMemo(() => {
     if (allowed.length === 0) return { count: 0, cheapest: 0, max: 0 };
-    // Custom (live-only) ids aren't in the catalog, so we can't price them.
-    // Compute cheapest/max only across known catalog entries.
     const prices = allowed
       .map((id) => CATALOG_BY_ID[id]?.inputPerM)
       .filter((p): p is number => typeof p === "number");
@@ -157,7 +143,7 @@ export function DualRoleStep({ onConfirm }: Props) {
 
   function toggle(id: ModelId) {
     const next = allowed.includes(id) ? allowed.filter((m) => m !== id) : [...allowed, id];
-    if (next.length === 0) return; // never allow empty
+    if (next.length === 0) return;
     setAllowlist(next);
   }
 
@@ -194,12 +180,12 @@ export function DualRoleStep({ onConfirm }: Props) {
         <div className="mb-6">
           <div className="flex items-center gap-3 text-sm text-white/60">
             <span className="rounded-full bg-indigo-500/15 text-indigo-300 px-2.5 py-1 text-xs font-medium">
-              Two hats
+              {t("arena.dualRole.twoHats")}
             </span>
-            <span>Admin curates · developer picks the lineup. Both decisions are yours.</span>
+            <span>{t("arena.dualRole.adminCuratesDevPicks")}</span>
           </div>
           <h2 className="mt-3 text-2xl font-semibold text-white">
-            You're wearing two hats. Both decisions matter.
+            {t("arena.dualRole.headline")}
           </h2>
         </div>
 
@@ -213,23 +199,24 @@ export function DualRoleStep({ onConfirm }: Props) {
               <div>
                 <div className="flex items-center gap-2">
                   <span className="rounded-full bg-emerald-500/15 text-emerald-300 px-2 py-0.5 text-[10px] uppercase tracking-wide font-medium">
-                    Step 1 · Admin hat
+                    {t("arena.dualRole.adminStep")}
                   </span>
                 </div>
                 <h3 className="mt-2 text-lg font-semibold text-white">
-                  Which models is this key allowed to call?
+                  {t("arena.dualRole.adminQuestion")}
                 </h3>
                 <p className="mt-1 text-sm text-white/65">
-                  In production this is the membership editor. Pick what your team's key can call. Allotly enforces this at the proxy — a request for a model that isn't on your list returns{" "}
-                  <code className="font-mono text-[12px] text-amber-200">403 model_not_allowed</code> before a token is charged.
+                  <Trans
+                    i18nKey="arena.dualRole.adminDesc"
+                    components={{ code: <code className="font-mono text-[12px] text-amber-200" /> }}
+                  />
                 </p>
                 {isLive && (
                   <p
                     className="mt-2 text-xs text-emerald-300/90"
                     data-testid="text-live-any-model"
                   >
-                    Live mode: not limited to the catalog — add any model id your key allows
-                    below to race it for real.
+                    {t("arena.dualRole.liveAnyModel")}
                   </p>
                 )}
               </div>
@@ -275,21 +262,22 @@ export function DualRoleStep({ onConfirm }: Props) {
               >
                 <div className="flex items-baseline justify-between gap-2 mb-2">
                   <div className="text-[11px] uppercase tracking-wide text-emerald-300">
-                    More from your key
+                    {t("arena.dualRole.moreFromKey")}
                     <span className="ml-2 text-white/40 normal-case tracking-normal" data-testid="text-custom-cap">
-                      {customAllowed.length}/{MAX_CUSTOM_MODELS} added
+                      {t("arena.dualRole.customAdded", { count: customAllowed.length, cap: MAX_CUSTOM_MODELS })}
                     </span>
                   </div>
                   <div className="text-[11px] text-white/40">
-                    {keyModelsState === "loading" && "loading models from your key…"}
-                    {keyModelsState === "ready" && `${pickerCandidates.length} extra available`}
-                    {keyModelsState === "error" && "couldn’t load model list"}
+                    {keyModelsState === "loading" && t("arena.dualRole.loadingFromKey")}
+                    {keyModelsState === "ready" && t("arena.dualRole.extraAvailable", { count: pickerCandidates.length })}
+                    {keyModelsState === "error" && t("arena.dualRole.couldntLoad")}
                   </div>
                 </div>
                 <p className="text-xs text-white/65 leading-relaxed mb-3">
-                  Pick from the actual list of models <strong className="text-white">this key
-                  is allowed to call</strong>. We pull the list from Allotly so there&rsquo;s
-                  nothing to type — no typos, no surprises after the race.
+                  <Trans
+                    i18nKey="arena.dualRole.customDesc"
+                    components={{ strong: <strong className="text-white" /> }}
+                  />
                 </p>
                 <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
                   <PopoverTrigger asChild>
@@ -305,14 +293,14 @@ export function DualRoleStep({ onConfirm }: Props) {
                       <span className="flex items-center gap-2">
                         <Plus className="w-3.5 h-3.5" />
                         {keyModelsState === "loading"
-                          ? "Loading models from your key…"
+                          ? t("arena.dualRole.pickerLoading")
                           : keyModelsState === "error"
-                            ? "Couldn’t load models — refresh and try again"
+                            ? t("arena.dualRole.pickerError")
                             : customAtCap
-                              ? `You can add up to ${MAX_CUSTOM_MODELS} extra models — remove one to add another`
+                              ? t("arena.dualRole.pickerCap", { cap: MAX_CUSTOM_MODELS })
                               : pickerCandidates.length === 0
-                                ? "All key-allowed models are already on the list"
-                                : `Add a model from your key (${MAX_CUSTOM_MODELS - customAllowed.length} left)`}
+                                ? t("arena.dualRole.pickerNoCandidates")
+                                : t("arena.dualRole.pickerAdd", { remaining: MAX_CUSTOM_MODELS - customAllowed.length })}
                       </span>
                       <ChevronsUpDown className="w-4 h-4 opacity-50" />
                     </Button>
@@ -323,12 +311,12 @@ export function DualRoleStep({ onConfirm }: Props) {
                   >
                     <Command className="bg-neutral-950 text-white">
                       <CommandInput
-                        placeholder="Search models…"
+                        placeholder={t("arena.dualRole.pickerSearch")}
                         className="text-white placeholder:text-white/40"
                         data-testid="input-key-model-search"
                       />
                       <CommandList>
-                        <CommandEmpty>No matching models on this key.</CommandEmpty>
+                        <CommandEmpty>{t("arena.dualRole.pickerNoMatch")}</CommandEmpty>
                         <CommandGroup>
                           {pickerCandidates.map((m) => {
                             const provider = (["OPENAI", "ANTHROPIC", "GOOGLE"].includes(m.provider)
@@ -393,7 +381,7 @@ export function DualRoleStep({ onConfirm }: Props) {
                             type="button"
                             onClick={() => removeCustomModel(id)}
                             className="text-emerald-200/80 hover:text-rose-200"
-                            aria-label={`Remove ${id}`}
+                            aria-label={t("arena.dualRole.removeAria", { id })}
                             data-testid={`button-remove-custom-${id}`}
                           >
                             <X className="w-3 h-3" />
@@ -408,9 +396,16 @@ export function DualRoleStep({ onConfirm }: Props) {
 
             <div className="mt-6 flex items-center justify-between border-t border-white/10 pt-4">
               <div className="text-xs text-white/60">
-                {summary.count} of {MODEL_CATALOG.length + customAllowed.length} allowed · cheapest{" "}
-                <span className="font-mono text-white/80">${summary.cheapest.toFixed(2)}</span> · most{" "}
-                <span className="font-mono text-white/80">${summary.max.toFixed(2)}</span>/1M in
+                <Trans
+                  i18nKey="arena.dualRole.summary"
+                  values={{
+                    count: summary.count,
+                    total: MODEL_CATALOG.length + customAllowed.length,
+                    cheapest: summary.cheapest.toFixed(2),
+                    max: summary.max.toFixed(2),
+                  }}
+                  components={{ c: <span className="font-mono text-white/80" /> }}
+                />
               </div>
               <Button
                 size="sm"
@@ -418,7 +413,7 @@ export function DualRoleStep({ onConfirm }: Props) {
                 onClick={handleContinueToLineup}
                 data-testid="button-continue-to-lineup"
               >
-                Continue to lineup →
+                {t("arena.dualRole.continueToLineup")}
               </Button>
             </div>
           </div>
@@ -430,10 +425,10 @@ export function DualRoleStep({ onConfirm }: Props) {
           >
             <div className="flex items-center gap-3">
               <span className="rounded-full bg-emerald-500/15 text-emerald-300 px-2 py-0.5 text-[10px] uppercase tracking-wide font-medium">
-                Admin hat ✓
+                {t("arena.dualRole.adminLocked")}
               </span>
               <span className="text-sm text-white/80">
-                Allowlist locked: {summary.count} model{summary.count === 1 ? "" : "s"}
+                {t("arena.dualRole.allowlistLocked", { count: summary.count })}
               </span>
               <div className="hidden sm:flex items-center gap-1 ml-2">
                 {allowedSorted.slice(0, 4).map((m) => (
@@ -445,7 +440,7 @@ export function DualRoleStep({ onConfirm }: Props) {
               </div>
             </div>
             <span className="text-xs text-white/50 flex items-center gap-1">
-              edit <ChevronDown className="w-3 h-3" />
+              {t("arena.dualRole.edit")} <ChevronDown className="w-3 h-3" />
             </span>
           </button>
         )}
@@ -461,15 +456,16 @@ export function DualRoleStep({ onConfirm }: Props) {
         >
           <div>
             <span className="rounded-full bg-indigo-500/15 text-indigo-300 px-2 py-0.5 text-[10px] uppercase tracking-wide font-medium">
-              Step 2 · Developer hat
+              {t("arena.dualRole.devStep")}
             </span>
             <h3 className="mt-2 text-lg font-semibold text-white">
-              Now pick which 3 to race for this request.
+              {t("arena.dualRole.devQuestion")}
             </h3>
             <p className="mt-1 text-sm text-white/65">
-              Same key, three model IDs. Each call hits the proxy with{" "}
-              <code className="font-mono text-[12px] text-white/85">model: "..."</code> — Allotly looks at your allowlist,
-              picks the right upstream provider, and bills your budget.
+              <Trans
+                i18nKey="arena.dualRole.devDesc"
+                components={{ code: <code className="font-mono text-[12px] text-white/85" /> }}
+              />
             </p>
           </div>
 
@@ -492,7 +488,7 @@ export function DualRoleStep({ onConfirm }: Props) {
           </div>
 
           <p className="mt-4 text-xs text-white/50">
-            Same model in two slots is fine — useful for variant testing. We default to one per provider so you see the multi-provider hand-off.
+            {t("arena.dualRole.sameModelOk")}
           </p>
 
           <div className="mt-6 flex justify-end">
@@ -503,7 +499,7 @@ export function DualRoleStep({ onConfirm }: Props) {
               onClick={handleLockAndRun}
               data-testid="button-lock-lineup"
             >
-              Lock lineup and run round
+              {t("arena.dualRole.lockAndRun")}
             </Button>
           </div>
         </div>
@@ -525,6 +521,7 @@ function ModelRow({
   expanded: boolean;
   onExpand: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className={`rounded-lg border px-3 py-2.5 transition ${
@@ -541,7 +538,11 @@ function ModelRow({
           className={`shrink-0 w-4 h-4 rounded border flex items-center justify-center transition ${
             checked ? "border-emerald-400 bg-emerald-500/20" : "border-white/30 bg-transparent hover:border-white/60"
           }`}
-          aria-label={checked ? `Block ${entry.displayName}` : `Allow ${entry.displayName}`}
+          aria-label={
+            checked
+              ? t("arena.dualRole.rowBlock", { name: entry.displayName })
+              : t("arena.dualRole.rowAllow", { name: entry.displayName })
+          }
           data-testid={`toggle-${entry.id}`}
         >
           {checked && <Check className="w-3 h-3 text-emerald-300" />}
@@ -555,22 +556,28 @@ function ModelRow({
           <div className="text-xs font-mono text-white/80 tabular-nums">
             ${entry.inputPerM.toFixed(2)}/1M in
           </div>
-          <div className="text-[10px] text-white/40">${entry.outputPerM.toFixed(2)} out</div>
+          <div className="text-[10px] text-white/40">
+            {t("arena.dualRole.rowOut", { price: entry.outputPerM.toFixed(2) })}
+          </div>
         </div>
         {entry.hasCachedContent ? (
           <span className="hidden md:inline text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 bg-emerald-500/10 text-emerald-300">
-            ✓ cached
+            {t("arena.dualRole.rowCached")}
           </span>
         ) : (
           <span className="hidden md:inline text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 bg-white/5 text-white/50">
-            no cache
+            {t("arena.dualRole.rowNoCache")}
           </span>
         )}
         <button
           type="button"
           onClick={onExpand}
           className="text-white/50 hover:text-white p-1"
-          aria-label={`${expanded ? "Hide" : "Show"} rationale for ${entry.displayName}`}
+          aria-label={
+            expanded
+              ? t("arena.dualRole.rowHideRationale", { name: entry.displayName })
+              : t("arena.dualRole.rowShowRationale", { name: entry.displayName })
+          }
           data-testid={`expand-${entry.id}`}
         >
           <ChevronRight className={`w-4 h-4 transition ${expanded ? "rotate-90" : ""}`} />
@@ -600,6 +607,7 @@ function SlotPicker({
   onChange: (v: ModelId) => void;
   repair: RepairNote | null;
 }) {
+  const { t } = useTranslation();
   const catalogMeta = CATALOG_BY_ID[value];
   const isCustomValue = !catalogMeta;
   const meta = catalogMeta ?? {
@@ -612,7 +620,6 @@ function SlotPicker({
   };
   const valueAllowed = allowed.includes(value);
 
-  // Group allowed CATALOG models by provider for the dropdown.
   const allowedEntries = MODEL_CATALOG.filter((m) => allowed.includes(m.id));
   const byProvider = new Map<Provider, CatalogEntry[]>();
   for (const p of PROVIDER_ORDER) byProvider.set(p, []);
@@ -627,7 +634,7 @@ function SlotPicker({
       data-testid={`slot-${index}`}
     >
       <div className="text-[10px] uppercase tracking-wide text-white/50 mb-2">
-        Slot {index + 1}
+        {t("arena.dualRole.slotLabel", { n: index + 1 })}
       </div>
       <Select
         value={value}
@@ -638,7 +645,7 @@ function SlotPicker({
           className="bg-neutral-950 border-white/15 text-white"
           data-testid={`slot-select-${index}`}
         >
-          <SelectValue placeholder="Pick a model" />
+          <SelectValue placeholder={t("arena.dualRole.slotPlaceholder")} />
         </SelectTrigger>
         <SelectContent className="bg-neutral-950 border-white/15 text-white">
           {PROVIDER_ORDER.map((p) => {
@@ -662,9 +669,9 @@ function SlotPicker({
                         ${e.inputPerM.toFixed(2)}
                       </span>
                       {e.hasCachedContent ? (
-                        <span className="text-[10px] text-emerald-300">✓ cached</span>
+                        <span className="text-[10px] text-emerald-300">{t("arena.dualRole.slotCached")}</span>
                       ) : (
-                        <span className="text-[10px] text-amber-300">🚫 not cached</span>
+                        <span className="text-[10px] text-amber-300">{t("arena.dualRole.slotNotCached")}</span>
                       )}
                     </div>
                   </SelectItem>
@@ -675,7 +682,7 @@ function SlotPicker({
           {customAllowed.length > 0 && (
             <SelectGroup>
               <SelectLabel className="text-emerald-300/80 text-[10px] uppercase tracking-wide">
-                Custom (live only)
+                {t("arena.dualRole.slotCustomGroup")}
               </SelectLabel>
               {customAllowed.map((id) => (
                 <SelectItem
@@ -686,7 +693,7 @@ function SlotPicker({
                 >
                   <div className="flex items-center gap-2">
                     <span className="font-mono">{id}</span>
-                    <span className="text-[10px] text-emerald-300">live only</span>
+                    <span className="text-[10px] text-emerald-300">{t("arena.dualRole.slotLiveOnly")}</span>
                   </div>
                 </SelectItem>
               ))}
@@ -698,25 +705,27 @@ function SlotPicker({
       <div className="mt-3 flex items-center justify-between text-xs">
         <ProviderBadge provider={meta.provider} className="text-white" />
         <div className="font-mono text-white/70 tabular-nums">
-          {isCustomValue ? "live only" : `$${meta.inputPerM.toFixed(2)}/1M in`}
+          {isCustomValue
+            ? t("arena.dualRole.slotLiveOnly")
+            : t("arena.dualRole.slotPriceIn", { price: meta.inputPerM.toFixed(2) })}
         </div>
       </div>
 
       {!valueAllowed ? (
         <div className="mt-2 text-[11px] text-rose-300 flex items-center gap-1">
-          <Lock className="w-3 h-3" /> Not on the allowlist anymore
+          <Lock className="w-3 h-3" /> {t("arena.dualRole.slotNotAllowed")}
         </div>
       ) : isCustomValue ? (
         <div className="mt-2 text-[11px] text-emerald-300 flex items-center gap-1">
-          <Check className="w-3 h-3" /> Custom model · streams live from your key
+          <Check className="w-3 h-3" /> {t("arena.dualRole.slotCustomStreams")}
         </div>
       ) : meta.hasCachedContent ? (
         <div className="mt-2 text-[11px] text-emerald-300 flex items-center gap-1">
-          <Check className="w-3 h-3" /> Cached response ready
+          <Check className="w-3 h-3" /> {t("arena.dualRole.slotCachedReady")}
         </div>
       ) : (
         <div className="mt-2 text-[11px] text-amber-300">
-          🚫 No cached response — slot will show a placeholder
+          {t("arena.dualRole.slotNoCached")}
         </div>
       )}
 
@@ -729,7 +738,7 @@ function SlotPicker({
           <div className="flex items-start gap-1.5">
             <span className="mt-0.5">⚠</span>
             <div className="min-w-0">
-              <div className="font-medium">Slot {index + 1} auto-repaired</div>
+              <div className="font-medium">{t("arena.dualRole.repairTitle", { n: index + 1 })}</div>
               <div className="mt-0.5 flex flex-wrap items-center gap-1 text-amber-200/90">
                 <span className="line-through decoration-amber-300/60">
                   {CATALOG_BY_ID[repair.from]?.displayName ?? repair.from}
@@ -740,7 +749,7 @@ function SlotPicker({
                 </span>
               </div>
               <div className="mt-0.5 text-amber-200/70">
-                because you blocked it on the allowlist.
+                {t("arena.dualRole.repairReason")}
               </div>
             </div>
           </div>

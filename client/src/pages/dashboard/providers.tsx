@@ -1,4 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "@/lib/auth";
 import { ProviderBadge } from "@/components/brand/provider-badge";
 import { EmptyState } from "@/components/brand/empty-state";
@@ -77,6 +78,7 @@ function validateAzureBaseUrl(url: string): { valid: boolean; warning?: string }
 export default function ProvidersPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [provider, setProvider] = useState("");
   const [apiKey, setApiKey] = useState("");
@@ -113,12 +115,12 @@ export default function ProvidersPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/providers"] });
-      toast({ title: "AI Provider connected successfully" });
+      toast({ title: t("dashboard.providers.toastConnectedTitle") });
       setOpen(false);
       resetForm();
     },
     onError: (err: any) => {
-      toast({ title: "Failed to connect", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.providers.toastConnectFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -128,7 +130,7 @@ export default function ProvidersPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/providers"] });
-      toast({ title: "AI Provider disconnected" });
+      toast({ title: t("dashboard.providers.toastDisconnected") });
     },
   });
 
@@ -144,8 +146,8 @@ export default function ProvidersPage() {
     return (
       <EmptyState
         icon={<Shield className="w-8 h-8 text-muted-foreground" />}
-        title="Access Restricted"
-        description="Only Root Admins can manage AI Providers"
+        title={t("dashboard.providers.accessRestrictedTitle")}
+        description={t("dashboard.providers.accessRestrictedDescription")}
       />
     );
   }
@@ -154,31 +156,31 @@ export default function ProvidersPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-providers-heading">AI Providers</h1>
-          <p className="text-muted-foreground mt-1">Connect your AI Provider accounts (up to 4)</p>
+          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-providers-heading">{t("dashboard.providers.heading")}</h1>
+          <p className="text-muted-foreground mt-1">{t("dashboard.providers.subheading")}</p>
         </div>
         <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetForm(); }}>
           <DialogTrigger asChild>
             <Button data-testid="button-connect-provider" disabled={providers && providers.length >= 4}>
               <Plus className="w-4 h-4 mr-1.5" />
-              Connect AI Provider
+              {t("dashboard.providers.connectButton")}
             </Button>
           </DialogTrigger>
           <DialogContent className="max-h-[85vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Connect AI Provider</DialogTitle>
+              <DialogTitle>{t("dashboard.providers.dialogTitle")}</DialogTitle>
               <DialogDescription>
                 {provider === "AZURE_OPENAI"
-                  ? "Connect your Azure resource. Allotly uses the model name as the deployment name automatically — no mapping needed."
-                  : "Connect your OpenAI, Anthropic, Google, or Azure API key. The key will be validated against the provider's API before saving."}
+                  ? t("dashboard.providers.dialogDescriptionAzure")
+                  : t("dashboard.providers.dialogDescriptionGeneric")}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 pt-2">
               <div className="space-y-2">
-                <Label>AI Provider</Label>
+                <Label>{t("dashboard.providers.providerLabel")}</Label>
                 <Select value={provider} onValueChange={(v) => { setProvider(v); resetForm(); setProvider(v); }}>
                   <SelectTrigger data-testid="select-provider">
-                    <SelectValue placeholder="Select AI Provider" />
+                    <SelectValue placeholder={t("dashboard.providers.providerPlaceholder")} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="OPENAI">OpenAI</SelectItem>
@@ -192,27 +194,27 @@ export default function ProvidersPage() {
               {provider === "AZURE_OPENAI" ? (
                 <>
                   <div className="space-y-2">
-                    <Label>Display Name (optional)</Label>
+                    <Label>{t("dashboard.providers.displayNameOptional")}</Label>
                     <Input
-                      placeholder='e.g., "Production Azure"'
+                      placeholder={t("dashboard.providers.displayNamePlaceholderAzure")}
                       value={displayName}
                       onChange={e => setDisplayName(e.target.value)}
                       data-testid="input-display-name"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Azure Base URL</Label>
+                    <Label>{t("dashboard.providers.azureBaseUrlLabel")}</Label>
                     <Input
-                      placeholder="https://contoso.openai.azure.com"
+                      placeholder={t("dashboard.providers.azureBaseUrlPlaceholder")}
                       value={azureBaseUrl}
                       onChange={e => setAzureBaseUrl(e.target.value)}
                       data-testid="input-azure-base-url"
                     />
                     <p className="text-xs text-muted-foreground">
-                      Your Azure endpoint. Accepts {"{name}"}.openai.azure.com, APIM gateways, and {"{name}"}.services.ai.azure.com
+                      {t("dashboard.providers.azureBaseUrlHelper")}
                     </p>
                     {azureUrlValidation && !azureUrlValidation.valid && (
-                      <p className="text-xs text-destructive">URL must start with https://</p>
+                      <p className="text-xs text-destructive">{t("dashboard.providers.azureBaseUrlInvalid")}</p>
                     )}
                     {azureUrlValidation?.warning && (
                       <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
@@ -221,18 +223,18 @@ export default function ProvidersPage() {
                     )}
                   </div>
                   <div className="space-y-2">
-                    <Label>API Key</Label>
+                    <Label>{t("dashboard.providers.apiKeyLabel")}</Label>
                     <Input
                       type="password"
-                      placeholder="Your Azure API key"
+                      placeholder={t("dashboard.providers.apiKeyPlaceholderAzure")}
                       value={apiKey}
                       onChange={e => setApiKey(e.target.value)}
                       data-testid="input-api-key"
                     />
-                    <p className="text-xs text-muted-foreground">Your key is encrypted with AES-256-GCM and never stored in plaintext.</p>
+                    <p className="text-xs text-muted-foreground">{t("dashboard.providers.encryptionHelper")}</p>
                   </div>
                   <div className="space-y-2">
-                    <Label>Endpoint Mode</Label>
+                    <Label>{t("dashboard.providers.endpointModeLabel")}</Label>
                     <div className="space-y-2">
                       <label className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/30 transition-colors" data-testid="radio-endpoint-legacy">
                         <input
@@ -243,8 +245,8 @@ export default function ProvidersPage() {
                           className="mt-0.5"
                         />
                         <div>
-                          <p className="text-sm font-medium">Legacy versioned API (recommended)</p>
-                          <p className="text-xs text-muted-foreground">Uses /openai/deployments/{"{name}"}/chat/completions. Works with APIM and standard Azure endpoints.</p>
+                          <p className="text-sm font-medium">{t("dashboard.providers.endpointLegacyTitle")}</p>
+                          <p className="text-xs text-muted-foreground">{t("dashboard.providers.endpointLegacyDescription")}</p>
                         </div>
                       </label>
                       <label className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/30 transition-colors" data-testid="radio-endpoint-v1">
@@ -256,30 +258,30 @@ export default function ProvidersPage() {
                           className="mt-0.5"
                         />
                         <div>
-                          <p className="text-sm font-medium">v1 API</p>
-                          <p className="text-xs text-muted-foreground">Uses /openai/v1/chat/completions. No api-version needed. Only works with direct Azure endpoints.</p>
+                          <p className="text-sm font-medium">{t("dashboard.providers.endpointV1Title")}</p>
+                          <p className="text-xs text-muted-foreground">{t("dashboard.providers.endpointV1Description")}</p>
                         </div>
                       </label>
                     </div>
                   </div>
                   {azureEndpointMode === "legacy" && (
                     <div className="space-y-2">
-                      <Label>API Version (advanced)</Label>
+                      <Label>{t("dashboard.providers.apiVersionLabel")}</Label>
                       <Input
                         value={azureApiVersion}
                         onChange={e => setAzureApiVersion(e.target.value)}
-                        placeholder="Auto (recommended)"
+                        placeholder={t("dashboard.providers.apiVersionPlaceholder")}
                         data-testid="input-azure-api-version"
                       />
-                      <p className="text-xs text-muted-foreground">Leave empty for Allotly to auto-pick the right version per model. Override only if you have a specific compatibility need.</p>
+                      <p className="text-xs text-muted-foreground">{t("dashboard.providers.apiVersionHelper")}</p>
                     </div>
                   )}
                   <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 text-sm flex items-start gap-2">
                     <Cloud className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
                     <div>
-                      <p className="font-medium text-blue-700 dark:text-blue-300">Pass-through mode</p>
+                      <p className="font-medium text-blue-700 dark:text-blue-300">{t("dashboard.providers.passThroughTitle")}</p>
                       <p className="text-blue-600 dark:text-blue-400 text-xs mt-0.5">
-                        Allotly uses the model name as the Azure deployment name. No deployment mapping needed — just send requests with the model name (e.g., <code className="font-mono">gpt-4.1</code>) or use the <code className="font-mono">azure/</code> prefix.
+                        {t("dashboard.providers.passThroughDescription")}
                       </p>
                     </div>
                   </div>
@@ -287,20 +289,20 @@ export default function ProvidersPage() {
               ) : (
                 <>
                   <div className="space-y-2">
-                    <Label>Admin API Key</Label>
+                    <Label>{t("dashboard.providers.adminApiKeyLabel")}</Label>
                     <Input
                       type="password"
-                      placeholder="sk-... or similar"
+                      placeholder={t("dashboard.providers.apiKeyPlaceholderGeneric")}
                       value={apiKey}
                       onChange={e => setApiKey(e.target.value)}
                       data-testid="input-api-key"
                     />
-                    <p className="text-xs text-muted-foreground">Your key is encrypted with AES-256-GCM and never stored in plaintext.</p>
+                    <p className="text-xs text-muted-foreground">{t("dashboard.providers.encryptionHelper")}</p>
                   </div>
                   <div className="space-y-2">
-                    <Label>Display Name (optional)</Label>
+                    <Label>{t("dashboard.providers.displayNameOptional")}</Label>
                     <Input
-                      placeholder="e.g., Production OpenAI"
+                      placeholder={t("dashboard.providers.displayNamePlaceholderGeneric")}
                       value={displayName}
                       onChange={e => setDisplayName(e.target.value)}
                       data-testid="input-display-name"
@@ -315,7 +317,7 @@ export default function ProvidersPage() {
                 disabled={!isFormValid || addMutation.isPending}
                 data-testid="button-submit-provider"
               >
-                {addMutation.isPending ? "Validating & Connecting..." : "Validate & Connect"}
+                {addMutation.isPending ? t("dashboard.providers.submitButtonPending") : t("dashboard.providers.submitButton")}
               </Button>
             </div>
           </DialogContent>
@@ -340,16 +342,16 @@ export default function ProvidersPage() {
           ))}
           {providers.length < 4 && (
             <p className="text-xs text-muted-foreground text-center">
-              {4 - providers.length} AI Provider connection{4 - providers.length !== 1 ? 's' : ''} remaining
+              {t("dashboard.providers.remainingConnections", { count: 4 - providers.length })}
             </p>
           )}
         </div>
       ) : (
         <EmptyState
           icon={<Plug className="w-10 h-10 text-muted-foreground" />}
-          title="Connect your first AI provider"
-          description="Connect your OpenAI, Anthropic, Google, or Azure account to start provisioning API keys for your team."
-          action={{ label: "Connect Provider", onClick: () => setOpen(true) }}
+          title={t("dashboard.providers.emptyTitle")}
+          description={t("dashboard.providers.emptyDescription")}
+          action={{ label: t("dashboard.providers.emptyAction"), onClick: () => setOpen(true) }}
         />
       )}
     </div>
@@ -370,6 +372,7 @@ function ProviderCard({
   isDeleting: boolean;
 }) {
   const { toast } = useToast();
+  const { t } = useTranslation();
   const [rotateOpen, setRotateOpen] = useState(false);
   const [newKey, setNewKey] = useState("");
   const [showHealth, setShowHealth] = useState(false);
@@ -403,13 +406,13 @@ function ProviderCard({
       queryClient.invalidateQueries({ queryKey: ["/api/providers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/providers", p.id, "health"] });
       if (data.valid) {
-        toast({ title: "Key validated successfully" });
+        toast({ title: t("dashboard.providers.toastValidatedTitle") });
       } else {
-        toast({ title: "Key validation failed", description: data.error, variant: "destructive" });
+        toast({ title: t("dashboard.providers.toastValidationFailed"), description: data.error, variant: "destructive" });
       }
     },
     onError: (err: any) => {
-      toast({ title: "Validation error", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.providers.toastValidationError"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -421,12 +424,12 @@ function ProviderCard({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/providers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/providers", p.id, "health"] });
-      toast({ title: "Provider key rotated successfully" });
+      toast({ title: t("dashboard.providers.toastRotatedTitle") });
       setRotateOpen(false);
       setNewKey("");
     },
     onError: (err: any) => {
-      toast({ title: "Key rotation failed", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.providers.toastRotationFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -438,13 +441,13 @@ function ProviderCard({
     onSuccess: (data: TestResult) => {
       setTestResult(data);
       if (data.success) {
-        toast({ title: `Connection test passed (${data.latencyMs}ms)` });
+        toast({ title: t("dashboard.providers.toastTestPassedTitle", { ms: data.latencyMs }) });
       } else {
-        toast({ title: "Connection test failed", description: data.error, variant: "destructive" });
+        toast({ title: t("dashboard.providers.toastTestFailedTitle"), description: data.error, variant: "destructive" });
       }
     },
     onError: (err: any) => {
-      toast({ title: "Test failed", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.providers.toastTestErrorTitle"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -463,11 +466,11 @@ function ProviderCard({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/providers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/providers", p.id, "models"] });
-      toast({ title: "Azure connection updated" });
+      toast({ title: t("dashboard.providers.toastAzureUpdated") });
       setEditAzureOpen(false);
     },
     onError: (err: Error) => {
-      toast({ title: "Failed to update", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.providers.toastUpdateFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -478,7 +481,7 @@ function ProviderCard({
     const outputPrice = parseInt(newDepOutputPrice) || 0;
     if (!name) return;
     if (editDeployments.some(d => d.deploymentName === name)) {
-      toast({ title: "Duplicate", description: `Deployment "${name}" already exists`, variant: "destructive" });
+      toast({ title: t("dashboard.providers.duplicateDeploymentTitle"), description: t("dashboard.providers.duplicateDeploymentDescription", { name }), variant: "destructive" });
       return;
     }
     setEditDeployments([...editDeployments, { deploymentName: name, modelId: model, inputPricePerMTok: inputPrice, outputPricePerMTok: outputPrice }]);
@@ -511,7 +514,7 @@ function ProviderCard({
           {p.displayName && p.displayName !== p.provider && (
             <span className="text-sm text-muted-foreground">{p.displayName}</span>
           )}
-          <div className={`w-2.5 h-2.5 rounded-full ${getHealthColor()}`} title="Health indicator" data-testid={`health-indicator-${p.provider.toLowerCase()}`} />
+          <div className={`w-2.5 h-2.5 rounded-full ${getHealthColor()}`} title={t("dashboard.providers.healthIndicatorTitle")} data-testid={`health-indicator-${p.provider.toLowerCase()}`} />
         </div>
         <div className="flex items-center gap-2">
           <span
@@ -530,7 +533,7 @@ function ProviderCard({
             onClick={() => validateMutation.mutate()}
             disabled={validateMutation.isPending}
             data-testid={`button-validate-${p.provider.toLowerCase()}`}
-            title="Validate Now"
+            title={t("dashboard.providers.titleValidate")}
           >
             <RefreshCw className={`w-4 h-4 ${validateMutation.isPending ? "animate-spin" : ""}`} />
           </Button>
@@ -540,7 +543,7 @@ function ProviderCard({
             onClick={() => testMutation.mutate()}
             disabled={testMutation.isPending}
             data-testid={`button-test-${p.provider.toLowerCase()}`}
-            title="Test Connection"
+            title={t("dashboard.providers.titleTest")}
           >
             <Zap className={`w-4 h-4 ${testMutation.isPending ? "animate-pulse" : ""}`} />
           </Button>
@@ -549,7 +552,7 @@ function ProviderCard({
             variant="secondary"
             onClick={() => setRotateOpen(true)}
             data-testid={`button-rotate-${p.provider.toLowerCase()}`}
-            title="Rotate Key"
+            title={t("dashboard.providers.titleRotate")}
           >
             <RotateCw className="w-4 h-4" />
           </Button>
@@ -566,15 +569,15 @@ function ProviderCard({
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Disconnect {p.provider}?</AlertDialogTitle>
+                <AlertDialogTitle>{t("dashboard.providers.disconnectTitle", { provider: p.provider })}</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This will revoke all scoped API keys for this provider across all team members. This action cannot be undone.
+                  {t("dashboard.providers.disconnectDescription")}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel data-testid="button-cancel-disconnect">Cancel</AlertDialogCancel>
+                <AlertDialogCancel data-testid="button-cancel-disconnect">{t("dashboard.providers.cancel")}</AlertDialogCancel>
                 <AlertDialogAction onClick={onDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90" data-testid="button-confirm-disconnect">
-                  Disconnect
+                  {t("dashboard.providers.disconnect")}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
@@ -590,7 +593,7 @@ function ProviderCard({
           {p.azureEndpointMode && (
             <span className="px-2 py-0.5 rounded-full bg-muted font-medium" data-testid="text-azure-endpoint-mode">{p.azureEndpointMode} mode</span>
           )}
-          <span className="px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium">pass-through</span>
+          <span className="px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-medium">{t("dashboard.providers.passThroughBadge")}</span>
           <Dialog open={editAzureOpen} onOpenChange={(open) => {
             setEditAzureOpen(open);
             if (open) {
@@ -603,27 +606,27 @@ function ProviderCard({
           }}>
             <DialogTrigger asChild>
               <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" data-testid="button-edit-azure">
-                <Pencil className="w-3 h-3 mr-1" /> Edit
+                <Pencil className="w-3 h-3 mr-1" /> {t("dashboard.providers.edit")}
               </Button>
             </DialogTrigger>
             <DialogContent className="max-h-[85vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Edit Azure Connection</DialogTitle>
+                <DialogTitle>{t("dashboard.providers.editAzureTitle")}</DialogTitle>
                 <DialogDescription>
-                  Update the endpoint, routing, and deployment mappings for this Azure connection.
+                  {t("dashboard.providers.editAzureDescription")}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 pt-2">
                 <div className="space-y-2">
-                  <Label>Azure Base URL</Label>
+                  <Label>{t("dashboard.providers.azureBaseUrlLabel")}</Label>
                   <Input
-                    placeholder="https://contoso.openai.azure.com"
+                    placeholder={t("dashboard.providers.azureBaseUrlPlaceholder")}
                     value={editAzureBaseUrl}
                     onChange={e => setEditAzureBaseUrl(e.target.value)}
                     data-testid="input-edit-azure-base-url"
                   />
                   {editAzureUrlValidation && !editAzureUrlValidation.valid && (
-                    <p className="text-xs text-destructive">URL must start with https://</p>
+                    <p className="text-xs text-destructive">{t("dashboard.providers.azureBaseUrlInvalid")}</p>
                   )}
                   {editAzureUrlValidation?.warning && (
                     <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
@@ -632,35 +635,35 @@ function ProviderCard({
                   )}
                 </div>
                 <div className="space-y-2">
-                  <Label>Endpoint Mode</Label>
+                  <Label>{t("dashboard.providers.endpointModeLabel")}</Label>
                   <div className="space-y-2">
                     <label className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/30 transition-colors" data-testid="radio-edit-endpoint-legacy">
                       <input type="radio" name="editEndpointMode" checked={editAzureEndpointMode === "legacy"} onChange={() => setEditAzureEndpointMode("legacy")} className="mt-0.5" />
                       <div>
-                        <p className="text-sm font-medium">Legacy versioned API (recommended)</p>
-                        <p className="text-xs text-muted-foreground">Uses /openai/deployments/{"{name}"}/chat/completions. Works with APIM and standard Azure endpoints.</p>
+                        <p className="text-sm font-medium">{t("dashboard.providers.endpointLegacyTitle")}</p>
+                        <p className="text-xs text-muted-foreground">{t("dashboard.providers.endpointLegacyDescription")}</p>
                       </div>
                     </label>
                     <label className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/30 transition-colors" data-testid="radio-edit-endpoint-v1">
                       <input type="radio" name="editEndpointMode" checked={editAzureEndpointMode === "v1"} onChange={() => setEditAzureEndpointMode("v1")} className="mt-0.5" />
                       <div>
-                        <p className="text-sm font-medium">v1 API</p>
-                        <p className="text-xs text-muted-foreground">Uses /openai/v1/chat/completions. No api-version needed. Only works with direct Azure endpoints.</p>
+                        <p className="text-sm font-medium">{t("dashboard.providers.endpointV1Title")}</p>
+                        <p className="text-xs text-muted-foreground">{t("dashboard.providers.endpointV1Description")}</p>
                       </div>
                     </label>
                   </div>
                 </div>
                 {editAzureEndpointMode === "legacy" && (
                   <div className="space-y-2">
-                    <Label>API Version (advanced)</Label>
-                    <Input value={editAzureApiVersion} onChange={e => setEditAzureApiVersion(e.target.value)} placeholder="Auto (recommended)" data-testid="input-edit-azure-api-version" />
-                    <p className="text-xs text-muted-foreground">Leave empty for Allotly to auto-pick the right version per model. Override only if you have a specific compatibility need.</p>
+                    <Label>{t("dashboard.providers.apiVersionLabel")}</Label>
+                    <Input value={editAzureApiVersion} onChange={e => setEditAzureApiVersion(e.target.value)} placeholder={t("dashboard.providers.apiVersionPlaceholder")} data-testid="input-edit-azure-api-version" />
+                    <p className="text-xs text-muted-foreground">{t("dashboard.providers.apiVersionHelper")}</p>
                   </div>
                 )}
                 <div className="space-y-3 border-t pt-4">
-                  <Label>Deployment Mappings</Label>
+                  <Label>{t("dashboard.providers.deploymentMappingsLabel")}</Label>
                   <p className="text-xs text-muted-foreground">
-                    Map Azure deployment names to model IDs with pricing. Required for the model allowlist.
+                    {t("dashboard.providers.deploymentMappingsHelper")}
                   </p>
                   {editDeployments.length > 0 && (
                     <div className="space-y-2">
@@ -685,31 +688,31 @@ function ProviderCard({
                   <div className="space-y-2 p-3 rounded-lg border border-dashed">
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <Label className="text-xs">Deployment Name</Label>
-                        <Input placeholder="gpt-4o" value={newDepName} onChange={e => setNewDepName(e.target.value)} className="h-8 text-xs font-mono" data-testid="input-deployment-name" />
+                        <Label className="text-xs">{t("dashboard.providers.deploymentNameLabel")}</Label>
+                        <Input placeholder={t("dashboard.providers.deploymentNamePlaceholder")} value={newDepName} onChange={e => setNewDepName(e.target.value)} className="h-8 text-xs font-mono" data-testid="input-deployment-name" />
                       </div>
                       <div>
-                        <Label className="text-xs">Model ID (optional)</Label>
-                        <Input placeholder={newDepName || "same as deployment"} value={newDepModel} onChange={e => setNewDepModel(e.target.value)} className="h-8 text-xs font-mono" data-testid="input-deployment-model" />
+                        <Label className="text-xs">{t("dashboard.providers.deploymentModelLabel")}</Label>
+                        <Input placeholder={newDepName || t("dashboard.providers.deploymentModelPlaceholder")} value={newDepModel} onChange={e => setNewDepModel(e.target.value)} className="h-8 text-xs font-mono" data-testid="input-deployment-model" />
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <Label className="text-xs">Input ¢/1M tokens</Label>
+                        <Label className="text-xs">{t("dashboard.providers.deploymentInputPriceLabel")}</Label>
                         <Input type="number" placeholder="0" value={newDepInputPrice} onChange={e => setNewDepInputPrice(e.target.value)} className="h-8 text-xs" data-testid="input-deployment-input-price" />
                       </div>
                       <div>
-                        <Label className="text-xs">Output ¢/1M tokens</Label>
+                        <Label className="text-xs">{t("dashboard.providers.deploymentOutputPriceLabel")}</Label>
                         <Input type="number" placeholder="0" value={newDepOutputPrice} onChange={e => setNewDepOutputPrice(e.target.value)} className="h-8 text-xs" data-testid="input-deployment-output-price" />
                       </div>
                     </div>
                     <Button variant="outline" size="sm" className="w-full h-7 text-xs" onClick={addDeployment} disabled={!newDepName.trim()} data-testid="button-add-deployment">
-                      <Plus className="w-3 h-3 mr-1" /> Add Deployment
+                      <Plus className="w-3 h-3 mr-1" /> {t("dashboard.providers.addDeployment")}
                     </Button>
                   </div>
                 </div>
                 <Button className="w-full" onClick={() => editAzureMutation.mutate()} disabled={!editFormValid || editAzureMutation.isPending} data-testid="button-save-azure-edit">
-                  {editAzureMutation.isPending ? "Saving..." : "Save Changes"}
+                  {editAzureMutation.isPending ? t("dashboard.providers.savingChanges") : t("dashboard.providers.saveChanges")}
                 </Button>
               </div>
             </DialogContent>
@@ -719,7 +722,7 @@ function ProviderCard({
 
       {p.lastValidatedAt && (
         <p className="text-xs text-muted-foreground mt-3">
-          Last validated: {new Date(p.lastValidatedAt).toLocaleString()}
+          {t("dashboard.providers.lastValidated", { date: new Date(p.lastValidatedAt).toLocaleString() })}
         </p>
       )}
 
@@ -730,10 +733,10 @@ function ProviderCard({
             : "bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800"
         }`} data-testid={`test-result-${p.provider.toLowerCase()}`}>
           <div className="flex items-center gap-3">
-            <span className="font-medium">{testResult.success ? "Test Passed" : "Test Failed"}</span>
-            <span className="text-muted-foreground">Model: {testResult.model}</span>
-            <span className="text-muted-foreground">Latency: {testResult.latencyMs}ms</span>
-            {testResult.response && <span className="text-muted-foreground">Response: "{testResult.response}"</span>}
+            <span className="font-medium">{testResult.success ? t("dashboard.providers.testPassed") : t("dashboard.providers.testFailed")}</span>
+            <span className="text-muted-foreground">{t("dashboard.providers.testModel", { model: testResult.model })}</span>
+            <span className="text-muted-foreground">{t("dashboard.providers.testLatency", { ms: testResult.latencyMs })}</span>
+            {testResult.response && <span className="text-muted-foreground">{t("dashboard.providers.testResponse", { response: testResult.response })}</span>}
             {testResult.error && <span className="text-red-600 dark:text-red-400">{testResult.error}</span>}
           </div>
         </div>
@@ -747,7 +750,7 @@ function ProviderCard({
         >
           {showHealth ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
           <Activity className="w-3.5 h-3.5" />
-          Health
+          {t("dashboard.providers.healthToggle")}
         </button>
         <button
           onClick={onToggleExpand}
@@ -755,7 +758,7 @@ function ProviderCard({
           data-testid={`button-toggle-models-${p.provider.toLowerCase()}`}
         >
           {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-          Model Allowlist
+          {t("dashboard.providers.modelAllowlistToggle")}
         </button>
       </div>
 
@@ -763,36 +766,36 @@ function ProviderCard({
         <div className="mt-3 pt-3 border-t" data-testid={`health-panel-${p.provider.toLowerCase()}`}>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="p-3 rounded-lg bg-muted/50">
-              <p className="text-[11px] text-muted-foreground uppercase">Last 1h</p>
+              <p className="text-[11px] text-muted-foreground uppercase">{t("dashboard.providers.healthLast1h")}</p>
               <p className="text-lg font-bold mt-0.5">{health.last1h.requests}</p>
-              <p className="text-xs text-muted-foreground">requests</p>
+              <p className="text-xs text-muted-foreground">{t("dashboard.providers.healthRequests")}</p>
             </div>
             <div className="p-3 rounded-lg bg-muted/50">
-              <p className="text-[11px] text-muted-foreground uppercase">Error Rate (1h)</p>
+              <p className="text-[11px] text-muted-foreground uppercase">{t("dashboard.providers.healthErrorRate1h")}</p>
               <p className={`text-lg font-bold mt-0.5 ${
                 health.last1h.errorRate > 0.1 ? "text-red-600 dark:text-red-400" :
                 health.last1h.errorRate > 0.02 ? "text-yellow-600 dark:text-yellow-400" :
                 "text-emerald-600 dark:text-emerald-400"
               }`}>{(health.last1h.errorRate * 100).toFixed(1)}%</p>
-              <p className="text-xs text-muted-foreground">{health.last1h.errors} errors</p>
+              <p className="text-xs text-muted-foreground">{t("dashboard.providers.healthErrorsCount", { count: health.last1h.errors })}</p>
             </div>
             <div className="p-3 rounded-lg bg-muted/50">
-              <p className="text-[11px] text-muted-foreground uppercase">Avg Latency (1h)</p>
+              <p className="text-[11px] text-muted-foreground uppercase">{t("dashboard.providers.healthAvgLatency1h")}</p>
               <p className="text-lg font-bold mt-0.5">{health.last1h.avgLatencyMs}ms</p>
             </div>
             <div className="p-3 rounded-lg bg-muted/50">
-              <p className="text-[11px] text-muted-foreground uppercase">24h Requests</p>
+              <p className="text-[11px] text-muted-foreground uppercase">{t("dashboard.providers.health24hRequests")}</p>
               <p className="text-lg font-bold mt-0.5">{health.last24h.requests}</p>
-              <p className="text-xs text-muted-foreground">{health.last24h.errors} errors ({(health.last24h.errorRate * 100).toFixed(1)}%)</p>
+              <p className="text-xs text-muted-foreground">{t("dashboard.providers.health24hSummary", { errors: health.last24h.errors, rate: (health.last24h.errorRate * 100).toFixed(1) })}</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-4 mt-3 text-xs text-muted-foreground">
-            <span>Validation: <span className={`font-medium ${health.validationStatus === "valid" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>{health.validationStatus}</span></span>
-            {health.lastValidated && <span>Last validated: {new Date(health.lastValidated).toLocaleString()}</span>}
-            {health.lastSuccessfulRequest && <span>Last success: {new Date(health.lastSuccessfulRequest).toLocaleString()}</span>}
+            <span>{t("dashboard.providers.healthValidationLabel")} <span className={`font-medium ${health.validationStatus === "valid" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>{health.validationStatus === "valid" ? t("dashboard.providers.healthValidationValid") : t("dashboard.providers.healthValidationInvalid")}</span></span>
+            {health.lastValidated && <span>{t("dashboard.providers.healthLastValidated", { date: new Date(health.lastValidated).toLocaleString() })}</span>}
+            {health.lastSuccessfulRequest && <span>{t("dashboard.providers.healthLastSuccess", { date: new Date(health.lastSuccessfulRequest).toLocaleString() })}</span>}
             {health.lastError && (
               <span className="text-red-600 dark:text-red-400">
-                Last error: {health.lastError.message} at {new Date(health.lastError.timestamp).toLocaleString()}
+                {t("dashboard.providers.healthLastError", { message: health.lastError.message, date: new Date(health.lastError.timestamp).toLocaleString() })}
               </span>
             )}
           </div>
@@ -804,17 +807,17 @@ function ProviderCard({
       <Dialog open={rotateOpen} onOpenChange={(o) => { setRotateOpen(o); if (!o) setNewKey(""); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Rotate {p.provider} Key</DialogTitle>
+            <DialogTitle>{t("dashboard.providers.rotateDialogTitle", { provider: p.provider })}</DialogTitle>
             <DialogDescription>
-              Enter your new API key. It will be validated before replacing the current key. Member access will continue uninterrupted.
+              {t("dashboard.providers.rotateDialogDescription")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 pt-2">
             <div className="space-y-2">
-              <Label>New API Key</Label>
+              <Label>{t("dashboard.providers.newApiKeyLabel")}</Label>
               <Input
                 type="password"
-                placeholder="Enter new API key..."
+                placeholder={t("dashboard.providers.newApiKeyPlaceholder")}
                 value={newKey}
                 onChange={e => setNewKey(e.target.value)}
                 data-testid="input-rotate-key"
@@ -826,7 +829,7 @@ function ProviderCard({
               disabled={!newKey || rotateMutation.isPending}
               data-testid="button-confirm-rotate"
             >
-              {rotateMutation.isPending ? "Validating & Rotating..." : "Validate & Rotate Key"}
+              {rotateMutation.isPending ? t("dashboard.providers.rotateSubmitPending") : t("dashboard.providers.rotateSubmit")}
             </Button>
           </div>
         </DialogContent>
@@ -845,6 +848,7 @@ interface DiscoveredModel {
 
 function ModelAllowlist({ connection }: { connection: ProviderConnection }) {
   const { toast } = useToast();
+  const { t } = useTranslation();
   const isAzure = connection.provider === "AZURE_OPENAI";
 
   const { data: discoveredModels, isLoading, error } = useQuery<DiscoveredModel[]>({
@@ -867,17 +871,17 @@ function ModelAllowlist({ connection }: { connection: ProviderConnection }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/providers"] });
-      toast({ title: "Model allowlist updated" });
+      toast({ title: t("dashboard.providers.toastModelAllowlistUpdated") });
     },
     onError: (err: Error) => {
-      toast({ title: "Failed to update", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.providers.toastUpdateFailed"), description: err.message, variant: "destructive" });
     },
   });
 
   if (isLoading) return <Skeleton className="h-24 mt-3" />;
 
   if (error) {
-    return <p className="text-xs text-destructive mt-3">Failed to load models: {error.message}</p>;
+    return <p className="text-xs text-destructive mt-3">{t("dashboard.providers.modelAllowlistLoadFailed", { message: error.message })}</p>;
   }
 
   const modelList = (discoveredModels || []).map(m => ({
@@ -890,8 +894,8 @@ function ModelAllowlist({ connection }: { connection: ProviderConnection }) {
   if (modelList.length === 0) {
     return <p className="text-xs text-muted-foreground mt-3">
       {isAzure
-        ? "Allotly proxies Azure requests automatically using the model name as the deployment name — no configuration required. However, Azure does not provide a deployment list API, so to use the model allowlist you'll need to add your deployments manually via the Edit button above."
-        : "No models available for this API key."}
+        ? t("dashboard.providers.modelAllowlistEmptyAzure")
+        : t("dashboard.providers.modelAllowlistEmptyGeneric")}
     </p>;
   }
 
@@ -916,8 +920,10 @@ function ModelAllowlist({ connection }: { connection: ProviderConnection }) {
     <div className="mt-3 pt-3 border-t space-y-2" data-testid={`model-allowlist-${connection.provider.toLowerCase()}`}>
       <p className="text-xs text-muted-foreground mb-2">
         {allAllowed
-          ? `All ${isAzure ? "deployments" : "models"} allowed. Toggle individual ${isAzure ? "deployments" : "models"} to restrict access.`
-          : `${currentAllowed.length} of ${modelList.length} ${isAzure ? "deployments" : "models"} allowed.`}
+          ? (isAzure ? t("dashboard.providers.modelAllowlistAllAllowedDeployments") : t("dashboard.providers.modelAllowlistAllAllowedModels"))
+          : (isAzure
+              ? t("dashboard.providers.modelAllowlistPartialDeployments", { allowed: currentAllowed.length, total: modelList.length })
+              : t("dashboard.providers.modelAllowlistPartialModels", { allowed: currentAllowed.length, total: modelList.length }))}
       </p>
       {modelList.map(m => {
         const isEnabled = allAllowed || currentAllowed.includes(m.id);

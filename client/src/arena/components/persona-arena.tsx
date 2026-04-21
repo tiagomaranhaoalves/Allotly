@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { RoundRunner } from "./round-runner";
 import { pickChallenge } from "../content";
 import { useArenaSession } from "../session";
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export function PersonaArena({ persona, onSwitchMode, onEndSession }: Props) {
+  const { t } = useTranslation();
   const { state, enterMode } = useArenaSession();
   const [playedChallengeIds, setPlayedChallengeIds] = useState<Set<string>>(new Set());
   const [challenge, setChallenge] = useState<Challenge | null>(null);
@@ -29,16 +31,22 @@ export function PersonaArena({ persona, onSwitchMode, onEndSession }: Props) {
     const next = pickChallenge(persona, excluded);
     if (next) {
       setChallenge(next);
-      setPlayedChallengeIds((s) => new Set([...s, next.id]));
+      setPlayedChallengeIds((s) => new Set([...Array.from(s), next.id]));
     }
   };
 
-  const headerMode = useMemo(() => persona.charAt(0).toUpperCase() + persona.slice(1), [persona]);
+  const personaKey =
+    persona === "marketing"
+      ? "arena.personaArena.modeMarketing"
+      : persona === "research"
+        ? "arena.personaArena.modeResearch"
+        : "arena.personaArena.modeCreative";
+  const headerMode = t(personaKey);
 
   if (!challenge) {
     return (
       <div className="px-4 py-16 text-center text-white/60">
-        No challenges available for <span className="font-medium text-white">{headerMode}</span> yet.
+        {t("arena.personaArena.noChallenges", { mode: headerMode })}
       </div>
     );
   }
@@ -51,11 +59,11 @@ export function PersonaArena({ persona, onSwitchMode, onEndSession }: Props) {
     <div className="px-4 py-6 max-w-6xl mx-auto">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <div className="text-xs uppercase tracking-wide text-white/50">Mode</div>
+          <div className="text-xs uppercase tracking-wide text-white/50">{t("arena.personaArena.modeLabel")}</div>
           <h2 className="text-xl font-semibold text-white">{headerMode}</h2>
         </div>
         <div className="text-xs text-white/50 tabular-nums">
-          Round {state.roundsPlayed[persona] + 1}
+          {t("arena.personaArena.round", { n: state.roundsPlayed[persona] + 1 })}
         </div>
       </div>
       <RoundRunner

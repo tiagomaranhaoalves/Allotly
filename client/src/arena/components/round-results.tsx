@@ -1,3 +1,4 @@
+import { Trans, useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { ProviderBadge } from "@/components/brand/provider-badge";
 import type { ModelMeta } from "../types";
@@ -29,6 +30,7 @@ export function RoundResults({
   onSwitchMode,
   onEndSession,
 }: Props) {
+  const { t } = useTranslation();
   const mostExpensive = slots.reduce((acc, s) => (s.costUSD > acc.costUSD ? s : acc), slots[0]);
   const cheapest = slots.reduce((acc, s) => (s.costUSD < acc.costUSD ? s : acc), slots[0]);
 
@@ -40,7 +42,6 @@ export function RoundResults({
     ? (mostExpensive.costUSD / Math.max(0.00001, cheapest.costUSD)).toFixed(1)
     : null;
 
-  // Detect duplicate models so we can label slot indices.
   const counts = new Map<string, number>();
   for (const s of slots) counts.set(s.model.id, (counts.get(s.model.id) ?? 0) + 1);
   const hasDupes = Array.from(counts.values()).some((n) => n > 1);
@@ -49,7 +50,7 @@ export function RoundResults({
 
   return (
     <div className="rounded-2xl border border-white/10 bg-neutral-900/60 p-6">
-      <h3 className="text-xl font-semibold text-white">Round results</h3>
+      <h3 className="text-xl font-semibold text-white">{t("arena.results.title")}</h3>
 
       <div className={`mt-4 grid gap-3 ${cols}`}>
         {slots.map((s) => (
@@ -68,7 +69,7 @@ export function RoundResults({
               <ProviderBadge provider={s.model.provider} className="text-white" />
               {hasDupes && (
                 <span className="text-[10px] uppercase tracking-wide text-white/50">
-                  Slot {s.index + 1}
+                  {t("arena.results.slotLabel", { n: s.index + 1 })}
                 </span>
               )}
             </div>
@@ -76,26 +77,26 @@ export function RoundResults({
             <div className="mt-3 text-2xl font-semibold text-white tabular-nums">
               ${s.costUSD.toFixed(5)}
             </div>
-            <div className="text-[11px] text-white/50">{s.tokens} tokens</div>
+            <div className="text-[11px] text-white/50">{t("arena.results.tokens", { count: s.tokens })}</div>
             <div className="mt-3 flex flex-wrap gap-1.5">
               {s.slotKey === bestSlotKey && (
                 <span className="text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 bg-emerald-500/15 text-emerald-300">
-                  Your best
+                  {t("arena.results.yourBest")}
                 </span>
               )}
               {s.slotKey === payMostSlotKey && (
                 <span className="text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 bg-amber-500/15 text-amber-300">
-                  Paid most
+                  {t("arena.results.paidMost")}
                 </span>
               )}
               {s.slotKey === mostExpensive.slotKey && (
                 <span className="text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 bg-rose-500/10 text-rose-200">
-                  Actually most expensive
+                  {t("arena.results.actuallyExpensive")}
                 </span>
               )}
               {s.slotKey === cheapest.slotKey && (
                 <span className="text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 bg-indigo-500/10 text-indigo-200">
-                  Actually cheapest
+                  {t("arena.results.actuallyCheapest")}
                 </span>
               )}
             </div>
@@ -105,15 +106,13 @@ export function RoundResults({
 
       {gapInsight && (
         <div className="mt-5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-4 py-3 text-sm text-indigo-100">
-          <strong>Interesting:</strong> You picked a different model as &ldquo;best&rdquo; than the one
-          you&rsquo;d pay the most for. That gap — between perceived quality and perceived value —
-          is the entire product case for multi-provider routing.
+          <Trans i18nKey="arena.results.interesting" components={{ strong: <strong /> }} />
         </div>
       )}
 
       {ratio && Number(ratio) > 2 && (
         <div className="mt-3 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80">
-          The most expensive response cost <strong>{ratio}×</strong> the cheapest on this round.
+          <Trans i18nKey="arena.results.ratio" values={{ ratio }} components={{ strong: <strong /> }} />
         </div>
       )}
 
@@ -125,7 +124,7 @@ export function RoundResults({
           onClick={onPlayAgain}
           data-testid="button-play-again"
         >
-          Play again
+          {t("arena.results.playAgain")}
         </Button>
         <Button
           variant="outline"
@@ -133,7 +132,7 @@ export function RoundResults({
           onClick={onSwitchMode}
           data-testid="button-switch-mode-results"
         >
-          Switch mode
+          {t("arena.results.switchMode")}
         </Button>
         <Button
           variant="ghost"
@@ -141,7 +140,7 @@ export function RoundResults({
           onClick={onEndSession}
           data-testid="button-end-session"
         >
-          End session
+          {t("arena.results.endSession")}
         </Button>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -8,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Activity, Zap, DollarSign, Clock, Hash } from "lucide-react";
 
 export default function UsagePage() {
+  const { t } = useTranslation();
   const { user } = useAuth();
 
   const { data: overview, isLoading } = useQuery<any>({
@@ -20,8 +22,8 @@ export default function UsagePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-usage-heading">Usage</h1>
-        <p className="text-muted-foreground mt-1">View your API usage and spending</p>
+        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-usage-heading">{t("dashboard.usage.title")}</h1>
+        <p className="text-muted-foreground mt-1">{t("dashboard.usage.subtitle")}</p>
       </div>
 
       {isLoading ? (
@@ -37,7 +39,7 @@ export default function UsagePage() {
             <Card className="p-5" data-testid="card-spend">
               <div className="flex items-center gap-2 mb-2">
                 <DollarSign className="w-4 h-4 text-muted-foreground" />
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Current Spend</span>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t("dashboard.usage.currentSpend")}</span>
               </div>
               <p className="text-2xl font-bold" data-testid="text-current-spend">
                 ${((overview?.spendCents || membership.currentPeriodSpendCents || 0) / 100).toFixed(2)}
@@ -46,7 +48,7 @@ export default function UsagePage() {
             <Card className="p-5" data-testid="card-budget">
               <div className="flex items-center gap-2 mb-2">
                 <Zap className="w-4 h-4 text-muted-foreground" />
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Budget</span>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t("dashboard.usage.budget")}</span>
               </div>
               <p className="text-2xl font-bold" data-testid="text-budget">
                 ${((overview?.budgetCents || membership.monthlyBudgetCents || 0) / 100).toFixed(2)}
@@ -55,7 +57,7 @@ export default function UsagePage() {
             <Card className="p-5" data-testid="card-requests">
               <div className="flex items-center gap-2 mb-2">
                 <Hash className="w-4 h-4 text-muted-foreground" />
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Requests</span>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t("dashboard.usage.requests")}</span>
               </div>
               <p className="text-2xl font-bold" data-testid="text-request-count">
                 {(overview?.proxyRequestCount || 0).toLocaleString()}
@@ -64,7 +66,7 @@ export default function UsagePage() {
             <Card className="p-5" data-testid="card-status">
               <div className="flex items-center gap-2 mb-2">
                 <Activity className="w-4 h-4 text-muted-foreground" />
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</span>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t("dashboard.usage.status")}</span>
               </div>
               <Badge
                 variant="secondary"
@@ -83,7 +85,7 @@ export default function UsagePage() {
           </div>
 
           <Card className="p-6" data-testid="card-budget-bar">
-            <h2 className="text-base font-semibold mb-4">Budget Utilization</h2>
+            <h2 className="text-base font-semibold mb-4">{t("dashboard.usage.budgetUtilization")}</h2>
             <div className="max-w-lg">
               <BudgetBar
                 spent={overview?.spendCents || membership.currentPeriodSpendCents || 0}
@@ -94,7 +96,7 @@ export default function UsagePage() {
             {membership.periodEnd && (
               <div className="flex items-center gap-1.5 mt-4 text-sm text-muted-foreground">
                 <Clock className="w-3.5 h-3.5" />
-                <span>Period resets {new Date(membership.periodEnd).toLocaleDateString()}</span>
+                <span>{t("dashboard.usage.periodResets", { date: new Date(membership.periodEnd).toLocaleDateString() })}</span>
               </div>
             )}
           </Card>
@@ -102,16 +104,16 @@ export default function UsagePage() {
           {!hasUsage && (
             <EmptyState
               icon={<Activity className="w-10 h-10 text-muted-foreground" />}
-              title="No usage data yet"
-              description="Once your team starts making API calls, usage will appear here"
+              title={t("dashboard.usage.noUsageData")}
+              description={t("dashboard.usage.noUsageDataDesc")}
             />
           )}
         </div>
       ) : (
         <EmptyState
           icon={<Activity className="w-10 h-10 text-muted-foreground" />}
-          title="No usage data yet"
-          description="Once your team starts making API calls, usage will appear here"
+          title={t("dashboard.usage.noUsageData")}
+          description={t("dashboard.usage.noUsageDataDesc")}
         />
       )}
     </div>

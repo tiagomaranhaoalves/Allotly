@@ -4,7 +4,9 @@ import {
   SidebarHeader, SidebarFooter,
 } from "@/components/ui/sidebar";
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { LogoFull, LogoIcon } from "@/components/logo";
+import { LanguageSwitcher } from "@/components/language-switcher";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/components/theme-provider";
@@ -20,36 +22,43 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
 } from "./ui/dropdown-menu";
 
-const ROOT_ADMIN_NAV = [
-  { title: "Overview", href: "/dashboard", icon: LayoutDashboard },
-  { title: "AI Providers", href: "/dashboard/providers", icon: Plug },
-  { title: "Teams", href: "/dashboard/teams", icon: Users },
-  { title: "Members", href: "/dashboard/members", icon: UserCheck },
-  { title: "Vouchers", href: "/dashboard/vouchers", icon: Ticket },
-  { title: "API Keys", href: "/dashboard/keys", icon: Key },
-  { title: "Bundles", href: "/dashboard/bundles", icon: Package },
-  { title: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
-  { title: "Audit Log", href: "/dashboard/audit-log", icon: FileText },
-  { title: "Settings", href: "/dashboard/settings", icon: Settings },
-  { title: "Docs", href: "/docs", icon: BookOpen },
+type NavItem = {
+  testId: string;
+  i18nKey: string;
+  href: string;
+  icon: typeof LayoutDashboard;
+};
+
+const ROOT_ADMIN_NAV: NavItem[] = [
+  { testId: "overview", i18nKey: "dashboard.sidebar.overview", href: "/dashboard", icon: LayoutDashboard },
+  { testId: "ai-providers", i18nKey: "dashboard.sidebar.aiProviders", href: "/dashboard/providers", icon: Plug },
+  { testId: "teams", i18nKey: "dashboard.sidebar.teams", href: "/dashboard/teams", icon: Users },
+  { testId: "members", i18nKey: "dashboard.sidebar.members", href: "/dashboard/members", icon: UserCheck },
+  { testId: "vouchers", i18nKey: "dashboard.sidebar.vouchers", href: "/dashboard/vouchers", icon: Ticket },
+  { testId: "api-keys", i18nKey: "dashboard.sidebar.apiKeys", href: "/dashboard/keys", icon: Key },
+  { testId: "bundles", i18nKey: "dashboard.sidebar.bundles", href: "/dashboard/bundles", icon: Package },
+  { testId: "analytics", i18nKey: "dashboard.sidebar.analytics", href: "/dashboard/analytics", icon: BarChart3 },
+  { testId: "audit-log", i18nKey: "dashboard.sidebar.auditLog", href: "/dashboard/audit-log", icon: FileText },
+  { testId: "settings", i18nKey: "dashboard.sidebar.settings", href: "/dashboard/settings", icon: Settings },
+  { testId: "docs", i18nKey: "dashboard.sidebar.docs", href: "/docs", icon: BookOpen },
 ];
 
-const TEAM_ADMIN_NAV = [
-  { title: "Overview", href: "/dashboard", icon: LayoutDashboard },
-  { title: "Members", href: "/dashboard/members", icon: Users },
-  { title: "Vouchers", href: "/dashboard/vouchers", icon: Ticket },
-  { title: "Bundles", href: "/dashboard/bundles", icon: Package },
-  { title: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
-  { title: "Settings", href: "/dashboard/settings", icon: Settings },
-  { title: "Docs", href: "/docs", icon: BookOpen },
+const TEAM_ADMIN_NAV: NavItem[] = [
+  { testId: "overview", i18nKey: "dashboard.sidebar.overview", href: "/dashboard", icon: LayoutDashboard },
+  { testId: "members", i18nKey: "dashboard.sidebar.members", href: "/dashboard/members", icon: Users },
+  { testId: "vouchers", i18nKey: "dashboard.sidebar.vouchers", href: "/dashboard/vouchers", icon: Ticket },
+  { testId: "bundles", i18nKey: "dashboard.sidebar.bundles", href: "/dashboard/bundles", icon: Package },
+  { testId: "analytics", i18nKey: "dashboard.sidebar.analytics", href: "/dashboard/analytics", icon: BarChart3 },
+  { testId: "settings", i18nKey: "dashboard.sidebar.settings", href: "/dashboard/settings", icon: Settings },
+  { testId: "docs", i18nKey: "dashboard.sidebar.docs", href: "/docs", icon: BookOpen },
 ];
 
-const MEMBER_NAV = [
-  { title: "Overview", href: "/dashboard", icon: LayoutDashboard },
-  { title: "Docs", href: "/docs", icon: BookOpen },
+const MEMBER_NAV: NavItem[] = [
+  { testId: "overview", i18nKey: "dashboard.sidebar.overview", href: "/dashboard", icon: LayoutDashboard },
+  { testId: "docs", i18nKey: "dashboard.sidebar.docs", href: "/docs", icon: BookOpen },
 ];
 
-function getNavItems(role: string) {
+function getNavItems(role: string): NavItem[] {
   switch (role) {
     case "ROOT_ADMIN": return ROOT_ADMIN_NAV;
     case "TEAM_ADMIN": return TEAM_ADMIN_NAV;
@@ -59,6 +68,7 @@ function getNavItems(role: string) {
 }
 
 function AppSidebar() {
+  const { t } = useTranslation();
   const { user, organization } = useAuth();
   const [location] = useLocation();
   const navItems = getNavItems(user?.orgRole || "MEMBER");
@@ -75,15 +85,15 @@ function AppSidebar() {
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel className="text-[11px] uppercase tracking-wider font-semibold">Navigation</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-[11px] uppercase tracking-wider font-semibold">{t("dashboard.sidebar.navigation")}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {navItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
+                <SidebarMenuItem key={item.testId}>
                   <SidebarMenuButton asChild data-active={location === item.href}>
-                    <Link href={item.href} data-testid={`link-nav-${item.title.toLowerCase().replace(/\s+/g, '-')}`}>
+                    <Link href={item.href} data-testid={`link-nav-${item.testId}`}>
                       <item.icon className="w-4 h-4" />
-                      <span>{item.title}</span>
+                      <span>{t(item.i18nKey)}</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -93,7 +103,7 @@ function AppSidebar() {
         </SidebarGroup>
 
         <SidebarGroup>
-          <SidebarGroupLabel className="text-[11px] uppercase tracking-wider font-semibold">Tools</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-[11px] uppercase tracking-wider font-semibold">{t("dashboard.sidebar.tools")}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
@@ -102,11 +112,11 @@ function AppSidebar() {
                     href="/arena"
                     target="_blank"
                     rel="noopener"
-                    title="Race your live key against any allowed model — same prompt, real cost."
+                    title={t("dashboard.sidebar.testKeyArenaTooltip")}
                     data-testid="link-nav-test-key-arena"
                   >
                     <Swords className="w-4 h-4" />
-                    <span>Test a Key (Arena)</span>
+                    <span>{t("dashboard.sidebar.testKeyArena")}</span>
                     <ExternalLink className="w-3 h-3 ml-auto opacity-60" />
                   </a>
                 </SidebarMenuButton>
@@ -131,6 +141,7 @@ function AppSidebar() {
 }
 
 function DashboardHeader() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [, setLocation] = useLocation();
@@ -146,16 +157,17 @@ function DashboardHeader() {
   return (
     <header className="flex items-center justify-between gap-2 px-4 py-3 border-b bg-background/80 backdrop-blur-sm shrink-0">
       <div className="flex items-center gap-3">
-        <SidebarTrigger data-testid="button-sidebar-toggle" />
+        <SidebarTrigger data-testid="button-sidebar-toggle" aria-label={t("dashboard.header.toggleSidebar")} />
         {user && <AdminRoleBadge role={user.orgRole} />}
       </div>
       <div className="flex items-center gap-2">
-        <Button size="icon" variant="secondary" onClick={toggleTheme} data-testid="button-theme-toggle-dash">
+        <LanguageSwitcher variant="dark" />
+        <Button size="icon" variant="secondary" onClick={toggleTheme} data-testid="button-theme-toggle-dash" aria-label={t("dashboard.header.toggleTheme")}>
           {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="secondary" size="sm" className="gap-1.5 pl-2 pr-2.5" data-testid="button-user-menu">
+            <Button variant="secondary" size="sm" className="gap-1.5 pl-2 pr-2.5" data-testid="button-user-menu" aria-label={t("dashboard.header.userMenu")}>
               <div className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-100 to-indigo-200 dark:from-indigo-900/60 dark:to-indigo-800/60 flex items-center justify-center text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
                 {user?.name?.[0] || "?"}
               </div>
@@ -170,7 +182,7 @@ function DashboardHeader() {
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout} data-testid="button-logout" className="text-destructive focus:text-destructive">
               <LogOut className="w-4 h-4 mr-2" />
-              Sign out
+              {t("dashboard.header.signOut")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

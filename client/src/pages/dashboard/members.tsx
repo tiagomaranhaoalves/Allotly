@@ -32,6 +32,8 @@ import {
   FolderOpen, ChevronDown, ChevronUp, Filter,
 } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import { Trans } from "react-i18next";
 
 const STATUS_STYLES: Record<string, string> = {
   ACTIVE: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
@@ -41,6 +43,7 @@ const STATUS_STYLES: Record<string, string> = {
 };
 
 function TransferDialog({ member, teams, open, onOpenChange }: { member: any; teams: any[]; open: boolean; onOpenChange: (o: boolean) => void }) {
+  const { t } = useTranslation();
   const { toast } = useToast();
   const [targetTeamId, setTargetTeamId] = useState("");
   const [newBudgetCents, setNewBudgetCents] = useState(String(member.monthlyBudgetCents));
@@ -59,68 +62,69 @@ function TransferDialog({ member, teams, open, onOpenChange }: { member: any; te
       if (data.apiKey) {
         setTransferKeyValue(data.apiKey);
       }
-      toast({ title: "Member transferred", description: data.message });
+      toast({ title: t("dashboard.members.toastMemberTransferred"), description: data.message });
     },
     onError: (err: any) => {
-      toast({ title: "Transfer failed", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.members.toastTransferFailed"), description: err.message, variant: "destructive" });
     },
   });
 
-  const availableTeams = teams.filter(t => t.id !== member.teamId);
+  const availableTeams = teams.filter(team => team.id !== member.teamId);
+  const memberDisplay = member.user?.name || member.user?.email;
 
   return (
     <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) { setTransferKeyValue(null); setTargetTeamId(""); } }}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{transferKeyValue ? "Transfer Complete — New API Key" : "Transfer Member"}</DialogTitle>
+          <DialogTitle>{transferKeyValue ? t("dashboard.members.transferCompleteTitle") : t("dashboard.members.transferDialogTitle")}</DialogTitle>
           <DialogDescription>
             {transferKeyValue
-              ? "The member's new API key is shown below. Their old key has been revoked."
-              : `Move ${member.user?.name || member.user?.email} to a different team.`}
+              ? t("dashboard.members.transferCompleteDescription")
+              : t("dashboard.members.transferDialogDescription", { name: memberDisplay })}
           </DialogDescription>
         </DialogHeader>
         {transferKeyValue ? (
           <div className="space-y-4 pt-2">
             <KeyRevealCard keyValue={transferKeyValue} masked={false} />
             <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
-              Copy this key and share it securely. It will NOT be shown again.
+              {t("dashboard.members.copyKeyWarningShort")}
             </p>
             <Button className="w-full" onClick={() => { onOpenChange(false); setTransferKeyValue(null); }} data-testid="button-done-transfer">
-              Done
+              {t("dashboard.members.done")}
             </Button>
           </div>
         ) : (
           <div className="space-y-4 pt-2">
             <div className="space-y-2">
-              <Label>Target Team</Label>
+              <Label>{t("dashboard.members.targetTeamLabel")}</Label>
               {availableTeams.length > 0 ? (
                 <Select value={targetTeamId} onValueChange={setTargetTeamId}>
                   <SelectTrigger data-testid="select-transfer-team">
-                    <SelectValue placeholder="Select a team" />
+                    <SelectValue placeholder={t("dashboard.members.selectTeamPlaceholder")} />
                   </SelectTrigger>
                   <SelectContent>
-                    {availableTeams.map(t => (
-                      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                    {availableTeams.map(team => (
+                      <SelectItem key={team.id} value={team.id}>{team.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               ) : (
-                <p className="text-sm text-muted-foreground">No other teams available.</p>
+                <p className="text-sm text-muted-foreground">{t("dashboard.members.noOtherTeams")}</p>
               )}
             </div>
             <div className="space-y-2">
-              <Label>New Monthly Budget (cents)</Label>
+              <Label>{t("dashboard.members.newMonthlyBudgetLabel")}</Label>
               <Input type="number" value={newBudgetCents} onChange={e => setNewBudgetCents(e.target.value)} data-testid="input-transfer-budget" />
-              <p className="text-xs text-muted-foreground">${(parseInt(newBudgetCents || "0") / 100).toFixed(2)} per month</p>
+              <p className="text-xs text-muted-foreground">{t("dashboard.members.perMonth", { amount: (parseInt(newBudgetCents || "0") / 100).toFixed(2) })}</p>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+              <Button variant="outline" onClick={() => onOpenChange(false)}>{t("dashboard.members.cancel")}</Button>
               <Button
                 onClick={() => transferMutation.mutate()}
                 disabled={!targetTeamId || transferMutation.isPending}
                 data-testid="button-confirm-transfer"
               >
-                {transferMutation.isPending ? "Transferring..." : "Transfer Member"}
+                {transferMutation.isPending ? t("dashboard.members.transferring") : t("dashboard.members.transferMember")}
               </Button>
             </DialogFooter>
           </div>
@@ -131,6 +135,7 @@ function TransferDialog({ member, teams, open, onOpenChange }: { member: any; te
 }
 
 function ChangeRoleDialog({ member, open, onOpenChange }: { member: any; open: boolean; onOpenChange: (o: boolean) => void }) {
+  const { t } = useTranslation();
   const { toast } = useToast();
   const currentRole = member.user?.orgRole || "MEMBER";
   const [newRole, setNewRole] = useState(currentRole === "MEMBER" ? "TEAM_ADMIN" : "MEMBER");
@@ -142,10 +147,10 @@ function ChangeRoleDialog({ member, open, onOpenChange }: { member: any; open: b
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/members"] });
       onOpenChange(false);
-      toast({ title: "Role updated", description: `Changed to ${newRole}` });
+      toast({ title: t("dashboard.members.toastRoleUpdated"), description: t("dashboard.members.toastRoleUpdatedDescription", { role: newRole }) });
     },
     onError: (err: any) => {
-      toast({ title: "Role change failed", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.members.toastRoleChangeFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -153,36 +158,36 @@ function ChangeRoleDialog({ member, open, onOpenChange }: { member: any; open: b
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Change Role</DialogTitle>
+          <DialogTitle>{t("dashboard.members.changeRoleTitle")}</DialogTitle>
           <DialogDescription>
-            Change the role of {member.user?.name || member.user?.email}. This only affects permissions — their API key and budget are unchanged.
+            {t("dashboard.members.changeRoleDescription", { name: member.user?.name || member.user?.email })}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 pt-2">
           <div className="space-y-2">
-            <Label>Current Role</Label>
+            <Label>{t("dashboard.members.currentRoleLabel")}</Label>
             <Badge variant="secondary" className="no-default-hover-elevate no-default-active-elevate">{currentRole}</Badge>
           </div>
           <div className="space-y-2">
-            <Label>New Role</Label>
+            <Label>{t("dashboard.members.newRoleLabel")}</Label>
             <Select value={newRole} onValueChange={setNewRole}>
               <SelectTrigger data-testid="select-new-role">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="TEAM_ADMIN">Team Admin</SelectItem>
-                <SelectItem value="MEMBER">Member</SelectItem>
+                <SelectItem value="TEAM_ADMIN">{t("dashboard.members.roleTeamAdmin")}</SelectItem>
+                <SelectItem value="MEMBER">{t("dashboard.members.roleMember")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>{t("dashboard.members.cancel")}</Button>
             <Button
               onClick={() => changeRoleMutation.mutate()}
               disabled={newRole === currentRole || changeRoleMutation.isPending}
               data-testid="button-confirm-change-role"
             >
-              {changeRoleMutation.isPending ? "Changing..." : "Change Role"}
+              {changeRoleMutation.isPending ? t("dashboard.members.changingRole") : t("dashboard.members.changeRoleConfirm")}
             </Button>
           </DialogFooter>
         </div>
@@ -192,6 +197,7 @@ function ChangeRoleDialog({ member, open, onOpenChange }: { member: any; open: b
 }
 
 function MemberActivityPanel({ memberId }: { memberId: string }) {
+  const { t } = useTranslation();
   const { data, isLoading } = useQuery<{
     budgetEvents: any[];
     keyEvents: any[];
@@ -216,22 +222,22 @@ function MemberActivityPanel({ memberId }: { memberId: string }) {
     <Tabs defaultValue="requests" className="w-full">
       <TabsList className="w-full grid grid-cols-4 h-8">
         <TabsTrigger value="requests" className="text-xs gap-1" data-testid="tab-requests">
-          <Zap className="w-3 h-3" /> Requests ({recentRequests.length})
+          <Zap className="w-3 h-3" /> {t("dashboard.members.activityTabRequests", { count: recentRequests.length })}
         </TabsTrigger>
         <TabsTrigger value="budget" className="text-xs gap-1" data-testid="tab-budget">
-          <Bell className="w-3 h-3" /> Budget ({budgetEvents.length})
+          <Bell className="w-3 h-3" /> {t("dashboard.members.activityTabBudget", { count: budgetEvents.length })}
         </TabsTrigger>
         <TabsTrigger value="keys" className="text-xs gap-1" data-testid="tab-keys">
-          <Key className="w-3 h-3" /> Keys ({keyEvents.length})
+          <Key className="w-3 h-3" /> {t("dashboard.members.activityTabKeys", { count: keyEvents.length })}
         </TabsTrigger>
         <TabsTrigger value="admin" className="text-xs gap-1" data-testid="tab-admin">
-          <ClipboardList className="w-3 h-3" /> Admin ({auditEntries.length})
+          <ClipboardList className="w-3 h-3" /> {t("dashboard.members.activityTabAdmin", { count: auditEntries.length })}
         </TabsTrigger>
       </TabsList>
 
       <TabsContent value="requests" className="mt-2">
         {recentRequests.length === 0 ? (
-          <p className="text-xs text-muted-foreground py-4 text-center">No recent API requests</p>
+          <p className="text-xs text-muted-foreground py-4 text-center">{t("dashboard.members.noRecentRequests")}</p>
         ) : (
           <div className="max-h-60 overflow-y-auto space-y-1">
             {recentRequests.map((r: any, i: number) => (
@@ -244,7 +250,7 @@ function MemberActivityPanel({ memberId }: { memberId: string }) {
                   <span className="text-muted-foreground">{r.provider}</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-muted-foreground">{r.inputTokens || 0}→{r.outputTokens || 0} tok</span>
+                  <span className="text-muted-foreground">{t("dashboard.members.tokensLabel", { input: r.inputTokens || 0, output: r.outputTokens || 0 })}</span>
                   <span className="font-medium">${((r.costCents || 0) / 100).toFixed(4)}</span>
                   <span className="text-muted-foreground">{new Date(r.timestamp).toLocaleTimeString()}</span>
                 </div>
@@ -256,7 +262,7 @@ function MemberActivityPanel({ memberId }: { memberId: string }) {
 
       <TabsContent value="budget" className="mt-2">
         {budgetEvents.length === 0 ? (
-          <p className="text-xs text-muted-foreground py-4 text-center">No budget alerts triggered</p>
+          <p className="text-xs text-muted-foreground py-4 text-center">{t("dashboard.members.noBudgetAlerts")}</p>
         ) : (
           <div className="max-h-60 overflow-y-auto space-y-1">
             {budgetEvents.map((e: any, i: number) => (
@@ -276,7 +282,7 @@ function MemberActivityPanel({ memberId }: { memberId: string }) {
 
       <TabsContent value="keys" className="mt-2">
         {keyEvents.length === 0 ? (
-          <p className="text-xs text-muted-foreground py-4 text-center">No API key events</p>
+          <p className="text-xs text-muted-foreground py-4 text-center">{t("dashboard.members.noKeyEvents")}</p>
         ) : (
           <div className="max-h-60 overflow-y-auto space-y-1">
             {keyEvents.map((e: any, i: number) => (
@@ -288,7 +294,7 @@ function MemberActivityPanel({ memberId }: { memberId: string }) {
                   <span className="font-mono">{e.keyPrefix}...</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  {e.lastUsed && <span className="text-muted-foreground">last used {new Date(e.lastUsed).toLocaleDateString()}</span>}
+                  {e.lastUsed && <span className="text-muted-foreground">{t("dashboard.members.lastUsed", { date: new Date(e.lastUsed).toLocaleDateString() })}</span>}
                   <span className="text-muted-foreground">{new Date(e.timestamp).toLocaleString()}</span>
                 </div>
               </div>
@@ -299,7 +305,7 @@ function MemberActivityPanel({ memberId }: { memberId: string }) {
 
       <TabsContent value="admin" className="mt-2">
         {auditEntries.length === 0 ? (
-          <p className="text-xs text-muted-foreground py-4 text-center">No admin actions recorded</p>
+          <p className="text-xs text-muted-foreground py-4 text-center">{t("dashboard.members.noAdminActions")}</p>
         ) : (
           <div className="max-h-60 overflow-y-auto space-y-1">
             {auditEntries.map((e: any, i: number) => (
@@ -308,7 +314,7 @@ function MemberActivityPanel({ memberId }: { memberId: string }) {
                   <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 no-default-hover-elevate no-default-active-elevate">
                     {e.action}
                   </Badge>
-                  <span className="text-muted-foreground">by {e.actorId === "system" ? "System" : e.actorId.slice(0, 8)}</span>
+                  <span className="text-muted-foreground">{e.actorId === "system" ? t("dashboard.members.bySystem") : t("dashboard.members.byActor", { actor: e.actorId.slice(0, 8) })}</span>
                 </div>
                 <span className="text-muted-foreground">{new Date(e.timestamp).toLocaleString()}</span>
               </div>
@@ -321,6 +327,7 @@ function MemberActivityPanel({ memberId }: { memberId: string }) {
 }
 
 function BudgetResetDialog({ member, open, onOpenChange }: { member: any; open: boolean; onOpenChange: (o: boolean) => void }) {
+  const { t } = useTranslation();
   const { toast } = useToast();
 
   const resetMutation = useMutation({
@@ -331,10 +338,10 @@ function BudgetResetDialog({ member, open, onOpenChange }: { member: any; open: 
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/members"] });
       onOpenChange(false);
-      toast({ title: "Budget reset", description: `Spend zeroed. New period ends ${new Date(data.newPeriodEnd).toLocaleDateString()}` });
+      toast({ title: t("dashboard.members.toastBudgetReset"), description: t("dashboard.members.toastBudgetResetDescription", { date: new Date(data.newPeriodEnd).toLocaleDateString() }) });
     },
     onError: (err: any) => {
-      toast({ title: "Reset failed", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.members.toastResetFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -342,25 +349,28 @@ function BudgetResetDialog({ member, open, onOpenChange }: { member: any; open: 
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Reset Budget Period?</AlertDialogTitle>
+          <AlertDialogTitle>{t("dashboard.members.resetBudgetTitle")}</AlertDialogTitle>
           <AlertDialogDescription>
-            This will zero out the current spend for <strong>{member.user?.name || member.user?.email}</strong>,
-            start a new billing period, and clear all budget alerts.
+            <Trans
+              i18nKey="dashboard.members.resetBudgetDescription"
+              values={{ name: member.user?.name || member.user?.email }}
+              components={{ strong: <strong /> }}
+            />
             {member.status === "BUDGET_EXHAUSTED" && (
               <span className="block mt-2 text-emerald-600 dark:text-emerald-400 font-medium">
-                This member is currently budget-exhausted and will be reactivated.
+                {t("dashboard.members.resetBudgetReactivateNote")}
               </span>
             )}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{t("dashboard.members.cancel")}</AlertDialogCancel>
           <AlertDialogAction
             onClick={() => resetMutation.mutate()}
             disabled={resetMutation.isPending}
             data-testid="button-confirm-budget-reset"
           >
-            {resetMutation.isPending ? "Resetting..." : "Reset Budget"}
+            {resetMutation.isPending ? t("dashboard.members.resetting") : t("dashboard.members.resetBudget")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -369,6 +379,7 @@ function BudgetResetDialog({ member, open, onOpenChange }: { member: any; open: 
 }
 
 function BudgetCreditDialog({ member, open, onOpenChange }: { member: any; open: boolean; onOpenChange: (o: boolean) => void }) {
+  const { t } = useTranslation();
   const { toast } = useToast();
   const [amountDollars, setAmountDollars] = useState("");
   const [reason, setReason] = useState("");
@@ -388,12 +399,16 @@ function BudgetCreditDialog({ member, open, onOpenChange }: { member: any; open:
       setAmountDollars("");
       setReason("");
       toast({
-        title: "Credit applied",
-        description: `$${(data.amountCents / 100).toFixed(2)} credit applied. Spend: $${(data.previousSpendCents / 100).toFixed(2)} → $${(data.newSpendCents / 100).toFixed(2)}`,
+        title: t("dashboard.members.toastCreditApplied"),
+        description: t("dashboard.members.toastCreditAppliedDescription", {
+          amount: (data.amountCents / 100).toFixed(2),
+          previous: (data.previousSpendCents / 100).toFixed(2),
+          next: (data.newSpendCents / 100).toFixed(2),
+        }),
       });
     },
     onError: (err: any) => {
-      toast({ title: "Credit failed", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.members.toastCreditFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -404,62 +419,62 @@ function BudgetCreditDialog({ member, open, onOpenChange }: { member: any; open:
     <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) { setAmountDollars(""); setReason(""); } }}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add Budget Credit</DialogTitle>
+          <DialogTitle>{t("dashboard.members.addBudgetCreditTitle")}</DialogTitle>
           <DialogDescription>
-            Apply a credit to reduce the current spend for {member.user?.name || member.user?.email}.
+            {t("dashboard.members.addBudgetCreditDescription", { name: member.user?.name || member.user?.email })}
             {member.status === "BUDGET_EXHAUSTED" && (
               <span className="block mt-1 text-emerald-600 dark:text-emerald-400 font-medium">
-                If the credit brings spend below the budget limit, the member will be reactivated.
+                {t("dashboard.members.creditReactivateNote")}
               </span>
             )}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 pt-2">
           <div className="space-y-2">
-            <Label>Credit Amount ($)</Label>
+            <Label>{t("dashboard.members.creditAmountLabel")}</Label>
             <Input
               type="number"
               step="0.01"
               min="0.01"
               value={amountDollars}
               onChange={e => setAmountDollars(e.target.value)}
-              placeholder="5.00"
+              placeholder={t("dashboard.members.creditAmountPlaceholder")}
               data-testid="input-credit-amount"
             />
-            {amountDollars && <p className="text-xs text-muted-foreground">{amountCents} cents</p>}
+            {amountDollars && <p className="text-xs text-muted-foreground">{t("dashboard.members.centsLabel", { cents: amountCents })}</p>}
           </div>
           <div className="space-y-2">
-            <Label>Reason (required)</Label>
+            <Label>{t("dashboard.members.reasonLabel")}</Label>
             <Textarea
               value={reason}
               onChange={e => setReason(e.target.value)}
-              placeholder="e.g. Courtesy credit for service disruption"
+              placeholder={t("dashboard.members.reasonPlaceholder")}
               rows={2}
               data-testid="input-credit-reason"
             />
           </div>
           <div className="rounded-md bg-muted/50 p-3 text-xs space-y-1">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Current spend</span>
+              <span className="text-muted-foreground">{t("dashboard.members.summaryCurrentSpend")}</span>
               <span className="font-medium">${(member.currentPeriodSpendCents / 100).toFixed(2)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Credit</span>
+              <span className="text-muted-foreground">{t("dashboard.members.summaryCredit")}</span>
               <span className="font-medium text-emerald-600">-${(amountCents / 100).toFixed(2)}</span>
             </div>
             <div className="flex justify-between border-t pt-1">
-              <span className="text-muted-foreground">New spend</span>
+              <span className="text-muted-foreground">{t("dashboard.members.summaryNewSpend")}</span>
               <span className="font-medium">${(Math.max(0, member.currentPeriodSpendCents - amountCents) / 100).toFixed(2)}</span>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>{t("dashboard.members.cancel")}</Button>
             <Button
               onClick={() => creditMutation.mutate()}
               disabled={!isValid || creditMutation.isPending}
               data-testid="button-confirm-credit"
             >
-              {creditMutation.isPending ? "Applying..." : "Apply Credit"}
+              {creditMutation.isPending ? t("dashboard.members.applyingCredit") : t("dashboard.members.applyCredit")}
             </Button>
           </DialogFooter>
         </div>
@@ -483,6 +498,7 @@ function MemberCard({
   teams: any[];
   isRootAdmin: boolean;
 }) {
+  const { t } = useTranslation();
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
   const [budgetOpen, setBudgetOpen] = useState(false);
@@ -503,7 +519,7 @@ function MemberCard({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/members"] });
-      toast({ title: "Member suspended" });
+      toast({ title: t("dashboard.members.toastMemberSuspended") });
     },
   });
 
@@ -513,7 +529,7 @@ function MemberCard({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/members"] });
-      toast({ title: "Member reactivated" });
+      toast({ title: t("dashboard.members.toastMemberReactivated") });
     },
   });
 
@@ -529,10 +545,10 @@ function MemberCard({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/members"] });
       setBudgetOpen(false);
-      toast({ title: "Member updated" });
+      toast({ title: t("dashboard.members.toastMemberUpdated") });
     },
     onError: (err: any) => {
-      toast({ title: "Update failed", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.members.toastUpdateFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -544,10 +560,10 @@ function MemberCard({
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/members"] });
       setRegenKeyValue(data.apiKey);
-      toast({ title: "API key regenerated", description: "Make sure to copy the API key — it won't be shown again." });
+      toast({ title: t("dashboard.members.toastKeyRegenerated"), description: t("dashboard.members.toastKeyRegeneratedDescription") });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to regenerate key", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.members.toastRegenerateFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -557,10 +573,10 @@ function MemberCard({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/members"] });
-      toast({ title: "API key revoked" });
+      toast({ title: t("dashboard.members.toastKeyRevoked") });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to revoke key", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.members.toastRevokeFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -569,16 +585,16 @@ function MemberCard({
       await apiRequest("POST", `/api/members/${member.id}/resend-invite`);
     },
     onSuccess: () => {
-      toast({ title: "Invite re-sent", description: `A new invite email has been sent to ${member.user?.email}` });
+      toast({ title: t("dashboard.members.toastInviteResent"), description: t("dashboard.members.toastInviteResentDescription", { email: member.user?.email }) });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to resend invite", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.members.toastResendInviteFailed"), description: err.message, variant: "destructive" });
     },
   });
 
   const budgetDisplay = member.accessType === "TEAM"
-    ? `$${(member.monthlyBudgetCents / 100).toFixed(2)}/mo`
-    : `$${(member.monthlyBudgetCents / 100).toFixed(2)} (fixed)`;
+    ? t("dashboard.members.budgetTeamFormat", { amount: (member.monthlyBudgetCents / 100).toFixed(2) })
+    : t("dashboard.members.budgetVoucherFormat", { amount: (member.monthlyBudgetCents / 100).toFixed(2) });
 
   const isInvited = member.user?.status === "INVITED";
 
@@ -606,7 +622,7 @@ function MemberCard({
                 {member.user?.name?.[0] || member.user?.email?.[0] || "?"}
               </div>
               <div>
-                <p className="font-medium text-sm" data-testid={`text-member-name-${member.id}`}>{member.user?.name || "Unknown"}</p>
+                <p className="font-medium text-sm" data-testid={`text-member-name-${member.id}`}>{member.user?.name || t("dashboard.members.unknown")}</p>
                 <p className="text-xs text-muted-foreground" data-testid={`text-member-email-${member.id}`}>{member.user?.email}</p>
               </div>
             </div>
@@ -616,7 +632,7 @@ function MemberCard({
                 {member.status}
               </Badge>
               {isInvited && (
-                <Badge variant="outline" className="text-xs no-default-hover-elevate no-default-active-elevate">INVITED</Badge>
+                <Badge variant="outline" className="text-xs no-default-hover-elevate no-default-active-elevate">{t("dashboard.members.statusInvited")}</Badge>
               )}
             </div>
           </div>
@@ -624,10 +640,10 @@ function MemberCard({
             <span className="text-xs font-medium text-muted-foreground" data-testid={`text-budget-display-${member.id}`}>
               {budgetDisplay}
               {member.accessType === "TEAM" && member.periodEnd && (
-                <span className="ml-1">· resets {new Date(member.periodEnd).toLocaleDateString()}</span>
+                <span className="ml-1">{t("dashboard.members.resetsOn", { date: new Date(member.periodEnd).toLocaleDateString() })}</span>
               )}
               {member.accessType === "VOUCHER" && member.voucherExpiresAt && (
-                <span className="ml-1">· expires {new Date(member.voucherExpiresAt).toLocaleDateString()}</span>
+                <span className="ml-1">{t("dashboard.members.expiresOn", { date: new Date(member.voucherExpiresAt).toLocaleDateString() })}</span>
               )}
             </span>
           </div>
@@ -638,10 +654,10 @@ function MemberCard({
           <div className="border-t px-4 py-3 space-y-3 bg-muted/20">
             {regenKeyValue && (
               <div className="space-y-2">
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">New API Key</h4>
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("dashboard.members.newApiKeyHeader")}</h4>
                 <KeyRevealCard keyValue={regenKeyValue} masked={false} />
                 <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
-                  Copy this key now. It will not be shown again.
+                  {t("dashboard.members.copyKeyNow")}
                 </p>
               </div>
             )}
@@ -654,30 +670,30 @@ function MemberCard({
                       <DialogTrigger asChild>
                         <Button size="sm" variant="outline" className="h-7 text-xs" data-testid={`button-edit-budget-${member.id}`}>
                           <Pencil className="w-3 h-3 mr-1" />
-                          Edit Member
+                          {t("dashboard.members.editBudgetButton")}
                         </Button>
                       </DialogTrigger>
                       <DialogContent>
                         <DialogHeader>
-                          <DialogTitle>Edit Member</DialogTitle>
-                          <DialogDescription>Update details for {member.user?.name || member.user?.email}.</DialogDescription>
+                          <DialogTitle>{t("dashboard.members.editMember")}</DialogTitle>
+                          <DialogDescription>{t("dashboard.members.editMemberDescription", { name: member.user?.name || member.user?.email })}</DialogDescription>
                         </DialogHeader>
                         <div className="space-y-4 pt-2">
                           <div className="space-y-2">
-                            <Label>Name</Label>
+                            <Label>{t("dashboard.members.nameLabel")}</Label>
                             <Input value={editName} onChange={e => setEditName(e.target.value)} data-testid="input-edit-member-name" />
                           </div>
                           <div className="space-y-2">
-                            <Label>Email</Label>
+                            <Label>{t("dashboard.members.emailLabel")}</Label>
                             <Input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} data-testid="input-edit-member-email" />
                           </div>
                           <div className="space-y-2">
-                            <Label>Monthly Budget (cents)</Label>
+                            <Label>{t("dashboard.members.monthlyBudgetLabel")}</Label>
                             <Input type="number" value={newBudget} onChange={e => setNewBudget(e.target.value)} data-testid="input-edit-budget" />
-                            <p className="text-xs text-muted-foreground">${(parseInt(newBudget || "0") / 100).toFixed(2)} per month</p>
+                            <p className="text-xs text-muted-foreground">{t("dashboard.members.perMonth", { amount: (parseInt(newBudget || "0") / 100).toFixed(2) })}</p>
                           </div>
                           <Button className="w-full" onClick={() => budgetMutation.mutate()} disabled={budgetMutation.isPending} data-testid="button-save-budget">
-                            {budgetMutation.isPending ? "Saving..." : "Save Changes"}
+                            {budgetMutation.isPending ? t("dashboard.members.saving") : t("dashboard.members.saveChanges")}
                           </Button>
                         </div>
                       </DialogContent>
@@ -691,7 +707,7 @@ function MemberCard({
                       data-testid={`button-budget-reset-${member.id}`}
                     >
                       <RotateCcw className="w-3 h-3 mr-1" />
-                      Reset Budget
+                      {t("dashboard.members.resetBudgetButton")}
                     </Button>
 
                     <Button
@@ -702,7 +718,7 @@ function MemberCard({
                       data-testid={`button-budget-credit-${member.id}`}
                     >
                       <CreditCard className="w-3 h-3 mr-1" />
-                      Add Credit
+                      {t("dashboard.members.addCredit")}
                     </Button>
 
                     <AlertDialog>
@@ -715,21 +731,24 @@ function MemberCard({
                           data-testid={`button-regenerate-key-${member.id}`}
                         >
                           <RefreshCw className="w-3 h-3 mr-1" />
-                          Regenerate Key
+                          {t("dashboard.members.regenerateKey")}
                         </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader>
-                          <AlertDialogTitle>Regenerate API Key?</AlertDialogTitle>
+                          <AlertDialogTitle>{t("dashboard.members.regenerateKeyTitle")}</AlertDialogTitle>
                           <AlertDialogDescription>
-                            This will revoke the current key and generate a new one for <strong>{member.user?.name || member.user?.email}</strong>.
-                            The old key will immediately stop working.
+                            <Trans
+                              i18nKey="dashboard.members.regenerateKeyDescription"
+                              values={{ name: member.user?.name || member.user?.email }}
+                              components={{ strong: <strong /> }}
+                            />
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogCancel>{t("dashboard.members.cancel")}</AlertDialogCancel>
                           <AlertDialogAction onClick={() => regenerateKeyMutation.mutate()} className="bg-destructive text-destructive-foreground hover:bg-destructive/90" data-testid="button-confirm-regenerate">
-                            Regenerate Key
+                            {t("dashboard.members.regenerateKey")}
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
@@ -747,21 +766,24 @@ function MemberCard({
                       data-testid={`button-revoke-key-${member.id}`}
                     >
                       <ShieldOff className="w-3 h-3 mr-1" />
-                      Revoke Key
+                      {t("dashboard.members.revokeKey")}
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>Revoke API Key?</AlertDialogTitle>
+                      <AlertDialogTitle>{t("dashboard.members.revokeKeyTitle")}</AlertDialogTitle>
                       <AlertDialogDescription>
-                        This will revoke all active API keys for <strong>{member.user?.name || member.user?.email}</strong>.
-                        They will not be able to make any API requests until a new key is generated.
+                        <Trans
+                          i18nKey="dashboard.members.revokeKeyDescription"
+                          values={{ name: member.user?.name || member.user?.email }}
+                          components={{ strong: <strong /> }}
+                        />
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogCancel>{t("dashboard.members.cancel")}</AlertDialogCancel>
                       <AlertDialogAction onClick={() => revokeKeyMutation.mutate()} className="bg-destructive text-destructive-foreground hover:bg-destructive/90" data-testid="button-confirm-revoke">
-                        Revoke Key
+                        {t("dashboard.members.revokeKey")}
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
@@ -778,24 +800,28 @@ function MemberCard({
                         data-testid={`button-suspend-${member.id}`}
                       >
                         <UserMinus className="w-3 h-3 mr-1" />
-                        Suspend
+                        {t("dashboard.members.suspend")}
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
-                        <AlertDialogTitle>Suspend Member?</AlertDialogTitle>
+                        <AlertDialogTitle>{t("dashboard.members.suspendMemberTitle")}</AlertDialogTitle>
                         <AlertDialogDescription>
-                          Are you sure you want to suspend <strong>{member.user?.name || member.user?.email}</strong>? They will lose access to all AI providers until reactivated.
+                          <Trans
+                            i18nKey="dashboard.members.suspendMemberDescription"
+                            values={{ name: member.user?.name || member.user?.email }}
+                            components={{ strong: <strong /> }}
+                          />
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
-                        <AlertDialogCancel data-testid="button-cancel-suspend">Cancel</AlertDialogCancel>
+                        <AlertDialogCancel data-testid="button-cancel-suspend">{t("dashboard.members.cancel")}</AlertDialogCancel>
                         <AlertDialogAction
                           onClick={() => suspendMutation.mutate()}
                           className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                           data-testid="button-confirm-suspend"
                         >
-                          Suspend Member
+                          {t("dashboard.members.suspendMemberConfirm")}
                         </AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
@@ -810,7 +836,7 @@ function MemberCard({
                     data-testid={`button-reactivate-${member.id}`}
                   >
                     <UserCheck className="w-3 h-3 mr-1" />
-                    Reactivate
+                    {t("dashboard.members.reactivate")}
                   </Button>
                 ) : null}
 
@@ -823,7 +849,7 @@ function MemberCard({
                     data-testid={`button-transfer-${member.id}`}
                   >
                     <ArrowRightLeft className="w-3 h-3 mr-1" />
-                    Transfer
+                    {t("dashboard.members.transfer")}
                   </Button>
                 )}
 
@@ -836,7 +862,7 @@ function MemberCard({
                     data-testid={`button-change-role-${member.id}`}
                   >
                     <Shield className="w-3 h-3 mr-1" />
-                    Change Role
+                    {t("dashboard.members.changeRoleAction")}
                   </Button>
                 )}
 
@@ -850,7 +876,7 @@ function MemberCard({
                     data-testid={`button-resend-invite-${member.id}`}
                   >
                     <Send className="w-3 h-3 mr-1" />
-                    {resendInviteMutation.isPending ? "Sending..." : "Resend Invite"}
+                    {resendInviteMutation.isPending ? t("dashboard.members.sending") : t("dashboard.members.resendInvite")}
                   </Button>
                 )}
               </div>
@@ -859,24 +885,28 @@ function MemberCard({
                 <AlertDialogTrigger asChild>
                   <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:text-destructive" data-testid={`button-remove-${member.id}`}>
                     <Trash2 className="w-3 h-3 mr-1" />
-                    Remove
+                    {t("dashboard.members.remove")}
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Delete Member</AlertDialogTitle>
+                    <AlertDialogTitle>{t("dashboard.members.deleteMemberTitle")}</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This will permanently remove <strong>{member.user?.name || member.user?.email}</strong> and free their email address for reuse. All API keys, usage data, and budget history will be deleted. This cannot be undone.
+                      <Trans
+                        i18nKey="dashboard.members.deleteMemberDescription"
+                        values={{ name: member.user?.name || member.user?.email }}
+                        components={{ strong: <strong /> }}
+                      />
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
-                    <AlertDialogCancel data-testid="button-cancel-remove">Cancel</AlertDialogCancel>
+                    <AlertDialogCancel data-testid="button-cancel-remove">{t("dashboard.members.cancel")}</AlertDialogCancel>
                     <AlertDialogAction
                       onClick={() => { onRemove(member.id); setConfirmRemoveOpen(false); }}
                       className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                       data-testid="button-confirm-remove"
                     >
-                      Delete Member
+                      {t("dashboard.members.deleteMemberConfirm")}
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
@@ -892,7 +922,7 @@ function MemberCard({
                 data-testid={`button-activity-${member.id}`}
               >
                 <Activity className="w-3 h-3" />
-                {showActivity ? "Hide Activity" : "View Activity"}
+                {showActivity ? t("dashboard.members.hideActivity") : t("dashboard.members.showActivity")}
               </Button>
             </div>
 
@@ -922,6 +952,7 @@ function BulkActionBar({
   members: any[];
   onClearSelection: () => void;
 }) {
+  const { t } = useTranslation();
   const { toast } = useToast();
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [bulkSuspendOpen, setBulkSuspendOpen] = useState(false);
@@ -1028,7 +1059,7 @@ function BulkActionBar({
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogCancel>{t("dashboard.common.cancel")}</AlertDialogCancel>
                 <AlertDialogAction
                   onClick={() => bulkSuspendMutation.mutate()}
                   disabled={bulkSuspendMutation.isPending}
@@ -1057,7 +1088,7 @@ function BulkActionBar({
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogCancel>{t("dashboard.common.cancel")}</AlertDialogCancel>
                 <AlertDialogAction
                   onClick={() => bulkReactivateMutation.mutate()}
                   disabled={bulkReactivateMutation.isPending}
@@ -1085,7 +1116,7 @@ function BulkActionBar({
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogCancel>{t("dashboard.common.cancel")}</AlertDialogCancel>
                 <AlertDialogAction
                   onClick={() => bulkDeleteMutation.mutate()}
                   disabled={bulkDeleteMutation.isPending}
@@ -1104,6 +1135,7 @@ function BulkActionBar({
 }
 
 function ProjectsSection({ teamId }: { teamId: string }) {
+  const { t } = useTranslation();
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
@@ -1181,7 +1213,7 @@ function ProjectsSection({ teamId }: { teamId: string }) {
       >
         <div className="flex items-center gap-2">
           <FolderOpen className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm font-semibold">Projects</span>
+          <span className="text-sm font-semibold">{t("dashboard.members.projectsHeader")}</span>
           <Badge variant="secondary" className="text-xs">{count}</Badge>
         </div>
         {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
@@ -1214,7 +1246,7 @@ function ProjectsSection({ teamId }: { teamId: string }) {
                       <Button size="sm" variant="ghost" onClick={() => { if (editName.trim()) renameMutation.mutate({ id: p.id, name: editName.trim() }); }}>
                         Save
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>Cancel</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>{t("dashboard.common.cancel")}</Button>
                     </>
                   ) : (
                     <>
@@ -1245,13 +1277,13 @@ function ProjectsSection({ teamId }: { teamId: string }) {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground py-2">No projects yet</p>
+            <p className="text-sm text-muted-foreground py-2">{t("dashboard.members.noProjectsYet")}</p>
           )}
 
           {showCreate ? (
             <div className="space-y-2 p-3 rounded-lg border">
               <Input
-                placeholder="Project name"
+                placeholder={t("dashboard.members.projectNamePlaceholder")}
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 maxLength={100}
@@ -1268,7 +1300,7 @@ function ProjectsSection({ teamId }: { teamId: string }) {
                 <Button size="sm" onClick={() => createMutation.mutate()} disabled={!newName.trim() || createMutation.isPending} data-testid="button-confirm-create-project">
                   {createMutation.isPending ? "Creating..." : "Create"}
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => { setShowCreate(false); setNewName(""); setNewDesc(""); }}>Cancel</Button>
+                <Button size="sm" variant="outline" onClick={() => { setShowCreate(false); setNewName(""); setNewDesc(""); }}>{t("dashboard.common.cancel")}</Button>
               </div>
             </div>
           ) : (
@@ -1283,6 +1315,7 @@ function ProjectsSection({ teamId }: { teamId: string }) {
 }
 
 export default function MembersPage() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -1416,7 +1449,7 @@ export default function MembersPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-members-heading">Members</h1>
+          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-members-heading">{t("dashboard.members.pageTitle")}</h1>
           <p className="text-muted-foreground mt-1">
             {filterTeamName ? `${filterTeamName} — ` : ""}Manage team members and their budgets
             {filteredMembers && filteredMembers.length > 0 && (
@@ -1459,7 +1492,7 @@ export default function MembersPage() {
                 <div className="space-y-4 pt-2 max-h-[60vh] overflow-y-auto">
                   {teams && teams.length > 1 && (
                     <div className="space-y-2">
-                      <Label>Team</Label>
+                      <Label>{t("dashboard.members.teamLabel")}</Label>
                       <Select value={selectedTeam || teams[0]?.id || ""} onValueChange={setSelectedTeam}>
                         <SelectTrigger data-testid="select-member-team">
                           <SelectValue />
@@ -1473,12 +1506,12 @@ export default function MembersPage() {
                     </div>
                   )}
                   <div className="space-y-2">
-                    <Label>Email</Label>
+                    <Label>{t("dashboard.members.emailLabel")}</Label>
                     <Input type="email" placeholder="member@company.com" value={email} onChange={e => setEmail(e.target.value)} data-testid="input-member-email" />
                   </div>
                   <div className="space-y-2">
-                    <Label>Name</Label>
-                    <Input placeholder="John Doe" value={name} onChange={e => setName(e.target.value)} data-testid="input-member-name" />
+                    <Label>{t("dashboard.members.nameLabel")}</Label>
+                    <Input placeholder={t("dashboard.members.namePlaceholder")} value={name} onChange={e => setName(e.target.value)} data-testid="input-member-name" />
                   </div>
                   <div className="space-y-2">
                     <Label>Monthly Budget (cents)</Label>
@@ -1486,7 +1519,7 @@ export default function MembersPage() {
                     <p className="text-xs text-muted-foreground">${(parseInt(budgetCents || "0") / 100).toFixed(2)} per month</p>
                   </div>
                   <div className="space-y-2">
-                    <Label>Access Type</Label>
+                    <Label>{t("dashboard.members.accessTypeLabel")}</Label>
                     <Select value={accessType} onValueChange={setAccessType}>
                       <SelectTrigger data-testid="select-access-type">
                         <SelectValue />
@@ -1500,7 +1533,7 @@ export default function MembersPage() {
 
                   {connectedProviders.length > 0 && (
                     <div className="space-y-2">
-                      <Label>Allowed Providers</Label>
+                      <Label>{t("dashboard.members.allowedProvidersLabel")}</Label>
                       <div className="space-y-1.5">
                         {connectedProviders.map(p => (
                           <label key={p.provider} className="flex items-center gap-2 text-sm cursor-pointer">
@@ -1513,13 +1546,13 @@ export default function MembersPage() {
                           </label>
                         ))}
                       </div>
-                      <p className="text-xs text-muted-foreground">Leave unchecked to allow all connected providers.</p>
+                      <p className="text-xs text-muted-foreground">{t("dashboard.members.allowedProvidersHint")}</p>
                     </div>
                   )}
 
                   {filteredModels.length > 0 && (
                     <div className="space-y-2">
-                      <Label>Allowed Models</Label>
+                      <Label>{t("dashboard.members.allowedModelsLabel")}</Label>
                       <div className="space-y-1.5 max-h-40 overflow-y-auto">
                         {filteredModels.map(m => (
                           <label key={m.modelId} className="flex items-center gap-2 text-sm cursor-pointer">
@@ -1533,7 +1566,7 @@ export default function MembersPage() {
                           </label>
                         ))}
                       </div>
-                      <p className="text-xs text-muted-foreground">Leave unchecked to allow all org-enabled models.</p>
+                      <p className="text-xs text-muted-foreground">{t("dashboard.members.allowedModelsHint")}</p>
                     </div>
                   )}
 
@@ -1555,10 +1588,10 @@ export default function MembersPage() {
             onValueChange={(v) => { setSelectedTeam(v === "__all__" ? "" : v); setSelectedMemberIds(new Set()); }}
           >
             <SelectTrigger className="w-[240px]" data-testid="select-team-filter">
-              <SelectValue placeholder="All Teams" />
+              <SelectValue placeholder={t("dashboard.members.allTeams")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="__all__">All Teams</SelectItem>
+              <SelectItem value="__all__">{t("dashboard.members.allTeams")}</SelectItem>
               {teams.map(t => (
                 <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
               ))}
@@ -1583,7 +1616,7 @@ export default function MembersPage() {
           <div className="flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
             <div>
-              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">No AI providers connected</p>
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">{t("dashboard.members.noProvidersTitle")}</p>
               <p className="text-xs text-amber-600 dark:text-amber-400">Connect at least one provider before adding members. Go to Settings → AI Providers.</p>
             </div>
           </div>
@@ -1616,7 +1649,7 @@ export default function MembersPage() {
                 }}
                 data-testid="checkbox-select-all"
               />
-              <span className="text-xs text-muted-foreground">Select all</span>
+              <span className="text-xs text-muted-foreground">{t("dashboard.members.selectAll")}</span>
             </div>
           )}
           {filteredMembers.map(m => (
@@ -1634,14 +1667,14 @@ export default function MembersPage() {
       ) : filterTeamId && members && members.length > 0 ? (
         <EmptyState
           icon={<Users className="w-10 h-10 text-muted-foreground" />}
-          title="No members in this team"
+          title={t("dashboard.members.emptyNoMembersInTeamTitle")}
           description={`${filterTeamName || "This team"} has no members yet. Add one or select a different team.`}
           action={user?.orgRole !== "MEMBER" && hasProviders ? { label: "Add Member", onClick: () => setOpen(true) } : undefined}
         />
       ) : (
         <EmptyState
           icon={<Users className="w-10 h-10 text-muted-foreground" />}
-          title="Add your first team member"
+          title={t("dashboard.members.emptyFirstMemberTitle")}
           description={hasProviders ? "Add team members to start distributing AI access" : "Connect a provider first, then add members"}
           action={user?.orgRole !== "MEMBER" && hasProviders ? { label: "Add Member", onClick: () => setOpen(true) } : undefined}
         />

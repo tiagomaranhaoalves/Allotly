@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation, Trans } from "react-i18next";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -20,9 +21,9 @@ const PROVIDER_COLORS: Record<string, string> = {
 };
 
 const TIME_RANGES = [
-  { label: "7d", value: 7 },
-  { label: "30d", value: 30 },
-  { label: "90d", value: 90 },
+  { label: "7d", value: 7, key: "range7d" as const },
+  { label: "30d", value: 30, key: "range30d" as const },
+  { label: "90d", value: 90, key: "range90d" as const },
 ];
 
 function formatCents(cents: number): string {
@@ -30,6 +31,7 @@ function formatCents(cents: number): string {
 }
 
 function CostPerModelSection() {
+  const { t } = useTranslation();
   const [days, setDays] = useState(30);
   const { data, isLoading } = useQuery<any[]>({
     queryKey: ["/api/analytics/cost-per-model", days],
@@ -49,7 +51,7 @@ function CostPerModelSection() {
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2">
           <BarChart3 className="w-5 h-5 text-primary" />
-          <h2 className="text-base font-semibold" data-testid="heading-cost-per-model">Cost per Model</h2>
+          <h2 className="text-base font-semibold" data-testid="heading-cost-per-model">{t("dashboard.analytics.costPerModel")}</h2>
         </div>
         <div className="flex gap-1">
           {TIME_RANGES.map(r => (
@@ -61,7 +63,7 @@ function CostPerModelSection() {
               onClick={() => setDays(r.value)}
               data-testid={`button-range-${r.label}`}
             >
-              {r.label}
+              {t(`dashboard.analytics.${r.key}`)}
             </Button>
           ))}
         </div>
@@ -72,7 +74,7 @@ function CostPerModelSection() {
           {[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full" />)}
         </div>
       ) : chartData.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-8 text-center" data-testid="text-no-cost-data">Analytics will populate as usage data accumulates</p>
+        <p className="text-sm text-muted-foreground py-8 text-center" data-testid="text-no-cost-data">{t("dashboard.analytics.noCostData")}</p>
       ) : (
         <div>
           <div className="h-[300px]" data-testid="chart-cost-per-model">
@@ -82,7 +84,7 @@ function CostPerModelSection() {
                 <XAxis type="number" tickFormatter={v => `$${v}`} tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
                 <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
                 <Tooltip
-                  formatter={(value: number) => [`$${value.toFixed(2)}`, "Cost"]}
+                  formatter={(value: number) => [`$${value.toFixed(2)}`, t("dashboard.analytics.costLabel")]}
                   contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, color: "hsl(var(--foreground))" }}
                   labelStyle={{ color: "hsl(var(--foreground))" }}
                 />
@@ -119,7 +121,7 @@ function CostPerModelSection() {
                 <div className="text-right">
                   <span className="text-sm font-semibold">{formatCents(item.costCents)}</span>
                   {item.requests > 0 && (
-                    <span className="text-xs text-muted-foreground ml-2">{item.requests.toLocaleString()} req</span>
+                    <span className="text-xs text-muted-foreground ml-2">{item.requests.toLocaleString()} {t("dashboard.analytics.requestsAbbrev")}</span>
                   )}
                 </div>
               </div>
@@ -132,6 +134,7 @@ function CostPerModelSection() {
 }
 
 function TopSpendersSection() {
+  const { t } = useTranslation();
   const { data, isLoading } = useQuery<any[]>({ queryKey: ["/api/analytics/top-spenders"] });
   const [sortField, setSortField] = useState<"spendCents" | "utilization" | "budgetCents">("spendCents");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -150,7 +153,7 @@ function TopSpendersSection() {
     }
   }
 
-  function SortHeader({ field, label, className = "" }: { field: typeof sortField; label: string; className?: string }) {
+  function SortHeader({ field, label, className = "" }: { field: typeof sortField; label: React.ReactNode; className?: string }) {
     const active = sortField === field;
     return (
       <th
@@ -170,7 +173,7 @@ function TopSpendersSection() {
     <Card className="p-5" data-testid="card-top-spenders">
       <div className="flex items-center gap-2 mb-6">
         <Users className="w-5 h-5 text-primary" />
-        <h2 className="text-base font-semibold" data-testid="heading-top-spenders">Top Spenders</h2>
+        <h2 className="text-base font-semibold" data-testid="heading-top-spenders">{t("dashboard.analytics.topSpenders")}</h2>
       </div>
 
       {isLoading ? (
@@ -178,19 +181,19 @@ function TopSpendersSection() {
           {[1, 2, 3].map(i => <Skeleton key={i} className="h-10 w-full" />)}
         </div>
       ) : !data || data.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-8 text-center" data-testid="text-no-spenders">Analytics will populate as usage data accumulates</p>
+        <p className="text-sm text-muted-foreground py-8 text-center" data-testid="text-no-spenders">{t("dashboard.analytics.noSpenders")}</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm" data-testid="table-top-spenders">
             <thead>
               <tr className="border-b border-border">
-                <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">#</th>
-                <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">Member</th>
-                <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs hidden md:table-cell">Team</th>
-                <SortHeader field="spendCents" label="Spend" className="text-right" />
-                <SortHeader field="budgetCents" label="Budget" className="text-right hidden sm:table-cell" />
-                <SortHeader field="utilization" label="Utilization" className="w-32 hidden lg:table-cell" />
-                <th className="text-center py-2 px-2 font-medium text-muted-foreground text-xs hidden md:table-cell">Type</th>
+                <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">{t("dashboard.analytics.rank")}</th>
+                <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">{t("dashboard.analytics.member")}</th>
+                <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs hidden md:table-cell">{t("dashboard.analytics.team")}</th>
+                <SortHeader field="spendCents" label={t("dashboard.analytics.spend")} className="text-right" />
+                <SortHeader field="budgetCents" label={t("dashboard.analytics.budget")} className="text-right hidden sm:table-cell" />
+                <SortHeader field="utilization" label={t("dashboard.analytics.utilization")} className="w-32 hidden lg:table-cell" />
+                <th className="text-center py-2 px-2 font-medium text-muted-foreground text-xs hidden md:table-cell">{t("dashboard.analytics.type")}</th>
               </tr>
             </thead>
             <tbody>
@@ -223,6 +226,7 @@ function TopSpendersSection() {
 }
 
 function SpendForecastSection() {
+  const { t } = useTranslation();
   const { data, isLoading } = useQuery<any>({ queryKey: ["/api/analytics/forecast"] });
 
   const chartData = (data?.dailySpend || []).map((d: any) => ({
@@ -255,7 +259,7 @@ function SpendForecastSection() {
     <Card className="p-5" data-testid="card-spend-forecast">
       <div className="flex items-center gap-2 mb-6">
         <TrendingUp className="w-5 h-5 text-primary" />
-        <h2 className="text-base font-semibold" data-testid="heading-spend-forecast">Spend Forecast</h2>
+        <h2 className="text-base font-semibold" data-testid="heading-spend-forecast">{t("dashboard.analytics.spendForecast")}</h2>
       </div>
 
       {isLoading ? (
@@ -264,27 +268,27 @@ function SpendForecastSection() {
         <div className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="p-3 rounded-lg bg-muted/50">
-              <p className="text-xs text-muted-foreground">Projected Month-End</p>
+              <p className="text-xs text-muted-foreground">{t("dashboard.analytics.projectedMonthEnd")}</p>
               <p className={`text-xl font-bold mt-1 ${warningExceeds ? "text-red-600 dark:text-red-400" : ""}`} data-testid="text-projected-total">
                 {formatCents(projectedTotal)}
               </p>
               {warningExceeds && (
                 <div className="flex items-center gap-1 mt-1">
                   <AlertTriangle className="w-3 h-3 text-red-500" />
-                  <span className="text-xs text-red-600 dark:text-red-400">Exceeds budget</span>
+                  <span className="text-xs text-red-600 dark:text-red-400">{t("dashboard.analytics.exceedsBudget")}</span>
                 </div>
               )}
             </div>
             <div className="p-3 rounded-lg bg-muted/50">
-              <p className="text-xs text-muted-foreground">Daily Average</p>
+              <p className="text-xs text-muted-foreground">{t("dashboard.analytics.dailyAverage")}</p>
               <p className="text-xl font-bold mt-1" data-testid="text-daily-avg">{formatCents(data?.dailyAvg || 0)}</p>
             </div>
             <div className="p-3 rounded-lg bg-muted/50">
-              <p className="text-xs text-muted-foreground">Days Remaining</p>
+              <p className="text-xs text-muted-foreground">{t("dashboard.analytics.daysRemaining")}</p>
               <p className="text-xl font-bold mt-1" data-testid="text-days-remaining">{data?.daysRemaining || 0}</p>
             </div>
             <div className="p-3 rounded-lg bg-muted/50">
-              <p className="text-xs text-muted-foreground">Total Budget</p>
+              <p className="text-xs text-muted-foreground">{t("dashboard.analytics.totalBudget")}</p>
               <p className="text-xl font-bold mt-1" data-testid="text-total-budget">{totalBudget > 0 ? formatCents(totalBudget) : "—"}</p>
             </div>
           </div>
@@ -312,14 +316,14 @@ function SpendForecastSection() {
                   />
                   <YAxis tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" tickFormatter={v => `$${v}`} />
                   <Tooltip
-                    formatter={(value: number, name: string) => [`$${(value || 0).toFixed(2)}`, name === "spend" ? "Actual" : "Projected"]}
+                    formatter={(value: number, name: string) => [`$${(value || 0).toFixed(2)}`, name === "spend" ? t("dashboard.analytics.actual") : t("dashboard.analytics.projected")]}
                     contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, color: "hsl(var(--foreground))" }}
                     labelFormatter={(d) => new Date(d + "T00:00:00").toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })}
                   />
                   <Area type="monotone" dataKey="spend" stroke="#6366f1" fill="url(#spendGradient)" strokeWidth={2} connectNulls={false} dot={false} />
                   <Area type="monotone" dataKey="projected" stroke="#f59e0b" fill="url(#projectedGradient)" strokeWidth={2} strokeDasharray="5 5" connectNulls={false} dot={false} />
                   {totalBudget > 0 && (
-                    <ReferenceLine y={totalBudget / 100} stroke="#ef4444" strokeDasharray="8 4" strokeWidth={1.5} label={{ value: "Budget", position: "right", fill: "#ef4444", fontSize: 11 }} />
+                    <ReferenceLine y={totalBudget / 100} stroke="#ef4444" strokeDasharray="8 4" strokeWidth={1.5} label={{ value: t("dashboard.analytics.budgetLine"), position: "right", fill: "#ef4444", fontSize: 11 }} />
                   )}
                 </AreaChart>
               </ResponsiveContainer>
@@ -328,7 +332,9 @@ function SpendForecastSection() {
 
           {chartData.length > 0 && (
             <p className="text-sm text-muted-foreground" data-testid="text-forecast-summary">
-              At current rate, {warningExceeds ? "spending will exceed budget" : "spending is within budget"} with a projected {formatCents(projectedTotal)} by month end.
+              {warningExceeds
+                ? t("dashboard.analytics.forecastSummaryExceeds", { amount: formatCents(projectedTotal) })
+                : t("dashboard.analytics.forecastSummaryWithin", { amount: formatCents(projectedTotal) })}
             </p>
           )}
         </div>
@@ -338,31 +344,32 @@ function SpendForecastSection() {
 }
 
 function AnomalyDetectionSection() {
+  const { t } = useTranslation();
   const { data, isLoading } = useQuery<any[]>({ queryKey: ["/api/analytics/anomalies"] });
 
   return (
     <Card className="p-5" data-testid="card-anomalies">
       <div className="flex items-center gap-2 mb-4">
         <AlertTriangle className="w-5 h-5 text-amber-500" />
-        <h2 className="text-base font-semibold" data-testid="heading-anomalies">Anomaly Detection</h2>
+        <h2 className="text-base font-semibold" data-testid="heading-anomalies">{t("dashboard.analytics.anomalyDetection")}</h2>
       </div>
 
       {isLoading ? (
         <Skeleton className="h-20 w-full" />
       ) : !data || data.length === 0 ? (
         <p className="text-sm text-muted-foreground" data-testid="text-no-anomalies">
-          No anomalies detected. Members spending within their 7-day rolling averages.
+          {t("dashboard.analytics.noAnomalies")}
         </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm" data-testid="table-anomalies">
             <thead>
               <tr className="border-b border-border">
-                <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">Member</th>
-                <th className="text-right py-2 px-2 font-medium text-muted-foreground text-xs">Today's Spend</th>
-                <th className="text-right py-2 px-2 font-medium text-muted-foreground text-xs">Avg Daily</th>
-                <th className="text-center py-2 px-2 font-medium text-muted-foreground text-xs">Multiplier</th>
-                <th className="text-right py-2 px-2 font-medium text-muted-foreground text-xs hidden sm:table-cell">Detected</th>
+                <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">{t("dashboard.analytics.member")}</th>
+                <th className="text-right py-2 px-2 font-medium text-muted-foreground text-xs">{t("dashboard.analytics.todaySpend")}</th>
+                <th className="text-right py-2 px-2 font-medium text-muted-foreground text-xs">{t("dashboard.analytics.avgDaily")}</th>
+                <th className="text-center py-2 px-2 font-medium text-muted-foreground text-xs">{t("dashboard.analytics.multiplier")}</th>
+                <th className="text-right py-2 px-2 font-medium text-muted-foreground text-xs hidden sm:table-cell">{t("dashboard.analytics.detected")}</th>
               </tr>
             </thead>
             <tbody>
@@ -398,20 +405,21 @@ function AnomalyDetectionSection() {
 }
 
 function OptimizationSection() {
+  const { t } = useTranslation();
   const { data, isLoading } = useQuery<any[]>({ queryKey: ["/api/analytics/optimization"] });
 
   return (
     <Card className="p-5" data-testid="card-optimization">
       <div className="flex items-center gap-2 mb-4">
         <Lightbulb className="w-5 h-5 text-amber-500" />
-        <h2 className="text-base font-semibold" data-testid="heading-optimization">Optimization Recommendations</h2>
+        <h2 className="text-base font-semibold" data-testid="heading-optimization">{t("dashboard.analytics.optimizationRecommendations")}</h2>
       </div>
 
       {isLoading ? (
         <Skeleton className="h-20 w-full" />
       ) : !data || data.length === 0 ? (
         <p className="text-sm text-muted-foreground" data-testid="text-no-optimizations">
-          No optimization recommendations at this time. Usage patterns look efficient.
+          {t("dashboard.analytics.noOptimizations")}
         </p>
       ) : (
         <div className="space-y-3">
@@ -447,12 +455,12 @@ function OptimizationSection() {
                     <ArrowDownRight className="w-3.5 h-3.5" />
                     {formatCents(rec.estimatedSavingsCents)}
                   </p>
-                  <p className="text-xs text-muted-foreground">est. savings</p>
+                  <p className="text-xs text-muted-foreground">{t("dashboard.analytics.estSavings")}</p>
                 </div>
               </div>
               {rec.type === "model_downgrade" && rec.suggestedModelDisplay && (
                 <p className="text-xs text-muted-foreground mt-2">
-                  Suggested alternative: <span className="font-medium text-foreground">{rec.suggestedModelDisplay}</span>
+                  {t("dashboard.analytics.suggestedAlternative", { model: rec.suggestedModelDisplay })}
                 </p>
               )}
             </div>
@@ -464,11 +472,12 @@ function OptimizationSection() {
 }
 
 export default function AnalyticsPage() {
+  const { t } = useTranslation();
   return (
     <div className="space-y-6" data-testid="page-analytics">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight" data-testid="heading-analytics">Analytics</h1>
-        <p className="text-muted-foreground mt-1">Cost breakdown, trends, and optimization insights</p>
+        <h1 className="text-2xl font-bold tracking-tight" data-testid="heading-analytics">{t("dashboard.analytics.title")}</h1>
+        <p className="text-muted-foreground mt-1">{t("dashboard.analytics.subtitle")}</p>
       </div>
 
       <CostPerModelSection />

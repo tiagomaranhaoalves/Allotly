@@ -1,4 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "@/lib/auth";
 import { EmptyState } from "@/components/brand/empty-state";
 import { Card } from "@/components/ui/card";
@@ -20,6 +21,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 
 function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string, confirmName: string) => void }) {
+  const { t } = useTranslation();
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const { data: stats } = useQuery<any>({
@@ -46,11 +48,11 @@ function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string, confir
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
-      toast({ title: "Team updated" });
+      toast({ title: t("dashboard.teams.teamUpdatedToast") });
       setEditOpen(false);
     },
     onError: (err: any) => {
-      toast({ title: "Failed to update team", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.teams.failedUpdateTeam"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -71,7 +73,7 @@ function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string, confir
               <div className="flex items-center gap-1.5 mt-1">
                 <User className="w-3.5 h-3.5 text-muted-foreground" />
                 <span className="text-xs text-muted-foreground truncate">
-                  Admin: {stats.adminName}
+                  {t("dashboard.teams.adminLabel", { name: stats.adminName })}
                   {stats.adminEmail && <span className="opacity-60"> ({stats.adminEmail})</span>}
                 </span>
               </div>
@@ -79,7 +81,7 @@ function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string, confir
             {team.description && (
               <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1" data-testid={`text-team-description-${team.id}`}>{team.description}</p>
             )}
-            <p className="text-xs text-muted-foreground mt-0.5">Created {new Date(team.createdAt).toLocaleDateString()}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{t("dashboard.teams.createdOn", { date: new Date(team.createdAt).toLocaleDateString() })}</p>
           </div>
         </div>
 
@@ -90,7 +92,7 @@ function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string, confir
               <span className="text-sm font-medium" data-testid={`member-count-${team.id}`}>
                 {stats?.memberCount ?? "–"}
               </span>
-              <span className="text-xs text-muted-foreground">members</span>
+              <span className="text-xs text-muted-foreground">{t("dashboard.teams.membersLabel")}</span>
             </div>
             {stats && stats.totalBudgetCents > 0 && (
               <div className="flex items-center gap-1.5 justify-end mt-1">
@@ -119,21 +121,21 @@ function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string, confir
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Edit Team</DialogTitle>
-                  <DialogDescription>Update the team name and description.</DialogDescription>
+                  <DialogTitle>{t("dashboard.teams.editTeam")}</DialogTitle>
+                  <DialogDescription>{t("dashboard.teams.editTeamDesc")}</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 pt-2">
                   <div className="space-y-2">
-                    <Label>Team Name</Label>
+                    <Label>{t("dashboard.teams.teamName")}</Label>
                     <Input value={editName} onChange={e => setEditName(e.target.value)} data-testid="input-edit-team-name" />
                   </div>
                   <div className="space-y-2">
-                    <Label>Description</Label>
-                    <Textarea placeholder="Optional team description" value={editDescription} onChange={e => setEditDescription(e.target.value)} data-testid="input-edit-team-description" maxLength={500} rows={3} />
-                    <p className="text-xs text-muted-foreground">{editDescription.length}/500 characters</p>
+                    <Label>{t("dashboard.teams.description")}</Label>
+                    <Textarea placeholder={t("dashboard.teams.descriptionPlaceholder")} value={editDescription} onChange={e => setEditDescription(e.target.value)} data-testid="input-edit-team-description" maxLength={500} rows={3} />
+                    <p className="text-xs text-muted-foreground">{t("dashboard.teams.characterCount", { count: editDescription.length })}</p>
                   </div>
                   <Button className="w-full" onClick={() => editMutation.mutate()} disabled={!editName || editMutation.isPending} data-testid="button-save-team-edit">
-                    {editMutation.isPending ? "Saving..." : "Save Changes"}
+                    {editMutation.isPending ? t("dashboard.teams.saving") : t("dashboard.teams.saveChanges")}
                   </Button>
                 </div>
               </DialogContent>
@@ -160,13 +162,13 @@ function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string, confir
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Delete Team</AlertDialogTitle>
+                  <AlertDialogTitle>{t("dashboard.teams.deleteTeam")}</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This will permanently delete <strong>{team.name}</strong> and all associated members, API keys, vouchers, and usage data. This action cannot be undone. Type the team name to confirm.
+                    {t("dashboard.teams.deleteTeamDesc", { name: team.name })}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <div className="py-3">
-                  <Label className="text-sm text-muted-foreground mb-2 block">Type "{team.name}" to confirm</Label>
+                  <Label className="text-sm text-muted-foreground mb-2 block">{t("dashboard.teams.typeNameToConfirm", { name: team.name })}</Label>
                   <Input
                     value={deleteConfirmName}
                     onChange={e => setDeleteConfirmName(e.target.value)}
@@ -175,14 +177,14 @@ function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string, confir
                   />
                 </div>
                 <AlertDialogFooter>
-                  <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
+                  <AlertDialogCancel data-testid="button-cancel-delete">{t("dashboard.common.cancel")}</AlertDialogCancel>
                   <AlertDialogAction
                     onClick={() => { onDelete(team.id, deleteConfirmName); setConfirmOpen(false); }}
                     disabled={deleteConfirmName !== team.name}
                     className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                     data-testid="button-confirm-delete"
                   >
-                    Delete Team
+                    {t("dashboard.teams.deleteTeam")}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
@@ -202,7 +204,7 @@ function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string, confir
               }}
             />
           </div>
-          <p className="text-[11px] text-muted-foreground mt-1">{budgetUsedPct}% of total team budget used</p>
+          <p className="text-[11px] text-muted-foreground mt-1">{t("dashboard.teams.budgetUsedPct", { percent: budgetUsedPct })}</p>
         </div>
       )}
     </Card>
@@ -210,6 +212,7 @@ function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string, confir
 }
 
 export default function TeamsPage() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { toast } = useToast();
   const [location] = useLocation();
@@ -238,7 +241,7 @@ export default function TeamsPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("upgrade") === "success") {
-      toast({ title: "Subscription activated!", description: "You can now create new teams." });
+      toast({ title: t("dashboard.teams.subscriptionActivated"), description: t("dashboard.teams.subscriptionActivatedDesc") });
       queryClient.invalidateQueries({ queryKey: ["/api/teams/capacity"] });
       window.history.replaceState({}, "", window.location.pathname);
     }
@@ -251,14 +254,14 @@ export default function TeamsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
       queryClient.invalidateQueries({ queryKey: ["/api/teams/capacity"] });
-      toast({ title: "Team created — invite sent to admin" });
+      toast({ title: t("dashboard.teams.teamCreatedToast") });
       setOpen(false);
       setTeamName("");
       setAdminEmail("");
       setAdminName("");
     },
     onError: (err: any) => {
-      toast({ title: "Failed to create team", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.teams.failedCreateTeam"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -275,12 +278,12 @@ export default function TeamsPage() {
         window.location.href = data.url;
       } else {
         queryClient.invalidateQueries({ queryKey: ["/api/teams/capacity"] });
-        toast({ title: "Seat added!", description: "You can now create a new team." });
+        toast({ title: t("dashboard.teams.seatAddedToast"), description: t("dashboard.teams.seatAddedDesc") });
         setSeatDialogOpen(false);
       }
     },
     onError: (err: any) => {
-      toast({ title: "Failed to add seat", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.teams.failedAddSeat"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -291,10 +294,10 @@ export default function TeamsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
       queryClient.invalidateQueries({ queryKey: ["/api/teams/capacity"] });
-      toast({ title: "Team deleted successfully" });
+      toast({ title: t("dashboard.teams.teamDeletedToast") });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to delete team", description: err.message, variant: "destructive" });
+      toast({ title: t("dashboard.teams.failedDeleteTeam"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -302,7 +305,7 @@ export default function TeamsPage() {
     if (capacity?.needsMoreSeats) {
       setSeatDialogOpen(true);
     } else if (capacity && capacity.currentTeams >= capacity.maxTeams) {
-      toast({ title: "Team limit reached", description: `Your plan allows ${capacity.maxTeams} teams.`, variant: "destructive" });
+      toast({ title: t("dashboard.teams.teamLimitReached"), description: t("dashboard.teams.teamLimitDesc", { max: capacity.maxTeams }), variant: "destructive" });
     } else {
       setOpen(true);
     }
@@ -312,8 +315,8 @@ export default function TeamsPage() {
     return (
       <EmptyState
         icon={<Shield className="w-8 h-8 text-muted-foreground" />}
-        title="Access Restricted"
-        description="Only Root Admins can manage teams"
+        title={t("dashboard.teams.accessRestricted")}
+        description={t("dashboard.teams.accessRestrictedDesc")}
       />
     );
   }
@@ -322,41 +325,41 @@ export default function TeamsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Teams</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t("dashboard.teams.title")}</h1>
           <p className="text-muted-foreground mt-1">
-            Manage your organization's teams
+            {t("dashboard.teams.subtitle")}
             {capacity && (
-              <span className="ml-1">· {capacity.currentTeams} of {capacity.maxTeams} teams · {capacity.currentAdmins} of {capacity.maxAdmins} admin seats</span>
+              <span className="ml-1">{t("dashboard.teams.capacityInfo", { currentTeams: capacity.currentTeams, maxTeams: capacity.maxTeams, currentAdmins: capacity.currentAdmins, maxAdmins: capacity.maxAdmins })}</span>
             )}
           </p>
         </div>
         <Button onClick={handleCreateTeamClick} data-testid="button-create-team">
           <Plus className="w-4 h-4 mr-1.5" />
-          Create Team
+          {t("dashboard.teams.createTeam")}
         </Button>
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create New Team</DialogTitle>
-            <DialogDescription>An invite email will be sent to the team admin to set their password.</DialogDescription>
+            <DialogTitle>{t("dashboard.teams.createNewTeam")}</DialogTitle>
+            <DialogDescription>{t("dashboard.teams.createNewTeamDesc")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 pt-2">
             <div className="space-y-2">
-              <Label>Team Name</Label>
-              <Input placeholder="Engineering" value={teamName} onChange={e => setTeamName(e.target.value)} data-testid="input-team-name" />
+              <Label>{t("dashboard.teams.teamName")}</Label>
+              <Input placeholder={t("dashboard.teams.teamNamePlaceholder")} value={teamName} onChange={e => setTeamName(e.target.value)} data-testid="input-team-name" />
             </div>
             <div className="space-y-2">
-              <Label>Team Admin Email</Label>
-              <Input type="email" placeholder="admin@company.com" value={adminEmail} onChange={e => setAdminEmail(e.target.value)} data-testid="input-admin-email" />
+              <Label>{t("dashboard.teams.teamAdminEmail")}</Label>
+              <Input type="email" placeholder={t("dashboard.teams.teamAdminEmailPlaceholder")} value={adminEmail} onChange={e => setAdminEmail(e.target.value)} data-testid="input-admin-email" />
             </div>
             <div className="space-y-2">
-              <Label>Team Admin Name</Label>
-              <Input placeholder="Jane Smith" value={adminName} onChange={e => setAdminName(e.target.value)} data-testid="input-admin-name" />
+              <Label>{t("dashboard.teams.teamAdminName")}</Label>
+              <Input placeholder={t("dashboard.teams.teamAdminNamePlaceholder")} value={adminName} onChange={e => setAdminName(e.target.value)} data-testid="input-admin-name" />
             </div>
             <Button className="w-full" onClick={() => createMutation.mutate()} disabled={!teamName || !adminEmail || createMutation.isPending} data-testid="button-submit-team">
-              {createMutation.isPending ? "Creating..." : "Create Team"}
+              {createMutation.isPending ? t("dashboard.teams.creatingTeam") : t("dashboard.teams.createTeam")}
             </Button>
           </div>
         </DialogContent>
@@ -365,24 +368,24 @@ export default function TeamsPage() {
       <Dialog open={seatDialogOpen} onOpenChange={setSeatDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add Team Admin Seat</DialogTitle>
-            <DialogDescription>Each new team requires a Team Admin seat.</DialogDescription>
+            <DialogTitle>{t("dashboard.teams.addTeamAdminSeat")}</DialogTitle>
+            <DialogDescription>{t("dashboard.teams.addTeamAdminSeatDesc")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 pt-2">
             <div className="p-4 rounded-lg border bg-muted/30 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Current seats</span>
-                <Badge variant="secondary" data-testid="text-current-seats">{capacity?.currentAdmins || 0} of {capacity?.maxAdmins || 0}</Badge>
+                <span className="text-sm text-muted-foreground">{t("dashboard.teams.currentSeats")}</span>
+                <Badge variant="secondary" data-testid="text-current-seats">{t("dashboard.teams.seatsCount", { current: capacity?.currentAdmins || 0, max: capacity?.maxAdmins || 0 })}</Badge>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Cost per seat</span>
-                <span className="text-sm font-medium">$20/mo</span>
+                <span className="text-sm text-muted-foreground">{t("dashboard.teams.costPerSeat")}</span>
+                <span className="text-sm font-medium">{t("dashboard.teams.seatPrice")}</span>
               </div>
             </div>
             <p className="text-sm text-muted-foreground">
               {capacity?.hasSubscription
-                ? "Adding a seat will be prorated to your current billing cycle."
-                : "You'll be taken to checkout to set up your Team subscription."}
+                ? t("dashboard.teams.seatProrated")
+                : t("dashboard.teams.seatCheckout")}
             </p>
             <Button
               className="w-full gap-2"
@@ -391,7 +394,7 @@ export default function TeamsPage() {
               data-testid="button-buy-seat"
             >
               <CreditCard className="w-4 h-4" />
-              {addSeatMutation.isPending ? "Processing..." : capacity?.hasSubscription ? "Add 1 Seat (+$20/mo)" : "Subscribe & Add Seat ($20/mo)"}
+              {addSeatMutation.isPending ? t("dashboard.teams.processing") : capacity?.hasSubscription ? t("dashboard.teams.addOneSeat") : t("dashboard.teams.subscribeAddSeat")}
             </Button>
           </div>
         </DialogContent>
@@ -408,9 +411,9 @@ export default function TeamsPage() {
       ) : (
         <EmptyState
           icon={<Users className="w-10 h-10 text-muted-foreground" />}
-          title="No teams yet"
-          description="Create your first team to start managing members and budgets"
-          action={{ label: "Create Team", onClick: handleCreateTeamClick }}
+          title={t("dashboard.teams.noTeams")}
+          description={t("dashboard.teams.noTeamsDesc")}
+          action={{ label: t("dashboard.teams.createTeam"), onClick: handleCreateTeamClick }}
         />
       )}
     </div>
