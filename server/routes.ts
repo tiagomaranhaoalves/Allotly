@@ -1174,7 +1174,12 @@ export async function registerRoutes(
       const allUsers = await storage.getUsersByOrg(user.orgId);
       const activeAdmins = allUsers.filter(u => u.orgRole === "TEAM_ADMIN" && u.status === "ACTIVE");
       const maxAdmins = org.maxTeamAdmins || (org.plan === "TEAM" ? PLAN_LIMITS.TEAM.maxTeamAdmins : 0);
-      const maxTeams = org.plan === "TEAM" ? PLAN_LIMITS.TEAM.maxTeams : org.plan === "FREE" ? PLAN_LIMITS.FREE.maxTeams : PLAN_LIMITS.ENTERPRISE.maxTeams;
+      const maxTeams =
+        org.plan === "TEAM"
+          ? (org.maxTeamAdmins || PLAN_LIMITS.TEAM.maxTeams)
+          : org.plan === "FREE"
+            ? PLAN_LIMITS.FREE.maxTeams
+            : PLAN_LIMITS.ENTERPRISE.maxTeams;
 
       res.json({
         plan: org.plan,

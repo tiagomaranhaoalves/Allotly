@@ -62,10 +62,14 @@ export async function checkPlanLimit(
   switch (resource) {
     case "team": {
       const teams = await storage.getTeamsByOrg(orgId);
-      if (teams.length >= limits.maxTeams) {
+      const maxTeams =
+        plan === "TEAM"
+          ? (org.maxTeamAdmins || limits.maxTeams)
+          : limits.maxTeams;
+      if (teams.length >= maxTeams) {
         return {
           allowed: false,
-          message: `Maximum ${limits.maxTeams} team(s) on the ${plan} plan`,
+          message: `Maximum ${maxTeams} team(s) on the ${plan} plan`,
         };
       }
       return { allowed: true };
