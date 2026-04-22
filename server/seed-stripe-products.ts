@@ -19,7 +19,7 @@ async function seedProducts() {
   console.log('Creating Allotly Team Plan product...');
   const teamProduct = await stripe.products.create({
     name: 'Allotly Team Plan',
-    description: 'Team plan for Allotly - AI Spend Control Plane. Includes up to 10 Team Admins, 20 members per team, 3 AI Provider connections, 15-minute usage polling, 90-day retention, and more.',
+    description: 'Team plan for Allotly — AI Spend Control Plane. $20 per Admin Seat per month. Each Admin Seat includes up to 20 team members and 5 active vouchers, where each voucher can be redeemed by up to 50 different users. Scale up to 10 Admin Seats. Includes 4 AI Provider connections, 90-day retention, full audit log, and budget controls.',
     metadata: {
       type: 'subscription',
       plan: 'TEAM',
