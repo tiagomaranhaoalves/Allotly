@@ -50,7 +50,7 @@ export default function LoginPage() {
           </p>
           <div className="mt-8 flex items-center gap-3 text-indigo-200/70 text-sm">
             <Lock className="w-4 h-4" />
-            <span>AES-256 encryption · SOC 2 ready · GDPR compliant</span>
+            <span>AES-256 encryption · GDPR compliant</span>
           </div>
         </div>
       </div>

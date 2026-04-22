@@ -125,9 +125,8 @@
     "card2Desc": "The proxy forwards requests in real time. Nothing is stored — no prompts, no completions, no conversation history. Only metadata: model, token count, cost.",
     "card3Title": "Enterprise-Grade Security",
     "card3Subtitle": "Built for compliance",
-    "card3Desc": "AES-256-GCM encryption for stored keys. Full audit trail for every admin action. GDPR-compliant architecture. SOC 2 Type II on the roadmap.",
+    "card3Desc": "AES-256-GCM encryption for stored keys. Full audit trail for every admin action. GDPR-compliant architecture.",
     "badge1": "AES-256-GCM",
-    "badge2": "SOC 2 (planned)",
     "badge3": "GDPR Compliant",
     "badge4": "Zero Data Retention"
   },

@@ -40,7 +40,6 @@ const dataNotStored = [
 ];
 
 const complianceItems = [
-  { label: "SOC 2", status: "Planned", description: "Type II certification in progress" },
   { label: "GDPR", status: "Compliant", description: "GDPR-compliant architecture and data handling" },
   { label: "Audit Logging", status: "Active", description: "Comprehensive audit trail for all administrative actions" },
 ];

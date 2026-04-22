@@ -125,9 +125,8 @@
     "card2Desc": "O proxy encaminha as requisições em tempo real. Nada é armazenado — nenhum prompt, nenhuma resposta, nenhum histórico de conversa. Apenas metadados: modelo, contagem de tokens e custo.",
     "card3Title": "Segurança Corporativa",
     "card3Subtitle": "Pronta para conformidade",
-    "card3Desc": "Criptografia AES-256-GCM para chaves armazenadas. Trilha de auditoria completa para cada ação administrativa. Arquitetura compatível com a LGPD/GDPR. SOC 2 Tipo II no roadmap.",
+    "card3Desc": "Criptografia AES-256-GCM para chaves armazenadas. Trilha de auditoria completa para cada ação administrativa. Arquitetura compatível com a LGPD/GDPR.",
     "badge1": "AES-256-GCM",
-    "badge2": "SOC 2 (planejado)",
     "badge3": "Compatível com LGPD/GDPR",
     "badge4": "Zero Retenção de Dados"
   },

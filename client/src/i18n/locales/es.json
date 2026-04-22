@@ -125,9 +125,8 @@
     "card2Desc": "El proxy reenvía las solicitudes en tiempo real. Nada se almacena — sin prompts, sin respuestas, sin historial de conversación. Solo metadatos: modelo, conteo de tokens, costo.",
     "card3Title": "Seguridad de Nivel Empresarial",
     "card3Subtitle": "Lista para cumplimiento",
-    "card3Desc": "Cifrado AES-256-GCM para claves almacenadas. Trazabilidad completa de cada acción administrativa. Arquitectura compatible con GDPR. SOC 2 Tipo II en el roadmap.",
+    "card3Desc": "Cifrado AES-256-GCM para claves almacenadas. Trazabilidad completa de cada acción administrativa. Arquitectura compatible con GDPR.",
     "badge1": "AES-256-GCM",
-    "badge2": "SOC 2 (planeado)",
     "badge3": "Compatible con GDPR",
     "badge4": "Cero Retención de Datos"
   },
