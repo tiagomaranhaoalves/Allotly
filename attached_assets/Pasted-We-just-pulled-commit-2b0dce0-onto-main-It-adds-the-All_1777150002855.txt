@@ -1,0 +1,122 @@
+We just pulled commit 2b0dce0 onto main. It adds the Allotly MCP V1 server
+(tiers 1-2) at /mcp, alongside the existing proxy. The build was done locally
+by Claude Code against the spec at allotly-mcp-v1-tiers-1-2-build-prompt.md.
+Read server/lib/mcp/README.md first — it's the canonical handover doc.
+
+What changed (high level):
+
+1. New directory server/lib/mcp/ implementing a Streamable-HTTP MCP server:
+   - JSON-RPC transport at POST /mcp (registered in server/routes.ts AFTER
+     the proxy and BEFORE the SPA catch-all via mountMcp(app, "/mcp")).
+   - Bearer-token auth supporting BOTH allotly_sk_... keys AND ALLOT-XXXX
+     voucher codes. The voucher-bearer flow auto-mints an allotly_sk_
+     server-side on first use and binds it for 24h in Redis at
+     allotly:mcp:voucher_binding:{sha256(code)}. The minted sk_ is NEVER
+     returned in any tool output — verified by tests/mcp/security.test.ts.
+   - 13 tools registered: chat, compare_models, recommend_model,
+     list_available_models, voucher_info (no-auth), my_budget, my_status,
+     my_recent_usage, diagnose, quickstart, redeem_voucher,
+     redeem_and_chat, request_topup.
+   - 3 prompts (quickstart-me, compare, debate-pattern) and 2 resources
+     (allotly://voucher/me, allotly://models/me).
+   - Every tool response carries _meta.budget per the spec. Audit log is
+     write-after-respond via setImmediate so a DB hiccup never fails a
+     tool call.
+
+2. Three new tables in shared/schema.ts:
+     mcp_audit_log
+     mcp_idempotency  (composite PK: scope, key, principal_id)
+     voucher_topup_requests
+   These need to be created via `npm run db:push`. They are additive only.
+
+3. server/lib/proxy/handler.ts gained processChatCompletion() — a callable
+   that runs the full proxy lifecycle (auth/budget/concurrency/translate/
+   fetch/translate-back) without req/res. The MCP `chat` tool calls into
+   this. The existing HTTP handleChatCompletion was LEFT INTACT so the
+   existing proxy test suite continues to pass unchanged. The spec asked
+   for the HTTP handler to be reduced to ~30 lines; that consolidation is
+   deferred to V1.5 to avoid risking the live SSE streaming path.
+   ALSO: the chatRequestSchema role enum was widened to accept "tool"
+   role messages (function-call results) — required for MCP tool-calling.
+
+4. New email template emailTemplates.topupRequest in server/lib/email.ts.
+
+5. New dep in package.json: @modelcontextprotocol/sdk ^1.18.0. (V1
+   actually implements JSON-RPC directly for robustness, but the SDK is
+   pinned for V1.5 OAuth work.)
+
+6. tests/mcp/ — 6 test files: registry (asserts the 13 tools, 3 prompts,
+   2 resources all register), errors (canonical -32001…-32100 codes),
+   audit (sha256 hashing is deterministic and never echoes secrets),
+   security (regex scan for allotly_sk_ / sk- / sk-ant- / AIza... in any
+   output), voucher-info (mocked storage), transport (boots Express on
+   a random port and round-trips JSON-RPC against /mcp).
+
+What I need you to do — please run in this order and stop if anything
+fails:
+
+1. npm install
+   Confirm @modelcontextprotocol/sdk lands in node_modules.
+
+2. npm run check
+   This runs `tsc` against the whole codebase. Strict mode is on, so any
+   typing slip in the new code will surface here. If it fails, fix with
+   the minimum diff and report what you changed.
+
+3. npm run db:push
+   Drizzle will detect the 3 new tables. Choose the option to CREATE the
+   tables (not drop). If it asks about renames or unrelated columns,
+   stop and report exactly what it asked — do not improvise.
+
+4. npx vitest run tests/mcp/
+   Expect all 6 files green. If any fail, paste the full failure output.
+
+5. npx vitest run
+   Run the WHOLE test suite — this is the regression check that the
+   processChatCompletion refactor and the chatRequestSchema role widening
+   didn't break the existing proxy tests (tests/integration.test.ts,
+   tests/proxy-tiers.test.ts, tests/proxy-errors.test.ts,
+   tests/token-clamping.test.ts, etc.). All of those MUST still pass.
+
+6. Restart the workflow. Watch the console for the line:
+     [mcp] mounted at /mcp — 13 tools, 3 prompts, 2 resources
+   That's the success signal.
+
+7. Smoke test:
+     curl -s https://<this-repl-url>/mcp \
+       -H 'Content-Type: application/json' \
+       -d '{"jsonrpc":"2.0","id":1,"method":"initialize"}'
+     curl -s https://<this-repl-url>/mcp \
+       -H 'Content-Type: application/json' \
+       -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+   First call returns serverInfo + capabilities. Second returns an array
+   of 13 tool definitions, each with name/description/inputSchema.
+
+Things to watch for and NOT do:
+
+- Do NOT modify any file under server/lib/proxy/ except the additions
+  in handler.ts (processChatCompletion + the chatRequestSchema role
+  widening). The existing HTTP proxy must keep behaving identically.
+- Do NOT change auth flows, voucher redemption logic in routes.ts, or
+  any existing customer-facing endpoint. /api/v1/* and /api/vouchers/*
+  are out of scope for this change.
+- Do NOT add new dependencies beyond @modelcontextprotocol/sdk without
+  flagging it.
+- The MCP audit log and idempotency tables hold no PII — only sha256
+  hashes and structured metadata. Don't log raw inputs anywhere.
+
+When you're done, report back with:
+
+  - Output of `npm run check` (just "PASS" if it passed; full error list
+    otherwise).
+  - Output of `npx vitest run` (counts of passed/failed across the whole
+    suite — both new MCP tests and the existing proxy suite).
+  - The exact line from the workflow console that confirms the MCP
+    mounted (or whatever was logged if it didn't).
+  - The first 200 chars of each smoke-test curl response.
+  - Anything that surprised you or that you had to change.
+
+If a test fails, do not silently fix it — show me the failure and
+propose the fix before applying it. The full handover doc with error
+codes, host setup, security checklist, and known V1 limitations lives
+at server/lib/mcp/README.md.
