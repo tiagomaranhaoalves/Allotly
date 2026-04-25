@@ -1,0 +1,49 @@
+{
+  "name": "@allotly/mcp",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Stdio bridge to Allotly's hosted MCP server",
+  "bin": {
+    "allotly-mcp": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc && node scripts/postbuild.mjs",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "mcp-remote": "^0.1.38"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "@types/node": "^20.0.0",
+    "vitest": "^3.2.0"
+  },
+  "keywords": [
+    "mcp",
+    "allotly",
+    "ai",
+    "model-context-protocol",
+    "stdio",
+    "bridge"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tiagomaranhaoalves/Allotly.git",
+    "directory": "packages/allotly-mcp"
+  },
+  "homepage": "https://allotly.ai",
+  "bugs": {
+    "url": "https://github.com/tiagomaranhaoalves/Allotly/issues"
+  }
+}

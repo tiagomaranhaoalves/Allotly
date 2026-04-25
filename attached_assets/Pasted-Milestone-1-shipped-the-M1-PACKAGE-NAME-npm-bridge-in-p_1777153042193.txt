@@ -1,0 +1,150 @@
+Milestone 1 shipped the <M1 PACKAGE NAME> npm bridge in
+packages/allotly-mcp/. Now we wire the four hosts into the dashboard
+so users can see pre-filled config snippets without leaving Allotly.
+
+Read server/lib/mcp/README.md and packages/allotly-mcp/README.md
+first.
+
+DECIDE FIRST AND REPORT BACK BEFORE CODING:
+
+  D2. Sidebar placement. Default to: new top-level entry "Connect
+      AI tool" with a Plug icon (lucide-react), positioned just below
+      the existing "Keys" entry. State if you deviate.
+
+GOAL: A user with at least one active allotly_sk_ key visits
+/dashboard/connect, picks a key, sees four ConnectorCards (Cursor,
+VS Code, Claude Code, Claude Desktop) with pre-filled config, copies
+the one they want, and clicks "Test connection" to verify the wiring
+in under a minute.
+
+ROUTING:
+
+  - New page: client/src/pages/dashboard/connect.tsx, route
+    /dashboard/connect.
+  - Sidebar entry per D2.
+  - On /dashboard/keys, add a small inline "Set up your AI tool →"
+    link next to each active key row that deep-links to
+    /dashboard/connect?key=<keyId>.
+
+LAYOUT (top to bottom, single column on mobile):
+
+  Header:
+    Title: connect.title  ("Connect Allotly to your AI tool")
+    Subtitle: connect.subtitle  ("Pick your tool, copy the config,
+              paste it in. Tested in under a minute.")
+
+  Key selector:
+    Dropdown of the user's active keys, labelled by their keyPrefix.
+    Default selection: most recently used key (or the one specified
+    in ?key= query param).
+
+  Mask toggle:
+    An eye icon toggle in the top-right of the connector grid. When
+    masked, every snippet shows allotly_sk_•••••<last4>. Default OFF
+    on this page (returning users — they should reveal explicitly).
+
+  Connector grid (2x2 on desktop, stacked on mobile). Each card:
+    - Tool logo (use lucide icons or simple inline SVGs).
+    - Heading + 1-line "Best for: ..." subtitle.
+    - Code block with the snippet, showing the user's selected key.
+    - Copy button (use navigator.clipboard.writeText, with a 2-second
+      "Copied!" confirmation state).
+    - "Open in <tool>" link if a documented deep-link scheme exists
+      (cursor:// for Cursor, vscode:// for VS Code; verify, omit if
+      not documented).
+
+  Snippets per card (substitute <KEY> with the selected key):
+
+    Cursor (~/.cursor/mcp.json):
+      { "mcpServers": { "allotly": {
+          "url": "https://allotly.ai/mcp",
+          "headers": { "Authorization": "Bearer <KEY>" } } } }
+
+    VS Code (.vscode/mcp.json):
+      { "servers": { "allotly": {
+          "url": "https://allotly.ai/mcp",
+          "type": "http",
+          "headers": { "Authorization": "Bearer <KEY>" } } } }
+
+    Claude Code (terminal):
+      claude mcp add --transport http allotly https://allotly.ai/mcp \
+        --header "Authorization: Bearer <KEY>"
+
+    Claude Desktop (claude_desktop_config.json):
+      { "mcpServers": { "allotly": {
+          "command": "npx",
+          "args": ["-y", "<M1 PACKAGE NAME>@latest"],
+          "env": { "ALLOTLY_KEY": "<KEY>" } } } }
+      Caption under this card: "Uses the <M1 PACKAGE NAME> bridge —
+      auto-installs on first run, no extra setup."
+
+  Test connection panel:
+    Button labelled "Test connection." On click:
+      POST https://allotly.ai/mcp
+      headers: { Authorization: "Bearer <selected-key>",
+                 "Content-Type": "application/json" }
+      body: { jsonrpc: "2.0", id: 1, method: "tools/list" }
+    Render one of three states:
+      - Green: "✓ Connected — N tools available" (use the actual
+        count from the response).
+      - Red: "Key invalid or revoked." (on JSON-RPC error code
+        -32001 or HTTP 401)
+      - Yellow: "Couldn't reach allotly.ai/mcp" (on network failure).
+    Show a "Show response" expandable with the raw JSON for debugging.
+
+  "What can I do once connected?" expandable:
+    Three example prompts users can paste into their tool:
+      - "Use the allotly MCP to list my available models."
+      - "Compare gpt-4o-mini and claude-haiku-4-5: what's the
+         difference between TCP and UDP?"
+      - "How much budget do I have left?"
+
+I18N:
+
+  All user-facing strings go through react-i18next under the
+  `connect.*` namespace. Add keys to:
+    client/src/i18n/locales/en.json
+    client/src/i18n/locales/es.json
+    client/src/i18n/locales/pt-BR.json
+  Match the tone of existing strings — read those files for cues
+  before writing new ones.
+
+ACCEPTANCE:
+
+  - /dashboard/connect renders for a logged-in user with at least
+    one active key.
+  - All four snippets display the user's actual key (or the masked
+    version when toggled).
+  - Copy button copies and shows a transient "Copied!" state.
+  - Test-connection button correctly handles all three states. Verify
+    by:
+      a) Selecting a valid key → green.
+      b) Pasting a fabricated bad key into the snippet (mock the
+         dropdown locally, or add a hidden test affordance) → red.
+      c) Disabling network → yellow.
+  - The /dashboard/keys page has a working "Set up your AI tool →"
+    link next to each active key row.
+  - All three locales (en, es, pt-BR) render correctly.
+  - Dark mode looks good — match the existing dashboard.
+  - Tests cover the snippet-rendering logic (key injection, masking)
+    and the test-connection state machine.
+
+DO NOT:
+
+  - Touch the post-redeem flow yet — that's M3.
+  - Touch server/lib/proxy/, server/lib/mcp/, or any backend route.
+    This is purely a frontend feature.
+  - Add new front-end deps unless absolutely needed; if you must,
+    flag it.
+  - Log keys anywhere. The selected key only flows through the
+    Authorization header in the test-connection fetch.
+
+REPORT BACK:
+
+  - D2 decision.
+  - Screenshots of /dashboard/connect (light + dark, en + one other
+    locale), the green/red/yellow test-connection states, and the
+    keys page with the new "Set up" link.
+  - Output of npm run check and npx vitest run (deltas vs M1 baseline).
+  - Any new dependencies.
+  - Anything that surprised you.
