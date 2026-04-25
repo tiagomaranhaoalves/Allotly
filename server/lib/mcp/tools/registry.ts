@@ -6,21 +6,21 @@ export interface ToolContext {
   authHeader: string | undefined;
 }
 
-export interface ToolDefinition<TIn = any, TOut = any> {
+export interface ToolDefinition<TSchema extends z.ZodTypeAny = z.ZodTypeAny, TOut = any> {
   name: string;
   description: string;
-  inputSchema: z.ZodTypeAny;
+  inputSchema: TSchema;
   requiresAuth: boolean;
-  handler: (input: TIn, ctx: ToolContext) => Promise<TOut>;
+  handler: (input: z.infer<TSchema>, ctx: ToolContext) => Promise<TOut>;
 }
 
 const tools: Record<string, ToolDefinition> = {};
 
-export function registerTool<TIn, TOut>(def: ToolDefinition<TIn, TOut>): void {
+export function registerTool<TSchema extends z.ZodTypeAny, TOut>(def: ToolDefinition<TSchema, TOut>): void {
   if (tools[def.name]) {
     console.warn(`[mcp] tool ${def.name} already registered; overwriting`);
   }
-  tools[def.name] = def;
+  tools[def.name] = def as unknown as ToolDefinition;
 }
 
 export function listTools(): ToolDefinition[] {
