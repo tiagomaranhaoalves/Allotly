@@ -19,6 +19,7 @@ import { runBundleExpiry } from "./lib/jobs/bundle-expiry";
 import { runRedisReconciliation } from "./lib/jobs/redis-reconciliation";
 import { runModelSync } from "./lib/jobs/model-sync";
 import { handleChatCompletion, handleListModels, handleKeyValidation } from "./lib/proxy/handler";
+import { mountMcp } from "./lib/mcp/server";
 import { redisSet, redisGet, redisDel, redisIncr, redisIncrBy, REDIS_KEYS } from "./lib/redis";
 import { runProviderValidation } from "./lib/jobs/provider-validation";
 import { runSnapshotCleanup } from "./lib/jobs/snapshot-cleanup";
@@ -6055,6 +6056,8 @@ export async function registerRoutes(
   });
 
   console.log("[routes] Proxy routes registered: POST /api/v1/chat/completions, GET /api/v1/models, GET /api/v1/keys/me, GET /api/v1/health");
+
+  mountMcp(app, "/mcp");
 
   return httpServer;
 }

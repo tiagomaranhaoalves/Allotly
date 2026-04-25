@@ -317,6 +317,31 @@ export const emailTemplates = {
     };
   },
 
+  topupRequest(adminName: string, voucherLabel: string, voucherCode: string, principalLabel: string, amountRequestedDollars: string | null, reason: string | null, dashboardUrl: string) {
+    const amountLine = amountRequestedDollars
+      ? kv("Amount requested", `$${amountRequestedDollars}`)
+      : kv("Amount requested", "Not specified");
+    const reasonBlock = reason
+      ? `<div style="background:#f8fafc;border-radius:8px;padding:16px;margin:16px 0">
+<div style="color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Reason</div>
+<div style="color:#1e293b;font-size:14px;line-height:1.6">${reason.replace(/[<>]/g, "")}</div>
+</div>`
+      : "";
+    return {
+      subject: `Top-up request for voucher ${voucherCode}`,
+      html: layout("Voucher Top-up Request", [
+        p(`Hi ${adminName},`),
+        p(`A recipient of voucher <strong>${voucherLabel || voucherCode}</strong> has requested additional budget through the Allotly MCP.`),
+        kv("Voucher", voucherCode),
+        kv("Requested by", principalLabel),
+        amountLine,
+        reasonBlock,
+        btn("Review in Dashboard", dashboardUrl),
+        p("You can grant a top-up from the voucher's detail page or ignore this request."),
+      ].join("")),
+    };
+  },
+
   passwordReset(userName: string, resetUrl: string) {
     return {
       subject: "Reset your Allotly password",

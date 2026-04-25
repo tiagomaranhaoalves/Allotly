@@ -45,7 +45,7 @@ import { z } from "zod";
 const chatRequestSchema = z.object({
   model: z.string(),
   messages: z.array(z.object({
-    role: z.enum(["system", "user", "assistant"]),
+    role: z.enum(["system", "user", "assistant", "tool"]),
     content: z.union([z.string(), z.array(z.any())]),
   })).min(1, "messages must be a non-empty array"),
   stream: z.boolean().optional().default(false),
@@ -153,6 +153,381 @@ export function getProviderErrorSuggestion(statusCode: number, errorMessage: str
     return "This model may not exist or is no longer available. Check the /models endpoint for available models.";
   }
   return "The upstream provider returned an error. Check your request or try again later.";
+}
+
+export interface BudgetSnapshot {
+  remaining_cents: number;
+  total_cents: number;
+  currency: "usd";
+  period_end: string;
+  requests_remaining: number | null;
+  rate_limit_per_min: number;
+  concurrency_limit: number;
+  voucher_expires_at: string | null;
+}
+
+export interface ProcessChatCompletionInput {
+  membership: any;
+  userId: string;
+  apiKeyId: string;
+  body: any;
+  stream: boolean;
+  requestId: string;
+}
+
+export interface ProcessChatCompletionResult {
+  status: number;
+  body?: any;
+  errorBody?: { code: string; message: string; suggestion?: string; type?: string };
+  budgetSnapshot: BudgetSnapshot;
+  costCents: number;
+  inputTokens: number;
+  outputTokens: number;
+  maxTokensApplied: boolean;
+  effectiveModel: string;
+  provider: string;
+}
+
+async function buildBudgetSnapshot(
+  membership: any,
+  tier: { rpm: number; maxConcurrent: number },
+  remainingOverride?: number
+): Promise<BudgetSnapshot> {
+  const rlKey = REDIS_KEYS.ratelimit(membership.id);
+  const budgetKey = REDIS_KEYS.budget(membership.id);
+  const bundleRemaining = await getBundleRequestsRemaining(membership, false);
+  const requestsRemaining = bundleRemaining !== null
+    ? bundleRemaining
+    : Math.max(0, tier.rpm - parseInt(await redisGet(rlKey) || "0"));
+  const remaining = remainingOverride ?? parseInt(await redisGet(budgetKey) || String(membership.monthlyBudgetCents - membership.currentPeriodSpendCents));
+  return {
+    remaining_cents: Math.max(0, remaining),
+    total_cents: membership.monthlyBudgetCents,
+    currency: "usd",
+    period_end: new Date(membership.periodEnd).toISOString(),
+    requests_remaining: requestsRemaining,
+    rate_limit_per_min: tier.rpm,
+    concurrency_limit: tier.maxConcurrent,
+    voucher_expires_at: membership.voucherExpiresAt ? new Date(membership.voucherExpiresAt).toISOString() : null,
+  };
+}
+
+export async function processChatCompletion(
+  input: ProcessChatCompletionInput
+): Promise<ProcessChatCompletionResult> {
+  const startTime = Date.now();
+  const { membership, userId, apiKeyId, body, requestId } = input;
+  const membershipId = membership.id;
+  let reservedCostCents = 0;
+  let concurrencyAcquired = false;
+
+  const team = await storage.getTeam(membership.teamId);
+  if (!team) {
+    return mkErr(503, "internal_error", "Team not found", membership, { rpm: 20, maxConcurrent: 2 });
+  }
+  const org = await storage.getOrganization(team.orgId);
+  if (!org) {
+    return mkErr(503, "internal_error", "Organization not found", membership, { rpm: 20, maxConcurrent: 2 });
+  }
+  const tier = getRateLimitTier(org.plan, membership.accessType);
+
+  try {
+    const concError = await checkConcurrency(membershipId, requestId, tier.maxConcurrent);
+    if (concError) return await mkErrAsync(concError, membership, tier);
+    concurrencyAcquired = true;
+
+    const rlError = await checkRateLimit(membershipId, tier.rpm);
+    if (rlError) {
+      await releaseConcurrency(membershipId, requestId);
+      return await mkErrAsync(rlError, membership, tier);
+    }
+
+    const parseResult = chatRequestSchema.safeParse(body);
+    if (!parseResult.success) {
+      await releaseRateLimit(membershipId);
+      await releaseConcurrency(membershipId, requestId);
+      return await mkErrAsync(createProxyError(400, "invalid_request", formatZodError(parseResult.error)), membership, tier);
+    }
+    const parsed = parseResult.data;
+
+    const detectResult = await detectProvider(parsed.model, team.orgId);
+    const allowedProviders = membership.allowedProviders as string[] | null;
+
+    if (!detectResult) {
+      await releaseRateLimit(membershipId);
+      await releaseConcurrency(membershipId, requestId);
+      return await mkErrAsync(createProxyError(400, "unsupported_model",
+        `Model "${parsed.model}" is not supported`,
+        "Supported prefixes: azure/* (Azure OpenAI), gpt-*, o1*, o3*, o4* (OpenAI), claude-* (Anthropic), gemini-* (Google)."
+      ), membership, tier);
+    }
+    const provider = detectResult.provider;
+    const azureDeployment = detectResult.azureDeployment;
+    const effectiveModel = detectResult.strippedModel || parsed.model;
+
+    if (allowedProviders && allowedProviders.length > 0 && !allowedProviders.includes(provider)) {
+      await releaseRateLimit(membershipId);
+      await releaseConcurrency(membershipId, requestId);
+      return await mkErrAsync(createProxyError(403, "provider_not_allowed",
+        `Provider ${provider} is not allowed for your account`,
+        `Allowed providers: ${allowedProviders.join(", ")}`
+      ), membership, tier);
+    }
+
+    const allowedModels = membership.allowedModels as string[] | null;
+    if (allowedModels && allowedModels.length > 0 && !allowedModels.includes(effectiveModel) && !allowedModels.includes(parsed.model)) {
+      await releaseRateLimit(membershipId);
+      await releaseConcurrency(membershipId, requestId);
+      return await mkErrAsync(createProxyError(403, "model_not_allowed",
+        `Model "${parsed.model}" is not allowed for your account`,
+        `Allowed models: ${allowedModels.join(", ")}`
+      ), membership, tier);
+    }
+
+    const connections = await storage.getProviderConnectionsByOrg(team.orgId);
+    const connection = connections.find(c => c.provider === provider && c.status === "ACTIVE");
+    if (!connection) {
+      await releaseRateLimit(membershipId);
+      await releaseConcurrency(membershipId, requestId);
+      const existsButInactive = connections.some(c => c.provider === provider);
+      const err = existsButInactive
+        ? createProxyError(503, "provider_unavailable", "The provider for this model is not currently available. Contact your admin.")
+        : createProxyError(502, "provider_not_configured", `Provider ${provider} is not configured for this organization`, "Contact your admin to add this provider.");
+      return await mkErrAsync(err, membership, tier);
+    }
+
+    let pricing: ModelPricing | null = null;
+    if (provider === "AZURE_OPENAI" && azureDeployment) {
+      if (azureDeployment.inputPricePerMTok > 0 || azureDeployment.outputPricePerMTok > 0) {
+        pricing = {
+          id: "azure-deployment",
+          provider: "AZURE_OPENAI",
+          modelId: azureDeployment.modelId,
+          displayName: azureDeployment.deploymentName,
+          inputPricePerMTok: azureDeployment.inputPricePerMTok,
+          outputPricePerMTok: azureDeployment.outputPricePerMTok,
+          isActive: true,
+          updatedAt: new Date(),
+        };
+      } else {
+        const lookupModel = effectiveModel;
+        const altModel = azureDeployment.modelId !== effectiveModel ? azureDeployment.modelId : null;
+        for (const p of ["OPENAI", "AZURE_OPENAI", "ANTHROPIC", "GOOGLE"] as const) {
+          pricing = await getModelPricing(p, lookupModel);
+          if (pricing) break;
+          if (altModel) {
+            pricing = await getModelPricing(p, altModel);
+            if (pricing) break;
+          }
+        }
+      }
+    } else {
+      pricing = await getModelPricing(provider, effectiveModel);
+    }
+    if (!pricing) {
+      await releaseRateLimit(membershipId);
+      await releaseConcurrency(membershipId, requestId);
+      return await mkErrAsync(createProxyError(400, "model_not_found",
+        `Pricing for model "${effectiveModel}" not found`,
+        "This model may not be supported yet. Check the /models endpoint for available models."
+      ), membership, tier);
+    }
+
+    const inputTokens = estimateInputTokens(parsed.messages);
+    const inputCostCents = estimateInputCostCents(inputTokens, pricing);
+    const remainingBudgetCents = membership.monthlyBudgetCents - membership.currentPeriodSpendCents;
+    const clientTokenCap = (parsed as any).max_completion_tokens ?? parsed.max_tokens;
+    const { effectiveMaxTokens, clamped } = clampMaxTokens(remainingBudgetCents, inputCostCents, pricing, clientTokenCap);
+
+    const budgetEstimateTokens = effectiveMaxTokens ?? 4096;
+    const estimatedOutputCostCents = calculateOutputCostCents(budgetEstimateTokens, pricing);
+    const totalEstimatedCostCents = inputCostCents + estimatedOutputCostCents;
+    reservedCostCents = totalEstimatedCostCents;
+
+    const budgetResult = await reserveBudget(membershipId, totalEstimatedCostCents);
+    if ("status" in budgetResult) {
+      await releaseRateLimit(membershipId);
+      await releaseConcurrency(membershipId, requestId);
+      return await mkErrAsync(budgetResult, membership, tier);
+    }
+
+    const bundleError = await checkBundleRequestPool(membership);
+    if (bundleError) {
+      await refundBudget(membershipId, reservedCostCents);
+      await releaseRateLimit(membershipId);
+      await releaseConcurrency(membershipId, requestId);
+      return await mkErrAsync(bundleError, membership, tier);
+    }
+
+    const adminApiKey = decryptProviderKey(connection.adminApiKeyEncrypted, connection.adminApiKeyIv, connection.adminApiKeyTag);
+
+    let azureContext: AzureContext | undefined;
+    if (provider === "AZURE_OPENAI" && azureDeployment && connection.azureBaseUrl) {
+      let endpointMode = (connection.azureEndpointMode as "v1" | "legacy") || "legacy";
+      if (endpointMode === "v1" && connection.azureBaseUrl.includes("azure-api.net")) endpointMode = "legacy";
+      azureContext = {
+        baseUrl: connection.azureBaseUrl,
+        endpointMode,
+        apiVersion: effectiveAzureApiVersion(azureDeployment.modelId, connection.azureApiVersion),
+        deploymentName: azureDeployment.deploymentName,
+        modelId: azureDeployment.modelId,
+      };
+    }
+
+    const translatedInput = detectResult.strippedModel ? { ...parsed, model: effectiveModel, stream: false } : { ...parsed, stream: false };
+    const translated = translateToProvider(translatedInput, provider, effectiveMaxTokens, azureContext);
+    translated.body = sanitizeProviderBody(translated.body, provider);
+    const authInfo = setProviderAuth(translated.headers, provider, adminApiKey, translated.url);
+
+    let providerResponse: globalThis.Response;
+    try {
+      providerResponse = await fetch(authInfo.url, {
+        method: translated.method,
+        headers: authInfo.headers,
+        body: JSON.stringify(translated.body),
+      });
+    } catch (fetchError: any) {
+      await refundBudget(membershipId, reservedCostCents);
+      await releaseRateLimit(membershipId);
+      await releaseConcurrency(membershipId, requestId);
+      return await mkErrAsync(createProxyError(502, "provider_error",
+        `Failed to reach ${provider}: ${fetchError.message}`,
+        "The provider may be temporarily unavailable. Try again later."
+      ), membership, tier);
+    }
+
+    if (!providerResponse.ok) {
+      const errorBody = await providerResponse.text();
+      await refundBudget(membershipId, reservedCostCents);
+      await releaseRateLimit(membershipId);
+      await releaseConcurrency(membershipId, requestId);
+      const upstreamErr = buildUpstreamError(provider, providerResponse.status, errorBody, [adminApiKey]);
+      const snap = await buildBudgetSnapshot(membership, tier);
+      return {
+        status: upstreamErr.allotlyStatus,
+        errorBody: { code: upstreamErr.errorType, message: upstreamErr.friendlyMessage, type: "provider_error" },
+        budgetSnapshot: snap,
+        costCents: 0,
+        inputTokens,
+        outputTokens: 0,
+        maxTokensApplied: clamped,
+        effectiveModel,
+        provider: provider.toLowerCase(),
+      };
+    }
+
+    const responseBody = await readNonStreamingResponse(providerResponse);
+    const openaiResponse = translateResponseToOpenAI(provider, responseBody, effectiveModel, translated.proxyStopSequences);
+
+    let actualInputTokens = inputTokens;
+    let actualOutputTokens = 0;
+    if (openaiResponse.usage) {
+      actualInputTokens = openaiResponse.usage.prompt_tokens;
+      actualOutputTokens = openaiResponse.usage.completion_tokens;
+    }
+    const content = openaiResponse.choices?.[0]?.message?.content;
+    if (actualOutputTokens === 0 && (!content || (typeof content === "string" && content.trim() === ""))) {
+      await refundBudget(membershipId, reservedCostCents);
+      await releaseRateLimit(membershipId);
+      await releaseConcurrency(membershipId, requestId);
+      return await mkErrAsync(createProxyError(502, "empty_response",
+        "The model returned an empty response. No budget was charged. Try again or use a different model."
+      ), membership, tier);
+    }
+
+    const actualCostCents = estimateInputCostCents(actualInputTokens, pricing) + calculateOutputCostCents(actualOutputTokens, pricing);
+    await adjustBudgetAfterResponse(membershipId, reservedCostCents, actualCostCents);
+    await releaseConcurrency(membershipId, requestId);
+    concurrencyAcquired = false;
+
+    const durationMs = Date.now() - startTime;
+    setImmediate(async () => {
+      try {
+        await storage.createProxyRequestLog({
+          membershipId,
+          apiKeyId,
+          provider,
+          model: provider === "AZURE_OPENAI" && azureDeployment ? azureDeployment.modelId : parsed.model,
+          inputTokens: actualInputTokens,
+          outputTokens: actualOutputTokens,
+          costCents: actualCostCents,
+          durationMs,
+          statusCode: 200,
+          maxTokensApplied: clamped ? effectiveMaxTokens : null,
+          deploymentName: provider === "AZURE_OPENAI" && azureDeployment ? azureDeployment.deploymentName : null,
+        });
+        const freshMembership = await storage.getMembership(membershipId);
+        if (freshMembership) {
+          await storage.updateMembership(membershipId, {
+            currentPeriodSpendCents: freshMembership.currentPeriodSpendCents + actualCostCents,
+          });
+        }
+        await incrementBundleRequests(membership);
+      } catch (err) {
+        console.error("[mcp-proxy] post-processing error:", err);
+      }
+    });
+
+    const budgetKey = REDIS_KEYS.budget(membershipId);
+    const newRemaining = parseInt(await redisGet(budgetKey) || "0");
+    const snap = await buildBudgetSnapshot(membership, tier, newRemaining);
+
+    return {
+      status: 200,
+      body: openaiResponse,
+      budgetSnapshot: snap,
+      costCents: actualCostCents,
+      inputTokens: actualInputTokens,
+      outputTokens: actualOutputTokens,
+      maxTokensApplied: clamped,
+      effectiveModel,
+      provider: provider.toLowerCase(),
+    };
+  } catch (err: any) {
+    console.error("[processChatCompletion] error:", err);
+    if (reservedCostCents > 0) await refundBudget(membershipId, reservedCostCents).catch(() => {});
+    await releaseRateLimit(membershipId).catch(() => {});
+    if (concurrencyAcquired) await releaseConcurrency(membershipId, requestId).catch(() => {});
+    return await mkErrAsync(createProxyError(500, "internal_error", "An internal error occurred"), membership, tier);
+  }
+}
+
+function mkErr(status: number, code: string, message: string, membership: any, tier: { rpm: number; maxConcurrent: number }): ProcessChatCompletionResult {
+  return {
+    status,
+    errorBody: { code, message, type: "allotly_error" },
+    budgetSnapshot: {
+      remaining_cents: Math.max(0, membership.monthlyBudgetCents - membership.currentPeriodSpendCents),
+      total_cents: membership.monthlyBudgetCents,
+      currency: "usd",
+      period_end: new Date(membership.periodEnd).toISOString(),
+      requests_remaining: null,
+      rate_limit_per_min: tier.rpm,
+      concurrency_limit: tier.maxConcurrent,
+      voucher_expires_at: membership.voucherExpiresAt ? new Date(membership.voucherExpiresAt).toISOString() : null,
+    },
+    costCents: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    maxTokensApplied: false,
+    effectiveModel: "",
+    provider: "",
+  };
+}
+
+async function mkErrAsync(error: ProxyError, membership: any, tier: { rpm: number; maxConcurrent: number }): Promise<ProcessChatCompletionResult> {
+  const snap = await buildBudgetSnapshot(membership, tier);
+  return {
+    status: error.status,
+    errorBody: { code: error.code, message: error.message, suggestion: error.suggestion, type: "allotly_error" },
+    budgetSnapshot: snap,
+    costCents: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    maxTokensApplied: false,
+    effectiveModel: "",
+    provider: "",
+  };
 }
 
 export async function handleChatCompletion(req: Request, res: Response) {

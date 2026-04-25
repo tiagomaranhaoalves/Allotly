@@ -278,6 +278,45 @@ export const modelPricing = pgTable("model_pricing", {
   uniqueIndex("model_pricing_unique_idx").on(table.provider, table.modelId),
 ]);
 
+export const mcpAuditLog = pgTable("mcp_audit_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  membershipId: varchar("membership_id"),
+  toolName: text("tool_name").notNull(),
+  inputHash: text("input_hash").notNull(),
+  ok: boolean("ok").notNull(),
+  errorCode: integer("error_code"),
+  latencyMs: integer("latency_ms").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("mcp_audit_log_membership_idx").on(table.membershipId, table.createdAt),
+  index("mcp_audit_log_tool_idx").on(table.toolName, table.createdAt),
+]);
+
+export const mcpIdempotency = pgTable("mcp_idempotency", {
+  scope: text("scope").notNull(),
+  key: text("key").notNull(),
+  principalId: text("principal_id").notNull(),
+  responseJson: jsonb("response_json").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("mcp_idempotency_pk").on(table.scope, table.key, table.principalId),
+]);
+
+export const voucherTopupRequests = pgTable("voucher_topup_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  voucherId: varchar("voucher_id").notNull().references(() => vouchers.id),
+  membershipId: varchar("membership_id"),
+  requestedByPrincipalHash: text("requested_by_principal_hash").notNull(),
+  amountCentsRequested: integer("amount_cents_requested"),
+  reason: text("reason"),
+  status: text("status").default("pending").notNull(),
+  notificationSent: boolean("notification_sent").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  resolvedAt: timestamp("resolved_at"),
+}, (table) => [
+  index("voucher_topup_requests_voucher_idx").on(table.voucherId, table.createdAt),
+]);
+
 export const passwordResetTokens = pgTable("password_reset_tokens", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id),
@@ -323,6 +362,9 @@ export type BudgetAlert = typeof budgetAlerts.$inferSelect;
 export type AllotlyApiKey = typeof allotlyApiKeys.$inferSelect;
 export type VoucherRedemption = typeof voucherRedemptions.$inferSelect;
 export type PlatformAuditLog = typeof platformAuditLogs.$inferSelect;
+export type McpAuditLog = typeof mcpAuditLog.$inferSelect;
+export type McpIdempotency = typeof mcpIdempotency.$inferSelect;
+export type VoucherTopupRequest = typeof voucherTopupRequests.$inferSelect;
 
 export interface AzureDeploymentMapping {
   deploymentName: string;
