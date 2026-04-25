@@ -22,6 +22,14 @@ const bytea = customType<{ data: Buffer; driverData: Buffer }>({
   },
 });
 
+export const session = pgTable("session", {
+  sid: varchar("sid").primaryKey(),
+  sess: json("sess").notNull(),
+  expire: timestamp("expire").notNull(),
+}, (table) => [
+  index("IDX_session_expire").on(table.expire),
+]);
+
 export const planEnum = pgEnum("plan", ["FREE", "TEAM", "ENTERPRISE"]);
 export const orgRoleEnum = pgEnum("org_role", ["ROOT_ADMIN", "TEAM_ADMIN", "MEMBER"]);
 export const userStatusEnum = pgEnum("user_status", ["ACTIVE", "SUSPENDED", "INVITED", "EXPIRED"]);
