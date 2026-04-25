@@ -1,0 +1,107 @@
+Milestones 1 and 2 are live: the npm bridge ships, /dashboard/connect
+shows the four-host config to returning users with their active keys.
+
+This milestone reuses the M2 ConnectorCard component in the
+voucher-redemption success view, so first-time recipients see the
+connectors immediately after redeeming and never have to find
+/dashboard/connect themselves.
+
+Read server/lib/mcp/README.md, server/routes.ts (search for
+/api/vouchers/redeem), and the existing redeem UI. Find it via:
+  grep -rn "apiKey" client/src/ | grep -i redeem
+  grep -rn "/redeem" client/src/
+
+DECIDE FIRST AND REPORT BACK BEFORE CODING:
+
+  D3. Mask default for the post-redeem context.
+      Default to: visible-by-default. Rationale: the user just minted
+      this key, this is the only screen where it'll ever appear in
+      full, and the connector snippets are useless without it. The
+      mask toggle is still present, just defaulted off here.
+
+  D4. Whether to ALSO send the connector snippets in the existing
+      voucher-redemption email template, so recipients have them
+      offline. Default to: yes, add a "Quick setup" section to the
+      voucherNotification email template with a link back to
+      /dashboard/connect plus the Cursor and Claude Desktop snippets
+      inline. Easier to copy from a 30-day-old email than to fish
+      around the dashboard.
+
+GOAL: After a successful voucher redemption, the recipient lands on
+a screen that:
+
+  1. Confirms redemption succeeded (existing UX).
+  2. Shows their just-minted key with a one-time-only banner ("Save
+     this key — you won't see it again in full").
+  3. Shows the four ConnectorCards in a stacked-1-column compact
+     mode, pre-filled with the just-minted key.
+  4. Shows the same "Test connection" button as /dashboard/connect.
+  5. Has a clear "Done — go to dashboard" button that takes them to
+     /dashboard/connect (so they can find the same UX again later).
+
+REUSABILITY:
+
+  Refactor M2's ConnectorCard and ConnectorGrid components into a
+  new shared module client/src/components/connectors/ and consume
+  the same components from both /dashboard/connect AND the
+  post-redeem view. Do not duplicate the snippet logic. The
+  ConnectorGrid component takes a `mode` prop: "full" (2x2,
+  default-masked, key-dropdown) or "compact" (stacked, default-
+  visible, single-key, no dropdown).
+
+EMAIL TEMPLATE (per D4 default):
+
+  Update server/lib/email.ts emailTemplates.voucherNotification to
+  add a "Quick setup" block AFTER the "Redeem Voucher" button. This
+  block contains:
+    - Two snippets (Cursor + Claude Desktop) with the recipient's
+      key inline.
+    - A link back to https://allotly.ai/dashboard/connect for the
+      full set.
+  Use the same kv()/btn() helpers already in the file.
+
+KEYS PAGE INTEGRATION:
+
+  The "Set up your AI tool →" link added on /dashboard/keys in M2
+  stays as-is. No additional change there.
+
+ACCEPTANCE:
+
+  - Redeeming a voucher (test with an unused voucher code) lands the
+    user on a success screen showing key + four connectors stacked.
+  - The connectors match what /dashboard/connect would show for the
+    same key.
+  - "Test connection" works the same as on /dashboard/connect.
+  - Refreshing the post-redeem page does NOT re-show the raw key
+    (it's a one-time reveal, server should return masked or 410 on
+    re-fetch — keep behaviour consistent with whatever the existing
+    redeem flow does, do not weaken it).
+  - The ConnectorCard / ConnectorGrid components are now imported
+    from client/src/components/connectors/ in BOTH /dashboard/connect
+    (M2) and the post-redeem view. No duplicated snippet logic.
+  - The voucherNotification email contains the Quick setup block in
+    all three locales (or English-only if the existing template is
+    English-only — check first; do not add locale support to email
+    templates if it doesn't exist).
+  - Tests cover: post-redeem page renders with the just-minted key,
+    ConnectorGrid in compact mode renders correctly, refactored
+    components still render correctly on /dashboard/connect.
+
+DO NOT:
+
+  - Change the voucher redemption logic itself (validation, key
+    minting, audit logging, budget reservation). Touch only the
+    post-redeem PRESENTATION layer.
+  - Add OAuth or any new auth flow.
+  - Persist the key client-side beyond the page lifetime.
+
+REPORT BACK:
+
+  - D3 and D4 decisions.
+  - Screenshots: post-redeem success screen, the relevant section
+    of the voucherNotification email rendered in a desktop client
+    (Gmail or similar).
+  - Confirmation that ConnectorCard/Grid is single-source-of-truth
+    by sharing the import path of the new module.
+  - npm run check, npx vitest run results.
+  - Anything that surprised you.
