@@ -1,0 +1,109 @@
+We shipped Allotly MCP V1 (commit 29ec1ab). It's mounted at /mcp,
+13 tools, all tests green. Read server/lib/mcp/README.md for full
+context.
+
+V1 onboarding doesn't work for Claude Desktop or claude.ai users
+because those hosts only support stdio transport. This milestone
+ships a thin npm package that bridges stdio JSON-RPC to our hosted
+HTTP /mcp endpoint, so a one-line config in Claude Desktop or
+Cursor's stdio mode "just works."
+
+DECIDE FIRST AND REPORT BACK BEFORE CODING:
+
+  D1. Package name. Two viable choices:
+      a) `allotly-mcp` (unscoped) — register on npm directly.
+      b) `@allotly/mcp` (scoped) — needs the @allotly org reserved
+         on npmjs.com first.
+      Default to (b) IF the @allotly org name is registerable; if
+      it's taken, fall back to (a). Check by trying to view the org
+      on npm. State your choice in your final report.
+
+LOCATION: New directory at the repo root: packages/allotly-mcp/
+
+  This is a separate npm package, not built or imported by the main
+  Allotly server. Dedicated package.json, tsconfig, build pipeline.
+
+FILES TO CREATE:
+
+  packages/allotly-mcp/package.json
+    name: <per D1>, version: 0.1.0, type: "module"
+    description: "Stdio bridge to Allotly's hosted MCP server"
+    bin: { "allotly-mcp": "./dist/index.js" }
+    main: "./dist/index.js"
+    files: ["dist/", "README.md"]
+    scripts: { build: "tsc", prepublishOnly: "npm run build" }
+    engines: { "node": ">=18" }
+    dependencies: { "mcp-remote": "^<latest stable>" }
+    devDependencies: { "typescript": "^5.6", "@types/node": "^20" }
+    keywords: ["mcp", "allotly", "ai", "model-context-protocol"]
+    license: "MIT"
+    repository: { type: "git", url: "https://github.com/<owner>/Allotly.git", directory: "packages/allotly-mcp" }
+
+  packages/allotly-mcp/tsconfig.json
+    Standalone, ESM, target ES2022, outDir dist, strict on.
+
+  packages/allotly-mcp/src/index.ts
+    Hashbang #!/usr/bin/env node at line 1.
+    - Read ALLOTLY_KEY from process.env. If missing or empty, write a
+      friendly multi-line error to stderr (explaining where to set it,
+      with examples for Claude Desktop and Cursor) and exit(1).
+    - Read ALLOTLY_MCP_URL from env, default https://allotly.ai/mcp.
+    - Spawn `mcp-remote` (programmatic API preferred; fall back to
+      child_process spawn if mcp-remote only ships a CLI). Pass:
+        url:    ALLOTLY_MCP_URL
+        header: `Authorization: Bearer ${ALLOTLY_KEY}`
+    - Pipe stdin/stdout through. stderr forwards but with an
+      "[allotly-mcp]" prefix so users can tell our log lines from
+      mcp-remote's.
+    - Forward SIGINT/SIGTERM to the child.
+    - On child exit, exit with the child's code.
+
+  packages/allotly-mcp/README.md
+    Standalone install instructions for Claude Desktop, Cursor,
+    Claude Code, and VS Code. This file is what shows on npmjs.com,
+    so make it self-explanatory — don't assume the reader knows what
+    Allotly is. Pull tone from server/lib/mcp/README.md but rewrite
+    for an external-package audience.
+
+  packages/allotly-mcp/.npmignore
+    Exclude src/, tsconfig.json, node_modules/, *.test.ts.
+
+  packages/allotly-mcp/LICENSE
+    MIT, copyright 2026 Allotly.
+
+  packages/allotly-mcp/tests/index.test.ts
+    Vitest suite covering:
+    - Missing ALLOTLY_KEY produces the expected stderr message and
+      exit code 1.
+    - ALLOTLY_MCP_URL default vs env override.
+    - Signal forwarding (mock the child process).
+
+ACCEPTANCE:
+
+  - `cd packages/allotly-mcp && npm install && npm run build`
+    produces dist/index.js with executable bit set, zero TypeScript
+    errors under strict mode.
+  - `ALLOTLY_KEY= node dist/index.js` (empty key) prints the friendly
+    error and exits 1.
+  - `ALLOTLY_KEY=allotly_sk_test node dist/index.js < /dev/null`
+    starts, attempts to connect, exits when stdin closes.
+  - `npx vitest run` inside packages/allotly-mcp passes.
+  - Linked install works: from packages/allotly-mcp run `npm link`,
+    then from a temp directory `npm link allotly-mcp` (or the scoped
+    name) and execute `allotly-mcp`.
+
+DO NOT:
+
+  - Publish to npm. Stop after the local build works. The human will
+    publish from their Mac after review.
+  - Touch any other directory in the repo.
+  - Add dependencies beyond mcp-remote and dev TypeScript bits.
+
+REPORT BACK:
+
+  - D1 decision and reasoning.
+  - The exact mcp-remote version pinned and why.
+  - Full output of npm install, npm run build, and npx vitest run.
+  - The output of `node dist/index.js` with no env (showing the
+    friendly error).
+  - Anything that surprised you.
