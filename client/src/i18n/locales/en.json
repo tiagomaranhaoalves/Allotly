@@ -610,6 +610,7 @@
       "members": "Members",
       "vouchers": "Vouchers",
       "apiKeys": "API Keys",
+      "connectAiTool": "Connect AI tool",
       "bundles": "Bundles",
       "analytics": "Analytics",
       "auditLog": "Audit Log",
@@ -1732,5 +1733,77 @@
         "vouchers": "Vouchers"
       }
     }
+  },
+  "connect": {
+    "title": "Connect Allotly to your AI tool",
+    "subtitle": "Pick your tool, copy the config, paste it in. Tested in under a minute.",
+    "connectorsHeading": "Connectors",
+    "keySelector": {
+      "label": "Key",
+      "placeholder": "Select a key"
+    },
+    "noKeysState": {
+      "title": "You don't have an active key yet",
+      "description": "Create a key on the Keys page to set up your AI tool.",
+      "cta": "Go to Keys"
+    },
+    "fullKey": {
+      "label": "Paste your full key",
+      "placeholder": "allotly_sk_…",
+      "help": "Allotly never stores your full key. Paste it here once to fill the snippets and enable Test connection.",
+      "mismatch": "This key doesn't match the selected prefix.",
+      "valid": "Key matches — snippets are ready.",
+      "missingForTest": "Paste your full key to enable Test connection."
+    },
+    "mask": {
+      "show": "Show keys",
+      "hide": "Hide keys"
+    },
+    "copy": "Copy",
+    "copied": "Copied!",
+    "openIn": "Open in {{tool}}",
+    "connectors": {
+      "cursor": {
+        "title": "Cursor",
+        "bestFor": "Best for: AI-first coding in a polished editor.",
+        "fileHint": "~/.cursor/mcp.json"
+      },
+      "vscode": {
+        "title": "VS Code",
+        "bestFor": "Best for: teams already standardized on VS Code.",
+        "fileHint": ".vscode/mcp.json"
+      },
+      "claudeCode": {
+        "title": "Claude Code",
+        "bestFor": "Best for: terminal-driven workflows.",
+        "fileHint": "Run in your terminal"
+      },
+      "claudeDesktop": {
+        "title": "Claude Desktop",
+        "bestFor": "Best for: chatting with Claude outside the editor.",
+        "fileHint": "claude_desktop_config.json",
+        "caption": "Uses the {{pkg}} bridge — auto-installs on first run, no extra setup."
+      }
+    },
+    "test": {
+      "heading": "Test connection",
+      "description": "Sends a tools/list request to {{url}} using the selected key.",
+      "button": "Test connection",
+      "testing": "Testing…",
+      "green": "✓ Connected — {{count}} tools available",
+      "red": "Key invalid or revoked.",
+      "yellow": "Couldn't reach allotly.ai/mcp",
+      "showResponse": "Show response",
+      "hideResponse": "Hide response"
+    },
+    "examples": {
+      "heading": "What can I do once connected?",
+      "description": "Try pasting one of these prompts into your AI tool:",
+      "prompt1": "Use the allotly MCP to list my available models.",
+      "prompt2": "Compare gpt-4o-mini and claude-haiku-4-5: what's the difference between TCP and UDP?",
+      "prompt3": "How much budget do I have left?"
+    },
+    "keysPageLink": "Set up your AI tool →",
+    "backToKeys": "Back to Keys"
   }
 }

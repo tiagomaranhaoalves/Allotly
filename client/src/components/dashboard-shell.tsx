@@ -13,7 +13,7 @@ import { useTheme } from "@/components/theme-provider";
 import { Link, useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
-  LayoutDashboard, Plug, Users, UserCheck, Ticket, Package, BarChart3, FileText,
+  LayoutDashboard, Plug, PlugZap, Users, UserCheck, Ticket, Package, BarChart3, FileText,
   Settings, Sun, Moon, LogOut, ChevronDown, Key, BookOpen, Swords, ExternalLink,
 } from "lucide-react";
 import { AdminRoleBadge } from "./brand/role-badge";
@@ -36,6 +36,7 @@ const ROOT_ADMIN_NAV: NavItem[] = [
   { testId: "members", i18nKey: "dashboard.sidebar.members", href: "/dashboard/members", icon: UserCheck },
   { testId: "vouchers", i18nKey: "dashboard.sidebar.vouchers", href: "/dashboard/vouchers", icon: Ticket },
   { testId: "api-keys", i18nKey: "dashboard.sidebar.apiKeys", href: "/dashboard/keys", icon: Key },
+  { testId: "connect-ai-tool", i18nKey: "dashboard.sidebar.connectAiTool", href: "/dashboard/connect", icon: PlugZap },
   { testId: "bundles", i18nKey: "dashboard.sidebar.bundles", href: "/dashboard/bundles", icon: Package },
   { testId: "analytics", i18nKey: "dashboard.sidebar.analytics", href: "/dashboard/analytics", icon: BarChart3 },
   { testId: "audit-log", i18nKey: "dashboard.sidebar.auditLog", href: "/dashboard/audit-log", icon: FileText },
@@ -49,6 +50,7 @@ const TEAM_ADMIN_NAV: NavItem[] = [
   { testId: "vouchers", i18nKey: "dashboard.sidebar.vouchers", href: "/dashboard/vouchers", icon: Ticket },
   { testId: "bundles", i18nKey: "dashboard.sidebar.bundles", href: "/dashboard/bundles", icon: Package },
   { testId: "analytics", i18nKey: "dashboard.sidebar.analytics", href: "/dashboard/analytics", icon: BarChart3 },
+  { testId: "connect-ai-tool", i18nKey: "dashboard.sidebar.connectAiTool", href: "/dashboard/connect", icon: PlugZap },
   { testId: "settings", i18nKey: "dashboard.sidebar.settings", href: "/dashboard/settings", icon: Settings },
   { testId: "docs", i18nKey: "dashboard.sidebar.docs", href: "/docs", icon: BookOpen },
 ];

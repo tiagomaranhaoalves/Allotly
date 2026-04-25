@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Key, Copy, Shield, Clock, Search, Trash2, AlertTriangle, Settings2, Swords, ExternalLink } from "lucide-react";
+import { Key, Copy, Shield, Clock, Search, Trash2, AlertTriangle, Settings2, Swords, ExternalLink, PlugZap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -62,6 +62,7 @@ export default function KeysPage() {
 function KeyAuditView() {
   const { toast } = useToast();
   const { t } = useTranslation();
+  const { user: currentUser } = useAuth();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -360,6 +361,20 @@ function KeyAuditView() {
                           >
                             <Settings2 className="w-3.5 h-3.5" />
                           </Button>
+                          {currentUser?.email && k.ownerEmail.trim().toLowerCase() === currentUser.email.trim().toLowerCase() && (
+                            <Button
+                              asChild
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0"
+                              data-testid={`link-setup-tool-${k.id}`}
+                              title={t("connect.keysPageLink")}
+                            >
+                              <a href={`/dashboard/connect?key=${encodeURIComponent(k.id)}`}>
+                                <PlugZap className="w-3.5 h-3.5" />
+                              </a>
+                            </Button>
+                          )}
                           <Button
                             asChild
                             variant="ghost"
@@ -556,6 +571,22 @@ function PersonalKeysView() {
                   >
                     {k.status}
                   </Badge>
+                  {k.status === "ACTIVE" && (
+                    <Button
+                      asChild
+                      size="sm"
+                      variant="ghost"
+                      className="gap-1.5"
+                      data-testid={`link-setup-tool-${k.id}`}
+                    >
+                      <a
+                        href={`/dashboard/connect?key=${encodeURIComponent(k.id)}`}
+                      >
+                        <PlugZap className="w-3.5 h-3.5" />
+                        {t("connect.keysPageLink")}
+                      </a>
+                    </Button>
+                  )}
                   {k.status === "ACTIVE" && (
                     <Button
                       asChild
