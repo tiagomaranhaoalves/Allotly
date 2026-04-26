@@ -3,7 +3,24 @@ import { modelPricing } from "@shared/schema";
 import { storage } from "../../storage";
 import { decryptProviderKey } from "../encryption";
 import { eq, and } from "drizzle-orm";
-import { DEPRECATED_MODELS } from "../seed-models";
+import { DEFAULT_MODELS, DEPRECATED_MODELS } from "../seed-models";
+
+// Catalog ownership:
+//   - `seedModelPricing()` (server/lib/seed-models.ts) owns the curated catalog
+//     defined in DEFAULT_MODELS. It runs on boot and is the source of truth for
+//     any model listed there (including pre-release/preview entries that may not
+//     yet appear in a provider's public /models endpoint).
+//   - `runModelSync()` (this file) augments the catalog with models discovered
+//     from each provider's API and may prune entries that look stale.
+//   - To prevent the two systems from fighting (seed adds X, sync removes X
+//     because the provider's /models response doesn't list it yet), the sync
+//     defers to the seed: any (provider, modelId) tuple that appears in
+//     DEFAULT_MODELS is treated as protected and will never be removed by the
+//     sync. Scoping by provider+modelId (rather than modelId alone) avoids
+//     accidental over-retention if a model id ever collides across providers.
+const SEEDED_PROVIDER_MODEL_KEYS = new Set(
+  DEFAULT_MODELS.map(m => `${m.provider}:${m.modelId}`),
+);
 
 interface DiscoveredModel {
   id: string;
@@ -251,17 +268,27 @@ export async function runModelSync(): Promise<void> {
 
     const providerExisting = existingPricing.filter(p => p.provider === provider);
     if (models.length >= 3) {
+      let skippedSeeded = 0;
       for (const existing of providerExisting) {
-        if (!discoveredIds.has(existing.modelId)) {
-          try {
-            await db.delete(modelPricing)
-              .where(and(eq(modelPricing.id, existing.id)));
-            console.log(`[model-sync] Removed deprecated ${provider} model: ${existing.modelId}`);
-            removed++;
-          } catch (e: any) {
-            console.error(`[model-sync] Failed to remove model ${existing.modelId}:`, e.message);
-          }
+        if (discoveredIds.has(existing.modelId)) continue;
+        // Defer to the seed: never remove a curated/seeded entry. The seed may
+        // include preview or pre-release models that the provider's public
+        // /models endpoint hasn't surfaced yet.
+        if (SEEDED_PROVIDER_MODEL_KEYS.has(`${existing.provider}:${existing.modelId}`)) {
+          skippedSeeded++;
+          continue;
         }
+        try {
+          await db.delete(modelPricing)
+            .where(and(eq(modelPricing.id, existing.id)));
+          console.log(`[model-sync] Removed deprecated ${provider} model: ${existing.modelId}`);
+          removed++;
+        } catch (e: any) {
+          console.error(`[model-sync] Failed to remove model ${existing.modelId}:`, e.message);
+        }
+      }
+      if (skippedSeeded > 0) {
+        console.log(`[model-sync] ${provider}: kept ${skippedSeeded} seeded model(s) not in provider /models response`);
       }
     } else {
       console.log(`[model-sync] ${provider}: skipping removal (only ${models.length} models discovered, may be incomplete)`);

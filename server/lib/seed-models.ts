@@ -2,6 +2,17 @@ import { db } from "../db";
 import { modelPricing } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
+// Catalog ownership:
+//   This file owns the curated model catalog. `seedModelPricing()` runs once on
+//   server boot from `server/index.ts` and ensures every entry in
+//   DEFAULT_MODELS exists with the correct pricing. Entries listed here are
+//   considered the source of truth even if a provider's /models endpoint
+//   hasn't surfaced them yet (e.g. preview / pre-release models).
+//
+//   The provider model-sync job (server/lib/jobs/model-sync.ts) augments the
+//   catalog with models discovered from each provider's API. It defers to this
+//   seed: any modelId in DEFAULT_MODELS is treated as protected and will not
+//   be removed by the sync, even if it is absent from the provider response.
 export const DEFAULT_MODELS = [
   // OpenAI — GPT series
   { provider: "OPENAI" as const, modelId: "gpt-5.4", displayName: "GPT-5.4", inputPricePerMTok: 250, outputPricePerMTok: 1000 },
