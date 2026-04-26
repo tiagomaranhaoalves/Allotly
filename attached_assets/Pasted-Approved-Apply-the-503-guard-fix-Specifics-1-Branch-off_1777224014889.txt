@@ -1,0 +1,70 @@
+Approved. Apply the 503 guard fix. Specifics:
+
+1. Branch off main, name it: fix/cold-start-race-503-guard
+
+2. Edit server/index.ts. Insert the guard middleware AFTER
+   app.set("trust proxy", 1) and the existing "/" guard, and BEFORE
+   helmet/cors/registerRoutes:
+
+     app.use((req, res, next) => {
+       if (appReady) return next();
+       // Allow Replit's port liveness probe and the existing "/"
+       // splash to pass through. Everything else gets 503.
+       if (req.path === "/" || req.path === "/healthz") return next();
+       res.status(503)
+         .set("Retry-After", "30")
+         .json({
+           error: {
+             code: "starting",
+             message: "Server is still initializing. Try again in ~30s.",
+           },
+         });
+     });
+
+3. Add a one-liner /healthz route at the top of registerRoutes (it
+   doesn't exist today — your log shows only / has the splash). It
+   should return 200 always once registered, so platform health
+   probes can distinguish "starting" from "down":
+
+     app.get("/healthz", (_req, res) => res.status(200).json({ ok: true }));
+
+4. Verify locally:
+   - npm run check (expect the 18 pre-existing TS errors you flagged,
+     no new ones).
+   - npm run build (expect 382/382 tests pass).
+   - npm run dev, then in another shell:
+       curl -i http://localhost:5000/api/v1/health  during boot →
+         expect HTTP 503 with Retry-After: 30 and body
+         {"error":{"code":"starting",...}}.
+       curl -i http://localhost:5000/api/v1/health  after boot →
+         expect HTTP 200 with the existing JSON.
+       curl -i http://localhost:5000/healthz  always → 200.
+   - Paste the full curl outputs (during-boot and after-boot) in
+     your reply.
+
+5. Commit with message:
+     fix(server): 503 guard during cold-start race
+     
+     Express was binding port 5000 ~85s before registerRoutes() finished
+     (Stripe webhook setup is the bulk of the warm-up). Requests in that
+     window got Express's default "Cannot GET /api/v1/health" 404. Now
+     they get a 503 with Retry-After, with /healthz always returning
+     200 for platform liveness probes. Pre-existed M1/M2/M3.
+
+6. Push to GitHub on the fix/cold-start-race-503-guard branch. Do NOT
+   merge to main and do NOT redeploy yet — I want to review the diff
+   first.
+
+7. Also flag for follow-up (do NOT fix in this PR):
+   - Stripe findOrCreateManagedWebhook taking 32s in cold-start. If
+     this can be lazy-loaded or moved off the boot path, the cold-
+     start window shrinks dramatically.
+   - The seed/model-sync disagreement you noted ("Added 7 new models"
+     followed by "Removed deprecated…") — file a tracker issue with
+     details and we'll triage separately.
+
+Report:
+  - Branch name pushed.
+  - Commit SHA.
+  - The 3 curl outputs (during-boot 503, after-boot 200, /healthz 200).
+  - Any surprises.
