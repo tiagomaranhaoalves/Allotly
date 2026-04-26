@@ -8,7 +8,7 @@ import { newAuthorizationCode } from "./pkce";
 import { MCP_AUDIENCE, SUPPORTED_SCOPES, parseScopeString } from "./scopes";
 import { renderConsent } from "./consent-template";
 
-const PENDING_TTL_MS = 10 * 60 * 1000;
+const PENDING_TTL_MS = 5 * 60 * 1000; // RFC-aligned: consent screens expire fast
 const CODE_TTL_MS = 60 * 1000;
 
 interface PendingAuthRequest {
@@ -31,6 +31,41 @@ function pruneExpired(): void {
   for (const [k, v] of Array.from(pending.entries())) {
     if (v.expiresAt < now) pending.delete(k);
   }
+}
+
+/**
+ * Signed auth_request_id: `<nonce>.<expiresAtMs>.<hmacHex>` where the HMAC
+ * binds nonce + expiry + userId + clientId. This means a stolen id cannot
+ * be replayed by another user (even if our pending Map is shared/cleared)
+ * and tampering with the expiry is detectable. Server-side state still
+ * lives in `pending` (for codeChallenge etc), keyed by nonce.
+ */
+function signAuthRequestId(nonce: string, expiresAtMs: number, userId: string, clientId: string): string {
+  const secret = process.env.OAUTH_JWT_SECRET || "dev-only-fallback-secret";
+  const h = crypto.createHmac("sha256", secret).update(`${nonce}|${expiresAtMs}|${userId}|${clientId}`).digest("hex");
+  return `${nonce}.${expiresAtMs}.${h}`;
+}
+
+interface VerifiedAuthRequestId {
+  nonce: string;
+  expiresAtMs: number;
+}
+
+function verifyAuthRequestId(token: string, userId: string, clientId: string): VerifiedAuthRequestId | null {
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const [nonce, expStr, mac] = parts;
+  const expiresAtMs = Number(expStr);
+  if (!nonce || !Number.isFinite(expiresAtMs)) return null;
+  if (Date.now() > expiresAtMs) return null;
+  const expected = crypto.createHmac("sha256", process.env.OAUTH_JWT_SECRET || "dev-only-fallback-secret")
+    .update(`${nonce}|${expiresAtMs}|${userId}|${clientId}`)
+    .digest("hex");
+  // Constant-time compare
+  const a = Buffer.from(mac, "hex");
+  const b = Buffer.from(expected, "hex");
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  return { nonce, expiresAtMs };
 }
 
 function newCsrfToken(req: Request): string {
@@ -146,18 +181,20 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
     return;
   }
 
-  const authRequestId = crypto.randomBytes(16).toString("hex");
-  pending.set(authRequestId, {
+  const nonce = crypto.randomBytes(16).toString("hex");
+  const expiresAtMs = Date.now() + PENDING_TTL_MS;
+  pending.set(nonce, {
     clientId,
     redirectUri,
     scope: requestedScopes.join(" "),
     resource,
     state,
     codeChallenge,
-    expiresAt: Date.now() + PENDING_TTL_MS,
+    expiresAt: expiresAtMs,
     userId: user.id,
   });
 
+  const authRequestId = signAuthRequestId(nonce, expiresAtMs, user.id, clientId);
   const csrfToken = newCsrfToken(req);
   const html = renderConsent({
     authRequestId,
@@ -167,6 +204,8 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
     redirectUri,
     resource,
     approvePath: "/oauth/consent",
+    userEmail: user.email,
+    userName: user.name,
   });
   res.type("text/html").send(html);
 }
@@ -192,21 +231,35 @@ export async function consentHandler(req: Request, res: Response): Promise<void>
     res.status(403).type("text/plain").send("csrf_mismatch");
     return;
   }
-  const pendingReq = pending.get(authRequestId);
+  // First verify the HMAC: the auth_request_id has the form
+  // "<nonce>.<expiresAtMs>.<hmac>" and the hmac binds (nonce, expiry, userId,
+  // clientId). To verify it we must know the clientId, which we don't have
+  // until after we look it up — but the nonce is in plain text in the token,
+  // so we can fetch the pending entry first and use its clientId for hmac
+  // verification. Doing it in this order means a tampered nonce simply misses
+  // the pending Map and is rejected the same way an expired request would be.
+  const noncePart = String(authRequestId).split(".")[0];
+  const pendingReq = pending.get(noncePart);
   if (!pendingReq) {
     res.status(400).type("text/plain").send("auth_request expired or unknown");
     return;
   }
-  // Session-binding: a pending request only belongs to the user that initiated
-  // /oauth/authorize. If the active session has changed (e.g. user logged out
-  // and a different user logged back in, or an attacker phished an authRequestId),
-  // refuse the consent. RFC 6749 §10.12.
+  // Session-binding (RFC 6749 §10.12): a pending request only belongs to the
+  // user that initiated /oauth/authorize. If the active session has changed,
+  // refuse to mint a code.
   if (pendingReq.userId !== sess.userId) {
-    pending.delete(authRequestId);
+    pending.delete(noncePart);
     res.status(403).type("text/plain").send("session_user_mismatch");
     return;
   }
-  pending.delete(authRequestId);
+  // HMAC verification + freshness (5min) + clientId binding.
+  const verified = verifyAuthRequestId(authRequestId, sess.userId, pendingReq.clientId);
+  if (!verified) {
+    pending.delete(noncePart);
+    res.status(400).type("text/plain").send("auth_request expired or invalid");
+    return;
+  }
+  pending.delete(noncePart);
 
   if (decision !== "approve") {
     res.redirect(302, safeRedirect(pendingReq.redirectUri, { error: "access_denied", state: pendingReq.state }));

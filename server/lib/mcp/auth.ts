@@ -39,11 +39,21 @@ function sha256(s: string): string {
   return crypto.createHash("sha256").update(s).digest("hex");
 }
 
-/** D3 composite principal hash — separates rate-limit + audit namespaces by bearer kind. */
+/**
+ * D3 principal identity — verbatim, NOT re-hashed.
+ *   key:<apiKeyId>            — API key id is already opaque + non-secret
+ *   voucher:<sha256(code)>    — code is the secret, hash it once
+ *   oauth:<client_id>:<sub>   — client_id + user id are opaque + non-secret
+ *
+ * Rate-limit and audit namespaces use this string directly; downstream callers
+ * may sha256 it for redis key shortening if they wish, but this function
+ * preserves the canonical identity so two readers of the same principal
+ * always get the exact same string.
+ */
 export function computePrincipalHash(parts: { kind: BearerKind; apiKeyId?: string | null; voucherCode?: string; clientId?: string; userId?: string }): string {
-  if (parts.kind === "key") return sha256(`key:${parts.apiKeyId || ""}`);
-  if (parts.kind === "voucher") return sha256(`voucher:${sha256((parts.voucherCode || "").toUpperCase())}`);
-  return sha256(`oauth:${parts.clientId || ""}:${parts.userId || ""}`);
+  if (parts.kind === "key") return `key:${parts.apiKeyId || ""}`;
+  if (parts.kind === "voucher") return `voucher:${sha256((parts.voucherCode || "").toUpperCase())}`;
+  return `oauth:${parts.clientId || ""}:${parts.userId || ""}`;
 }
 
 function looksLikeJwt(s: string): boolean {

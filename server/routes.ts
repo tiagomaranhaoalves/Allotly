@@ -326,15 +326,21 @@ export async function registerRoutes(
       }
 
       const passwordHash = await hashPassword(password);
-      await storage.updateUser(me.id, {
+      // Single UPDATE — atomic at the DB level. All four columns flip together
+      // or none do, so the user is never left in a half-claimed state where
+      // (e.g.) the email changed but isVoucherUser was still true.
+      const updated = await storage.updateUser(me.id, {
         email,
         name,
         passwordHash,
         isVoucherUser: false,
       });
+      if (!updated) {
+        return res.status(500).json({ success: false, message: "Failed to claim account; please try again." });
+      }
 
       const next = typeof req.body?.next === "string" && req.body.next.startsWith("/") ? req.body.next : "/dashboard";
-      res.json({ ok: true, next });
+      res.json({ success: true, next });
     } catch (e: any) {
       if (e instanceof z.ZodError) {
         return res.status(400).json({ message: e.errors[0]?.message || "Validation error" });

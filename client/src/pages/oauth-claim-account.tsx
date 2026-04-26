@@ -28,6 +28,9 @@ export default function OauthClaimAccountPage() {
     try {
       const res = await apiRequest("POST", "/api/auth/claim-from-voucher", { name, email, password, next });
       const body = await res.json();
+      if (!body?.success) {
+        throw new Error(body?.message || t("auth.claim.errorBody"));
+      }
       await queryClient.invalidateQueries({ queryKey: ["/api/auth/session"] });
       toast({ title: t("auth.claim.successTitle"), description: t("auth.claim.successBody") });
       setLocation(body?.next || next);

@@ -6,6 +6,10 @@ export interface ConsentParams {
   redirectUri: string;
   resource: string;
   approvePath: string;
+  /** Logged-in user's email — shown in consent so they can confirm identity. */
+  userEmail: string;
+  /** Logged-in user's display name (optional). */
+  userName?: string | null;
 }
 
 function escape(s: string): string {
@@ -42,7 +46,14 @@ export function renderConsent(p: ConsentParams): string {
 </div>
 <div style="background:#fff;border-radius:12px;padding:32px;border:1px solid #e2e8f0">
 <h1 style="margin:0 0 12px;color:#1e293b;font-size:20px">Authorize <span data-testid="consent-client-name">${escape(p.clientName)}</span></h1>
-<p style="color:#475569;font-size:14px;line-height:1.5;margin:0 0 16px">This app is requesting access to your Allotly account.</p>
+<p style="color:#475569;font-size:14px;line-height:1.5;margin:0 0 12px">This app is requesting access to your Allotly account.</p>
+<div style="background:#eef2ff;border-radius:8px;padding:10px 14px;margin:0 0 16px;display:flex;align-items:center;gap:10px">
+<div style="width:32px;height:32px;border-radius:16px;background:#6366F1;color:#fff;font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center">${escape((p.userName || p.userEmail || "?").trim().charAt(0).toUpperCase())}</div>
+<div style="flex:1;min-width:0">
+<div style="color:#1e293b;font-size:13px;font-weight:600" data-testid="consent-user-name">${escape(p.userName || "")}</div>
+<div style="color:#475569;font-size:12px;word-break:break-all" data-testid="consent-user-email">${escape(p.userEmail)}</div>
+</div>
+</div>
 <div style="background:#f8fafc;border-radius:8px;padding:14px 18px;margin:0 0 16px">
 <div style="color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:8px">Will be allowed to</div>
 <ul style="margin:0;padding-left:20px;color:#1e293b;font-size:13px;line-height:1.6">${scopeList}</ul>

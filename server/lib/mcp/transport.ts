@@ -136,10 +136,14 @@ async function handleJsonRpc(req: JsonRpcRequest, authHeader: string | undefined
 
     const auditCols = principalAuditCols(principal);
 
-    if (principal && tool.voucherOnly && principal.bearerKind !== "voucher") {
+    // voucherOnly tools (e.g. redeem-and-chat) reject only OAuth-bearer callers,
+    // not legacy raw-key callers. The intent is "do not let a third-party OAuth
+    // client redeem on a user's behalf"; key-bearer humans/scripts may still
+    // mint a voucher session for themselves.
+    if (principal && tool.voucherOnly && principal.bearerKind === "oauth") {
       const inputHash = hashInput(args);
       recordAudit({ membershipId: principalMembershipId, toolName, inputHash, ok: false, errorCode: -32002, latencyMs: Date.now() - start, ...auditCols });
-      return err(id, -32002, `Tool ${toolName} can only be invoked with a voucher bearer (ALLOT-...)`, {
+      return err(id, -32002, `Tool ${toolName} cannot be invoked with an OAuth bearer; pass the voucher code (ALLOT-...) directly`, {
         hint: "Re-issue the call with the voucher code in the Authorization header.",
         bearer_kind_received: principal.bearerKind,
       });
