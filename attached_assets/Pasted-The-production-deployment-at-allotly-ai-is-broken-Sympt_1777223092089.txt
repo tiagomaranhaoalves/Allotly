@@ -1,0 +1,43 @@
+The production deployment at allotly.ai is broken. Symptoms:
+  - GET https://allotly.ai/api/v1/health → 404 "Cannot GET /api/v1/health"
+  - POST https://allotly.ai/mcp → 404 "Cannot POST /mcp"
+  - The HTML body is Express's default error page, not the SPA, so
+    Express IS running but registerRoutes() has not registered the API.
+  - Earlier today both endpoints worked — claude mcp list showed
+    "✓ Connected" with all 13 tools. Something in commits between
+    29ec1ab (last known good) and b9d958d (latest) broke startup.
+
+Investigate:
+  1. Open the production deployment's runtime logs. Look for any
+     unhandled exception, TypeScript compile error, or
+     "registerRoutes" failure during startup. Paste the startup log
+     verbatim (first 100 lines) into your reply.
+  2. Confirm which commit was actually deployed. Check the deployment
+     dashboard for the deployed commit SHA. If it's NOT b9d958d
+     (latest main), redeploy from main. If it IS b9d958d, proceed to
+     step 3.
+  3. Run npm run check locally in the repl. If TypeScript errors
+     surface in any of the M1/M2/M3 files (server/lib/email.ts changes,
+     packages/allotly-mcp tooling polluting the root tsconfig, the
+     redeem.tsx changes, etc.), report them and propose a fix —
+     do NOT push the fix until I review.
+  4. Run npm run build locally. If the build itself fails, share the
+     full error output.
+
+Crucially: do NOT delete or modify server/lib/mcp/*. The MCP code is
+correct and was working hours ago. The regression is upstream of route
+registration — most likely a syntax/type error in one of the M2/M3
+files preventing the server from booting, OR a deployment that's
+running a stale/different commit than what's on main.
+
+Side note: @allotly/mcp@0.1.0 is now published on npm. The bridge
+itself works (verified locally — it correctly spawns mcp-remote and
+attempts the upstream connection). It's blocked only by the live
+deployment being down.
+
+Report:
+  - Startup log (first 100 lines).
+  - Deployed commit SHA from the deployment dashboard.
+  - Output of npm run check and npm run build.
+  - Your hypothesis for the root cause and proposed fix.
+  - Do NOT push or redeploy without my review.
