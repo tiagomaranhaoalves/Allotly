@@ -1,0 +1,214 @@
+M1 of V1.5.0: OAuth 2.1 + Dynamic Client Registration on /mcp, plus
+three small V1 cleanups that unblock M2.
+
+You wrote the alignment doc. We agreed on:
+  - Three new tables (oauth_clients, oauth_authorization_codes,
+    oauth_tokens) per your draft schema in §2/§4 of the alignment.
+  - Hand-rolled OAuth (no abandoned npm libs).
+  - Server-rendered consent screen, strict CSP, no client JS.
+  - Reuse the existing express-session cookie; redirect to
+    /login?next=… for unauthenticated /oauth/authorize hits.
+  - Voucher-only users blocked from OAuth; new
+    /api/auth/claim-from-voucher endpoint plus a "Claim a permanent
+    account" page they're redirected to.
+  - Atomic single-use authorization codes
+    (UPDATE … WHERE consumed_at IS NULL RETURNING …).
+  - PKCE S256 only, no plain. Resource Indicators (RFC 8707)
+    required and validated against https://allotly.ai/mcp.
+
+DECISIONS — confirm before coding:
+
+  D1. JWT signing. Use HMAC-SHA256 with a 256-bit secret read from
+      env OAUTH_JWT_SECRET. Generate one fresh secret if missing
+      (log a warning, don't crash). Access tokens carry
+      { iss: "https://allotly.ai", sub: <userId>, aud: <resource>,
+        membership_id, client_id, scope, jti, iat, exp } and expire
+      in 15 minutes.
+
+  D2. Refresh tokens. Opaque 256-bit random strings, stored as
+      sha256 hashes in oauth_tokens.refresh_token_hash. Rotated on
+      every use (RFC 6749 §10.4 — issue a new refresh token,
+      revoke the old one in the same transaction). Refresh expires
+      in 30 days.
+
+  D3. Audit log identity. Switch the existing principalHash
+      computation in mcp/auth.ts to:
+        bearerKind === "key"     -> "key:" + apiKeyId
+        bearerKind === "voucher" -> "voucher:" + sha256(voucherCode)
+        bearerKind === "oauth"   -> "oauth:" + clientId + ":" + userId
+      This stays stable across token rotations. Add client_id and
+      audience columns to mcp_audit_log so per-app traces are
+      possible. The old principalHash=sha256(bearer) goes away.
+
+LOCATION:
+
+  New: server/lib/oauth/
+    server.ts            — endpoint handlers
+    discovery.ts         — /.well-known/oauth-authorization-server
+    register.ts          — POST /oauth/register (DCR per RFC 7591)
+    authorize.ts         — GET /oauth/authorize + POST /oauth/consent
+    token.ts             — POST /oauth/token (code exchange + refresh rotation)
+    revoke.ts            — POST /oauth/revoke (RFC 7009)
+    consent-template.ts  — server-rendered HTML, no client JS
+    pkce.ts              — verifyChallenge(verifier, challenge)
+    jwt.ts               — sign(claims), verify(token)
+    scopes.ts            — { mcp: "Send prompts and read budget",
+                            mcp:read: "Read budget and recent usage" }
+
+  Mounted from server/routes.ts BEFORE registerRoutes finishes (so
+  it's behind the 503 cold-start guard from d7f66c9).
+
+  shared/connector-snippets.ts (NEW — extract from server/lib/email.ts
+    and client/src/pages/dashboard/connect-helpers.ts so M2 doesn't
+    double the surface). Both call sites import from here.
+
+  shared/schema.ts — three new tables (use the schema you drafted in
+    your alignment §3.2; paste it verbatim and I'll review). Add a
+    foreign key on mcp_audit_log.membership_id with ON DELETE SET NULL
+    (orphan trace rows survive but lose membership pointer).
+
+  server/lib/mcp/auth.ts — extend authenticate() with the third
+    branch. JWT path: verify signature with OAUTH_JWT_SECRET, check
+    exp, check aud === "https://allotly.ai/mcp", check jti not in
+    revoked-set Redis cache (allotly:oauth:revoked:{jti}, TTL = token
+    lifetime). Returns McpPrincipal with bearerKind: "oauth", clientId,
+    scopes, resource. Per-tool scope check happens in transport.ts
+    before tool.handler runs (add a `requiredScope` field to
+    ToolDefinition; default is "mcp"; my_recent_usage and my_budget
+    can drop to "mcp:read"; redeem_voucher / redeem_and_chat /
+    request_topup MUST reject bearerKind === "oauth" outright with
+    Forbidden — these are voucher-only).
+
+  server/lib/mcp/tools/index.ts — fix PINNED_DESCRIPTION_HASHES.
+    Change from "init to empty strings then overwrite at startup"
+    to: snapshot real hashes to a checked-in tools/description-
+    hashes.json at build time, compare on startup, throw on
+    mismatch. Update CI so any description change requires
+    intentionally bumping the snapshot in the same commit.
+
+  server/auth.ts — add the existing /api/auth/claim-from-voucher
+    handler. Receives { email, password, name }, validates, finds
+    the current session's voucher-user, sets email + passwordHash,
+    flips isVoucherUser=false, transactionally. Returns 200 on
+    success. Existing session stays valid; the user is now a
+    permanent account.
+
+  client/src/pages/oauth-claim-account.tsx (NEW) — the
+    "Claim a permanent account" page. Form: email, password, name.
+    POSTs to /api/auth/claim-from-voucher. On success, redirects to
+    the original /oauth/authorize?... URL preserved in ?next.
+
+CRYPTO REQUIREMENTS:
+
+  - Authorization codes: 32 random bytes (base64url), stored hashed
+    (sha256), expires_at 60 seconds, consumed_at single-use atomic.
+  - PKCE: S256 only, reject any code_challenge_method !== "S256".
+    Verifier comparison via crypto.timingSafeEqual.
+  - JWT: HS256 only, OAUTH_JWT_SECRET ≥ 32 bytes, validated with
+    explicit alg whitelist (defend against "alg: none").
+  - Refresh tokens: 32 random bytes, stored hashed (sha256), rotated
+    on every use, old hash revoked in the same transaction.
+  - Client secrets (for confidential clients only — most MCP clients
+    are public so client_secret will be null): bcrypt at cost 12.
+
+DCR DETAILS (RFC 7591):
+
+  POST /oauth/register
+    body: { client_name, redirect_uris[], grant_types?,
+            response_types?, scope?, token_endpoint_auth_method? }
+    response: { client_id, client_secret?, client_id_issued_at,
+                client_secret_expires_at: 0, registration_access_token,
+                registration_client_uri, ...the request echoed back }
+  No pre-approval. Rate-limit: 10 registrations per IP per hour.
+  redirect_uris validated against a regex (no localhost in prod
+  except for development build).
+
+CONSENT SCREEN (server-rendered HTML, NO client JS):
+
+  Inputs from the validated /oauth/authorize: client_name, scopes,
+  current user (from session). Renders:
+    "claude.ai is requesting access to your Allotly account
+     (tiagomaranhaoalves14nov@gmail.com). It will be able to:
+       ✓ send chat messages on your behalf and consume your budget
+       ✓ view your remaining budget, status, and recent usage
+     [Approve]  [Deny]"
+  POST /oauth/consent with the form's hidden fields (auth request
+  ID, csrf token from the session) issues the code or returns a
+  denied error to the redirect_uri. CSP: default-src 'self'; no
+  scripts; no images outside our domain.
+
+DISCOVERY (/.well-known/oauth-authorization-server):
+
+  {
+    "issuer": "https://allotly.ai",
+    "authorization_endpoint": "https://allotly.ai/oauth/authorize",
+    "token_endpoint": "https://allotly.ai/oauth/token",
+    "registration_endpoint": "https://allotly.ai/oauth/register",
+    "revocation_endpoint": "https://allotly.ai/oauth/revoke",
+    "scopes_supported": ["mcp", "mcp:read"],
+    "response_types_supported": ["code"],
+    "grant_types_supported": ["authorization_code", "refresh_token"],
+    "token_endpoint_auth_methods_supported": ["none", "client_secret_basic"],
+    "code_challenge_methods_supported": ["S256"],
+    "service_documentation": "https://allotly.ai/dashboard/connect"
+  }
+
+ACCEPTANCE:
+
+  - All RFC 6749 + 7591 + 7009 + 7636 + 8707 happy-path flows pass
+    end-to-end against a test express server. Use
+    tests/oauth/integration.spec.ts. At minimum:
+      * DCR happy path (anonymous client gets client_id back)
+      * Authorize happy path (logged-in user, S256 PKCE, redirect)
+      * Authorize rejects code_challenge_method=plain
+      * Authorize rejects voucher-only users (redirects to claim page)
+      * Token exchange happy path (PKCE verifier matches)
+      * Token exchange rejects mismatched verifier
+      * Token exchange rejects reused code
+      * Refresh happy path (new access + new refresh, old refresh
+        revoked in DB)
+      * Refresh rejects revoked refresh
+      * /mcp call with valid OAuth bearer succeeds (tools/list
+        returns 13 tools)
+      * /mcp call with revoked OAuth bearer returns -32001
+      * /mcp call with OAuth bearer to redeem_voucher returns
+        Forbidden -32002
+  - Existing tests/mcp/* and tests/proxy-* all pass.
+  - Description hash pinning: a deliberately mutated description in
+    a test fails the assertion in tests/mcp/security.test.ts.
+  - mcp_audit_log rows for OAuth calls carry client_id + audience.
+  - npm run check: no NEW TypeScript errors beyond the existing ~81
+    pre-existing baseline.
+
+DELIVERABLES:
+
+  1. server/lib/oauth/* per the file list above.
+  2. shared/schema.ts: 3 new tables, 2 new columns on mcp_audit_log,
+     FK from mcp_audit_log.membership_id (ON DELETE SET NULL).
+  3. server/lib/mcp/auth.ts extended with OAuth introspection.
+  4. server/lib/mcp/tools/index.ts: real description-hash pinning.
+  5. shared/connector-snippets.ts (extracted dedup).
+  6. server/auth.ts: /api/auth/claim-from-voucher.
+  7. client/src/pages/oauth-claim-account.tsx.
+  8. tests/oauth/integration.spec.ts covering every bullet in
+     ACCEPTANCE.
+  9. server/lib/mcp/README.md updated with OAuth quickstart for
+     claude.ai/ChatGPT/Gemini.
+
+DO NOT:
+  - Touch the existing bearer auth paths beyond extending
+    authenticate() with a third branch.
+  - Modify the published @allotly/mcp bridge.
+  - Add new dependencies. Use Node's built-in crypto and the existing
+    drizzle/express stack. No oauth libraries.
+  - Push to main. All work on a feature branch
+    feature/v1.5.0-m1-oauth. Open a PR once acceptance is met.
+  - Redeploy. After PR is reviewed and merged, I'll signal redeploy.
+
+REPORT:
+  - Confirm D1, D2, D3.
+  - Branch name + final commit SHA.
+  - All 11 acceptance bullets passing (paste the test output).
+  - Output of npm run check and npm run build.
+  - Any deviations from the spec and why.
+  - Any V1 fragility you hit while doing M1 (per your alignment §5).
