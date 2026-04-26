@@ -14,7 +14,7 @@ export type BearerKind = "key" | "voucher" | "oauth";
 export interface McpPrincipal {
   membership: TeamMembership;
   userId: string;
-  apiKeyId: string | null;
+  apiKeyId: string;
   bearerKind: BearerKind;
   voucherCode?: string;
   /** OAuth client_id (only set when bearerKind === "oauth"). */
@@ -123,10 +123,23 @@ async function resolveOauthBearer(bearer: string, allowAnonymous?: boolean): Pro
   }
 
   const scopes = parseScopeString(claims.scope || "");
+
+  // Proxy/usage code paths require an api_key_id to log usage against.
+  // Use the membership's primary active key as the surrogate for OAuth bearers
+  // so /v1/chat/completions accounting still works.
+  const membershipKeys = await storage.getApiKeysByMembership(claims.membership_id);
+  const activeKey = membershipKeys.find((k) => k.status === "ACTIVE") || membershipKeys[0];
+  if (!activeKey) {
+    if (allowAnonymous) return null;
+    throw new McpToolError("Unauthorised", "OAuth bearer is valid but the bound membership has no Allotly API key", {
+      hint: "Create an API key for this membership at /dashboard/keys before using OAuth-tokenised MCP tools.",
+    });
+  }
+
   return {
     membership,
     userId: claims.sub,
-    apiKeyId: null,
+    apiKeyId: activeKey.id,
     bearerKind: "oauth",
     clientId: claims.client_id,
     scopes,

@@ -40,7 +40,6 @@ export function recordAudit(entry: AuditEntry): void {
         latencyMs: entry.latencyMs,
         clientId: entry.clientId ?? null,
         audience: entry.audience ?? null,
-        principalHash: entry.principalHash ?? null,
       });
     } catch (err: any) {
       console.error(`[mcp:audit] write failed for ${entry.toolName}: ${err?.message}`);
