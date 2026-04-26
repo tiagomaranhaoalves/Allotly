@@ -288,17 +288,57 @@ export const modelPricing = pgTable("model_pricing", {
 
 export const mcpAuditLog = pgTable("mcp_audit_log", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  membershipId: varchar("membership_id"),
+  membershipId: varchar("membership_id").references(() => teamMemberships.id, { onDelete: "set null" }),
   toolName: text("tool_name").notNull(),
   inputHash: text("input_hash").notNull(),
   ok: boolean("ok").notNull(),
   errorCode: integer("error_code"),
   latencyMs: integer("latency_ms").notNull(),
+  clientId: text("client_id"),
+  audience: text("audience"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   index("mcp_audit_log_membership_idx").on(table.membershipId, table.createdAt),
   index("mcp_audit_log_tool_idx").on(table.toolName, table.createdAt),
 ]);
+
+export const oauthClients = pgTable("oauth_clients", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  clientName: text("client_name").notNull(),
+  redirectUris: jsonb("redirect_uris").notNull(),
+  clientSecretHash: text("client_secret_hash"),
+  registrationAccessTokenHash: text("registration_access_token_hash").notNull(),
+  scopesAllowed: jsonb("scopes_allowed").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  lastUsedAt: timestamp("last_used_at"),
+  revokedAt: timestamp("revoked_at"),
+});
+
+export const oauthAuthorizationCodes = pgTable("oauth_authorization_codes", {
+  codeHash: text("code_hash").primaryKey(),
+  clientId: varchar("client_id").notNull().references(() => oauthClients.id),
+  membershipId: varchar("membership_id").notNull().references(() => teamMemberships.id),
+  redirectUri: text("redirect_uri").notNull(),
+  codeChallenge: text("code_challenge").notNull(),
+  resource: text("resource"),
+  scope: text("scope").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  consumedAt: timestamp("consumed_at"),
+});
+
+export const oauthTokens = pgTable("oauth_tokens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  clientId: varchar("client_id").notNull().references(() => oauthClients.id),
+  membershipId: varchar("membership_id").notNull().references(() => teamMemberships.id),
+  accessTokenJti: text("access_token_jti").notNull().unique(),
+  refreshTokenHash: text("refresh_token_hash").unique(),
+  scope: text("scope").notNull(),
+  resource: text("resource"),
+  issuedAt: timestamp("issued_at").defaultNow().notNull(),
+  accessExpiresAt: timestamp("access_expires_at").notNull(),
+  refreshExpiresAt: timestamp("refresh_expires_at"),
+  revokedAt: timestamp("revoked_at"),
+}, (t) => [index("oauth_tokens_membership_idx").on(t.membershipId)]);
 
 export const mcpIdempotency = pgTable("mcp_idempotency", {
   scope: text("scope").notNull(),
@@ -373,6 +413,9 @@ export type PlatformAuditLog = typeof platformAuditLogs.$inferSelect;
 export type McpAuditLog = typeof mcpAuditLog.$inferSelect;
 export type McpIdempotency = typeof mcpIdempotency.$inferSelect;
 export type VoucherTopupRequest = typeof voucherTopupRequests.$inferSelect;
+export type OauthClient = typeof oauthClients.$inferSelect;
+export type OauthAuthorizationCode = typeof oauthAuthorizationCodes.$inferSelect;
+export type OauthToken = typeof oauthTokens.$inferSelect;
 
 export interface AzureDeploymentMapping {
   deploymentName: string;
