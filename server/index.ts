@@ -19,6 +19,20 @@ app.get("/", (req, res, next) => {
   res.status(200).send("Starting...");
 });
 
+app.get("/healthz", (_req, res) => res.status(200).json({ ok: true }));
+
+app.use((req, res, next) => {
+  if (appReady) return next();
+  if (req.path === "/" || req.path === "/healthz") return next();
+  res.setHeader("Retry-After", "30");
+  return res.status(503).json({
+    error: {
+      code: "starting",
+      message: "Server is still initializing. Try again in ~30s.",
+    },
+  });
+});
+
 app.use(helmet({
   contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false,
