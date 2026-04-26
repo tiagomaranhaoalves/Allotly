@@ -1,0 +1,77 @@
+We're starting V1.5.0 of the Allotly MCP. Before any code, write
+back an alignment doc. Read these files first:
+
+  - server/lib/mcp/README.md  (V1 handover)
+  - server/lib/mcp/auth.ts    (V1 bearer-token auth, where OAuth slots in)
+  - server/lib/mcp/transport.ts (JSON-RPC dispatch, where token introspection lives)
+  - server/routes.ts (the existing /api/auth/* and session middleware)
+  - shared/schema.ts (existing tables)
+  - server/auth.ts (the session/Passport setup)
+  - server/lib/email.ts (templates)
+  - client/src/pages/dashboard/connect.tsx (where new OAuth buttons land)
+  - packages/allotly-mcp (so you remember how V1.0.1 fits)
+
+Then answer in 5 numbered sections, no code:
+
+  1. In one paragraph, summarise V1's current auth model: how
+     authenticateKey() works, how the voucher-bearer auto-redemption
+     flows, where the resolved principal lands inside the JSON-RPC
+     dispatcher.
+
+  2. List the THREE biggest things that have to change in
+     server/lib/mcp/auth.ts and the JSON-RPC dispatcher to support a
+     third bearer kind ("Bearer <oauth_access_token>") alongside the
+     existing two.
+
+  3. V1.5.0 is planned in three milestones. For each, state in 2-4
+     sentences what YOU think it should produce. Disagree if you
+     think the order or scope is wrong:
+       M1 — OAuth 2.1 + Dynamic Client Registration backend.
+            Endpoints: /.well-known/oauth-authorization-server,
+            /oauth/register, /oauth/authorize, /oauth/token,
+            /oauth/revoke. Three new DB tables (oauth_clients,
+            oauth_authorization_codes, oauth_tokens). Token
+            introspection in mcp/auth.ts. PKCE-S256 required, no
+            plain. Resource Indicators (RFC 8707) supported.
+       M2 — Dashboard "Connections" page (list authorized OAuth
+            apps, revoke per app) + new "Connect via OAuth" cards on
+            /dashboard/connect for claude.ai, ChatGPT, Gemini.
+            Updated post-redeem flow shows the OAuth path for users
+            who claim a permanent account.
+       M3 — Quality-of-life cluster:
+              (a) GBP currency support (org-level setting; budget
+                  snapshots and emails localise; provider costs stay
+                  USD internally).
+              (b) LLM-based recommend_model (with caching + fallback
+                  to current heuristic).
+              (c) Streaming progress notifications for `chat` (MCP
+                  progressNotification frames during generation).
+              (d) Fix the V1 description-hash pinning no-op
+                  (snapshot real hashes to a const file, fail-loud
+                  on drift).
+              (e) /v1/messages native Anthropic endpoint (separate
+                  surface from /v1/chat/completions; pass-through to
+                  Anthropic only, not OpenAI/Google).
+
+  4. Concerns / prerequisites for M1 specifically. I'm expecting
+     things like:
+       - Where the OAuth consent screen lives (new /oauth/consent
+         React route, or server-rendered HTML?).
+       - How the existing /api/auth/login session ties to OAuth
+         (do we need a separate "OAuth user" cookie?).
+       - Whether voucher-only users can OAuth (V1.5 says no — they
+         must claim a permanent account first).
+       - Replay protection for authorization codes.
+       - Any libraries you'd lean on (oauth4webapi? express-oauth-server?
+         hand-rolled?). Recommend hand-rolled — the spec is small
+         enough and a battle-tested OAuth lib is overkill plus a
+         supply-chain risk.
+
+  5. V1 + V1.0.1 fragility you'd want fixed before V1.5 ships on
+     top, beyond what's already in M3. If everything is clean, say
+     "no concerns."
+
+Format: 5 numbered sections. Total under 700 words. Do not modify
+files. Do not run tests. Just read and write.
+
+When done, paste your answer back to the human verbatim.
