@@ -12,6 +12,7 @@ import LandingPage from "@/pages/landing";
 import LoginPage from "@/pages/login";
 import SignupPage from "@/pages/signup";
 import RedeemPage from "@/pages/redeem";
+import OauthClaimAccountPage from "@/pages/oauth-claim-account";
 import ForgotPasswordPage from "@/pages/forgot-password";
 import ResetPasswordPage from "@/pages/reset-password";
 import DocsPage from "@/pages/docs";
@@ -58,6 +59,7 @@ function Router() {
       <Route path="/login" component={LoginPage} />
       <Route path="/signup" component={SignupPage} />
       <Route path="/redeem" component={RedeemPage} />
+      <Route path="/oauth/claim-account" component={OauthClaimAccountPage} />
       <Route path="/forgot-password" component={ForgotPasswordPage} />
       <Route path="/reset-password" component={ResetPasswordPage} />
       <Route path="/invite/:token" component={InvitePage} />

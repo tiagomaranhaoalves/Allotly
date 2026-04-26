@@ -20,6 +20,7 @@ import { runRedisReconciliation } from "./lib/jobs/redis-reconciliation";
 import { runModelSync } from "./lib/jobs/model-sync";
 import { handleChatCompletion, handleListModels, handleKeyValidation } from "./lib/proxy/handler";
 import { mountMcp } from "./lib/mcp/server";
+import { mountOAuth } from "./lib/oauth";
 import { redisSet, redisGet, redisDel, redisIncr, redisIncrBy, REDIS_KEYS } from "./lib/redis";
 import { runProviderValidation } from "./lib/jobs/provider-validation";
 import { runSnapshotCleanup } from "./lib/jobs/snapshot-cleanup";
@@ -70,6 +71,7 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   setupAuth(app);
+  mountOAuth(app);
 
   app.post("/api/contact", async (req, res) => {
     try {
@@ -290,6 +292,54 @@ export async function registerRoutes(
         return res.status(400).json({ message: e.errors[0]?.message || "Validation error" });
       }
       console.error("Reset password error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Claim-from-voucher: a voucher-minted user (auto-created from MCP voucher
+  // redemption) is now standing at the OAuth consent screen and needs a real
+  // identity (email + password) before we can let them grant a third-party
+  // OAuth client access. This binds an email + password to their existing
+  // user row WITHOUT changing their membership / budget / API key.
+  app.post("/api/auth/claim-from-voucher", loginLimiter, async (req, res) => {
+    try {
+      if (!req.session?.userId) {
+        return res.status(401).json({ message: "You must be signed in via your voucher session to claim an account." });
+      }
+      const { email, password, name } = z.object({
+        email: z.string().email("Please enter a valid email address").transform((s) => s.toLowerCase().trim()),
+        password: z.string().min(8, "Password must be at least 8 characters"),
+        name: z.string().min(1, "Please tell us your name").max(120),
+      }).parse(req.body);
+
+      const me = await storage.getUser(req.session.userId);
+      if (!me) {
+        return res.status(401).json({ message: "Session expired. Please redeem your voucher again." });
+      }
+      if (!me.isVoucherUser) {
+        return res.status(400).json({ message: "This account already has a real identity; nothing to claim." });
+      }
+
+      const existing = await storage.getUserByEmail(email);
+      if (existing && existing.id !== me.id) {
+        return res.status(409).json({ message: "An account already exists for this email. Please sign in with that account instead." });
+      }
+
+      const passwordHash = await hashPassword(password);
+      await storage.updateUser(me.id, {
+        email,
+        name,
+        passwordHash,
+        isVoucherUser: false,
+      });
+
+      const next = typeof req.body?.next === "string" && req.body.next.startsWith("/") ? req.body.next : "/dashboard";
+      res.json({ ok: true, next });
+    } catch (e: any) {
+      if (e instanceof z.ZodError) {
+        return res.status(400).json({ message: e.errors[0]?.message || "Validation error" });
+      }
+      console.error("Claim from voucher error:", e);
       res.status(500).json({ message: "Internal server error" });
     }
   });

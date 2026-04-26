@@ -6,13 +6,25 @@ import { generateAllotlyKey } from "../keys";
 import { McpToolError } from "./errors";
 import { hashPassword } from "../password";
 import type { TeamMembership } from "@shared/schema";
+import { verifyAccessToken } from "../oauth/jwt";
+import { MCP_AUDIENCE, parseScopeString } from "../oauth/scopes";
+
+export type BearerKind = "key" | "voucher" | "oauth";
 
 export interface McpPrincipal {
   membership: TeamMembership;
   userId: string;
-  apiKeyId: string;
-  bearerKind: "key" | "voucher";
+  apiKeyId: string | null;
+  bearerKind: BearerKind;
   voucherCode?: string;
+  /** OAuth client_id (only set when bearerKind === "oauth"). */
+  clientId?: string;
+  /** Granted OAuth scopes (only set when bearerKind === "oauth"). */
+  scopes?: string[];
+  /** RFC 8707 resource indicator (only set when bearerKind === "oauth"). */
+  resource?: string;
+  /** OAuth access-token JTI (only set when bearerKind === "oauth"). */
+  jti?: string;
   principalHash: string;
 }
 
@@ -23,8 +35,22 @@ function voucherBindingKey(voucherCode: string): string {
   return `allotly:mcp:voucher_binding:${hash}`;
 }
 
-function principalHash(bearer: string): string {
-  return crypto.createHash("sha256").update(bearer).digest("hex");
+function sha256(s: string): string {
+  return crypto.createHash("sha256").update(s).digest("hex");
+}
+
+/** D3 composite principal hash — separates rate-limit + audit namespaces by bearer kind. */
+export function computePrincipalHash(parts: { kind: BearerKind; apiKeyId?: string | null; voucherCode?: string; clientId?: string; userId?: string }): string {
+  if (parts.kind === "key") return sha256(`key:${parts.apiKeyId || ""}`);
+  if (parts.kind === "voucher") return sha256(`voucher:${sha256((parts.voucherCode || "").toUpperCase())}`);
+  return sha256(`oauth:${parts.clientId || ""}:${parts.userId || ""}`);
+}
+
+function looksLikeJwt(s: string): boolean {
+  if (s.length < 20) return false;
+  const dots = s.split(".");
+  if (dots.length !== 3) return false;
+  return /^[A-Za-z0-9_-]+$/.test(dots[0]) && /^[A-Za-z0-9_-]+$/.test(dots[1]) && /^[A-Za-z0-9_-]+$/.test(dots[2]);
 }
 
 export async function authenticate(authHeader: string | undefined, options: { allowAnonymous?: boolean } = {}): Promise<McpPrincipal | null> {
@@ -45,7 +71,7 @@ export async function authenticate(authHeader: string | undefined, options: { al
       userId: result.userId,
       apiKeyId: result.apiKeyId,
       bearerKind: "key",
-      principalHash: principalHash(bearer),
+      principalHash: computePrincipalHash({ kind: "key", apiKeyId: result.apiKeyId }),
     };
   }
 
@@ -53,8 +79,61 @@ export async function authenticate(authHeader: string | undefined, options: { al
     return await resolveVoucherBearer(bearer, options.allowAnonymous);
   }
 
+  if (looksLikeJwt(bearer)) {
+    return await resolveOauthBearer(bearer, options.allowAnonymous);
+  }
+
   if (options.allowAnonymous) return null;
-  throw new McpToolError("Unauthorised", "Bearer must be allotly_sk_... or ALLOT-XXXX-XXXX-XXXX");
+  throw new McpToolError("Unauthorised", "Bearer must be allotly_sk_..., ALLOT-XXXX-XXXX-XXXX, or an OAuth access token");
+}
+
+async function resolveOauthBearer(bearer: string, allowAnonymous?: boolean): Promise<McpPrincipal | null> {
+  const verify = verifyAccessToken(bearer);
+  if (!verify.ok || !verify.claims) {
+    if (allowAnonymous) return null;
+    throw new McpToolError("Unauthorised", `OAuth bearer rejected: ${verify.reason || "invalid token"}`, {
+      hint: "Re-run the OAuth authorization flow and try again.",
+    });
+  }
+  const claims = verify.claims;
+
+  if (claims.aud !== MCP_AUDIENCE) {
+    if (allowAnonymous) return null;
+    throw new McpToolError("Unauthorised", `OAuth token audience mismatch: expected ${MCP_AUDIENCE}`, {
+      hint: "Request a token whose 'resource' parameter is " + MCP_AUDIENCE,
+    });
+  }
+
+  const revoked = await redisGet(`allotly:oauth:revoked:${claims.jti}`);
+  if (revoked) {
+    if (allowAnonymous) return null;
+    throw new McpToolError("Unauthorised", "OAuth token has been revoked", {
+      hint: "Refresh your token via /oauth/token (grant_type=refresh_token) or re-authorize.",
+    });
+  }
+
+  const membership = await storage.getMembership(claims.membership_id);
+  if (!membership || membership.status === "EXPIRED" || membership.status === "SUSPENDED") {
+    if (allowAnonymous) return null;
+    throw new McpToolError("Unauthorised", "OAuth token is bound to a membership that is no longer active");
+  }
+  if (membership.userId !== claims.sub) {
+    if (allowAnonymous) return null;
+    throw new McpToolError("Unauthorised", "OAuth token user/membership mismatch");
+  }
+
+  const scopes = parseScopeString(claims.scope || "");
+  return {
+    membership,
+    userId: claims.sub,
+    apiKeyId: null,
+    bearerKind: "oauth",
+    clientId: claims.client_id,
+    scopes,
+    resource: claims.aud,
+    jti: claims.jti,
+    principalHash: computePrincipalHash({ kind: "oauth", clientId: claims.client_id, userId: claims.sub }),
+  };
 }
 
 async function resolveVoucherBearer(voucherCode: string, allowAnonymous?: boolean): Promise<McpPrincipal | null> {
@@ -74,7 +153,7 @@ async function resolveVoucherBearer(voucherCode: string, allowAnonymous?: boolea
           apiKeyId: data.apiKeyId,
           bearerKind: "voucher",
           voucherCode: upper,
-          principalHash: principalHash(upper),
+          principalHash: computePrincipalHash({ kind: "voucher", voucherCode: upper }),
         };
       }
     } catch {}
@@ -109,7 +188,7 @@ async function resolveVoucherBearer(voucherCode: string, allowAnonymous?: boolea
     apiKeyId: minted.apiKeyId,
     bearerKind: "voucher",
     voucherCode: upper,
-    principalHash: principalHash(upper),
+    principalHash: computePrincipalHash({ kind: "voucher", voucherCode: upper }),
   };
 }
 

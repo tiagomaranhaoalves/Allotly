@@ -1,4 +1,7 @@
 import crypto from "crypto";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import { listTools } from "./registry";
 
 import "./consumption/list-available-models";
@@ -16,21 +19,29 @@ import "./recipient/redeem-voucher";
 import "./recipient/redeem-and-chat";
 import "./recipient/request-topup";
 
-export const PINNED_DESCRIPTION_HASHES: Record<string, string> = {
-  "list_available_models": "",
-  "chat": "",
-  "compare_models": "",
-  "recommend_model": "",
-  "voucher_info": "",
-  "my_budget": "",
-  "my_status": "",
-  "my_recent_usage": "",
-  "diagnose": "",
-  "quickstart": "",
-  "redeem_voucher": "",
-  "redeem_and_chat": "",
-  "request_topup": "",
-};
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const HASHES_FILE = path.resolve(__dirname, "description-hashes.json");
+
+export interface PinnedHashesFile {
+  $note?: string;
+  hashes: Record<string, string>;
+}
+
+export const PINNED_DESCRIPTION_HASHES: Record<string, string> = loadPinnedFile();
+
+function loadPinnedFile(): Record<string, string> {
+  try {
+    const raw = fs.readFileSync(HASHES_FILE, "utf8");
+    const parsed = JSON.parse(raw) as PinnedHashesFile;
+    return { ...(parsed.hashes || {}) };
+  } catch (e: any) {
+    if (e?.code === "ENOENT") {
+      return {};
+    }
+    throw new Error(`[mcp] failed to load pinned description hashes from ${HASHES_FILE}: ${e?.message}`);
+  }
+}
 
 export function computeDescriptionHashes(): Record<string, string> {
   const out: Record<string, string> = {};
@@ -40,19 +51,54 @@ export function computeDescriptionHashes(): Record<string, string> {
   return out;
 }
 
+/**
+ * At server startup, compare every registered tool's description against the
+ * snapshot in `description-hashes.json`. Drift in production is a hard error
+ * (prevents silent prompt-injection / agent-instruction tampering after deploy);
+ * drift in dev/test is a warning so iterating on copy isn't blocked.
+ *
+ * To intentionally update copy: run `npx tsx scripts/snapshot-description-hashes.ts`,
+ * commit the regenerated JSON, and ship.
+ */
 export function pinDescriptionsAtStartup(): void {
   const computed = computeDescriptionHashes();
-  for (const [name, expected] of Object.entries(PINNED_DESCRIPTION_HASHES)) {
-    const actual = computed[name];
-    if (!actual) {
-      console.warn(`[mcp] tool ${name} is pinned but not registered`);
+  const isProd = process.env.REPLIT_DEPLOYMENT === "1";
+  const drifted: Array<{ tool: string; pinned: string; actual: string }> = [];
+  const missingPin: string[] = [];
+
+  for (const [name, actual] of Object.entries(computed)) {
+    const pinned = PINNED_DESCRIPTION_HASHES[name];
+    if (!pinned) {
+      missingPin.push(name);
+      PINNED_DESCRIPTION_HASHES[name] = actual;
       continue;
     }
-    if (expected && expected !== actual) {
-      console.warn(`[mcp] description hash mismatch for ${name}: pinned=${expected.slice(0, 8)}, actual=${actual.slice(0, 8)} — update PINNED_DESCRIPTION_HASHES intentionally if this change is reviewed`);
+    if (pinned !== actual) {
+      drifted.push({ tool: name, pinned, actual });
     }
-    PINNED_DESCRIPTION_HASHES[name] = actual;
   }
+
+  if (missingPin.length > 0) {
+    const msg = `[mcp] description-hashes.json is missing entries for: ${missingPin.join(", ")}. ` +
+      `Run \`npx tsx scripts/snapshot-description-hashes.ts\` to regenerate.`;
+    if (isProd) throw new Error(msg);
+    console.warn(msg);
+  }
+
+  if (drifted.length > 0) {
+    const summary = drifted
+      .map((d) => `${d.tool}: pinned=${d.pinned.slice(0, 8)} actual=${d.actual.slice(0, 8)}`)
+      .join("; ");
+    const msg = `[mcp] tool description drift detected vs description-hashes.json: ${summary}. ` +
+      `Re-snapshot with \`npx tsx scripts/snapshot-description-hashes.ts\` after review.`;
+    if (isProd) throw new Error(msg);
+    console.warn(msg);
+    for (const d of drifted) PINNED_DESCRIPTION_HASHES[d.tool] = d.actual;
+  }
+}
+
+export function getPinnedHashesFilePath(): string {
+  return HASHES_FILE;
 }
 
 export { listTools, getTool } from "./registry";

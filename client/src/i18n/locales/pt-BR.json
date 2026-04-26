@@ -1810,5 +1810,26 @@
     },
     "keysPageLink": "Configurar sua ferramenta de IA →",
     "backToKeys": "Voltar para Keys"
+  },
+  "auth": {
+    "claim": {
+      "badge": "Passo 2 de 2 — Reivindique sua conta",
+      "title": "Reivindique sua conta Allotly",
+      "subtitle": "Defina um e-mail e senha para entrar novamente. Seu uso, orçamento e chave de API permanecem exatamente como estão.",
+      "nameLabel": "Seu nome",
+      "namePlaceholder": "Ada Lovelace",
+      "emailLabel": "E-mail de trabalho",
+      "emailPlaceholder": "voce@empresa.com",
+      "passwordLabel": "Escolha uma senha",
+      "passwordPlaceholder": "Pelo menos 8 caracteres",
+      "passwordHint": "Você usará isso para entrar de qualquer navegador. Nunca enviaremos de volta por e-mail.",
+      "submit": "Reivindicar conta e continuar",
+      "submitting": "Reivindicando…",
+      "successTitle": "Conta reivindicada",
+      "successBody": "Agora você pode conceder acesso ao aplicativo solicitante.",
+      "errorTitle": "Não foi possível reivindicar a conta",
+      "errorBody": "Verifique o formulário e tente novamente.",
+      "preserveNote": "Seu orçamento, histórico de uso e chave de API atuais são preservados."
+    }
   }
 }

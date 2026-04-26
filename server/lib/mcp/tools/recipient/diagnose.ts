@@ -41,6 +41,7 @@ registerTool({
   description: DIAGNOSE_DESCRIPTION,
   inputSchema: EmptyInputSchema,
   requiresAuth: true,
+  requiredScope: "mcp",
   handler: async (_input, ctx) => {
     const principal = ctx.principal!;
     const m = principal.membership;

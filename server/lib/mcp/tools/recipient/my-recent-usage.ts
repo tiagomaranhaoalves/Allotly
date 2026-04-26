@@ -10,6 +10,7 @@ registerTool({
   description: MY_RECENT_USAGE_DESCRIPTION,
   inputSchema: RecentUsageInputSchema,
   requiresAuth: true,
+  requiredScope: "mcp:read",
   handler: async (input, ctx) => {
     const principal = ctx.principal!;
     const limit = input.limit ?? 20;

@@ -13,6 +13,7 @@ registerTool({
   description: REDEEM_VOUCHER_DESCRIPTION,
   inputSchema: RedeemVoucherInputSchema,
   requiresAuth: true,
+  voucherOnly: true,
   handler: async (input, ctx) => {
     const principal = ctx.principal!;
     const code = input.code.toUpperCase();

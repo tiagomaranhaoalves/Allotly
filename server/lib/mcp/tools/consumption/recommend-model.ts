@@ -19,6 +19,7 @@ registerTool({
   description: RECOMMEND_MODEL_DESCRIPTION,
   inputSchema: RecommendModelInputSchema,
   requiresAuth: true,
+  requiredScope: "mcp",
   handler: async (input, ctx) => {
     const principal = ctx.principal!;
     const team = await storage.getTeam(principal.membership.teamId);

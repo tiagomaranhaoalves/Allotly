@@ -12,6 +12,7 @@ registerTool({
   description: MY_STATUS_DESCRIPTION,
   inputSchema: EmptyInputSchema,
   requiresAuth: true,
+  requiredScope: "mcp:read",
   handler: async (_input, ctx) => {
     const principal = ctx.principal!;
     const m = principal.membership;

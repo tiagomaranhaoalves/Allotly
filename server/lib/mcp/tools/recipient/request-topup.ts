@@ -18,6 +18,7 @@ registerTool({
   description: REQUEST_TOPUP_DESCRIPTION,
   inputSchema: RequestTopupInputSchema,
   requiresAuth: true,
+  voucherOnly: true,
   handler: async (input, ctx) => {
     const principal = ctx.principal!;
     await checkMcpRateLimit(principal.principalHash, "request_topup", 5);

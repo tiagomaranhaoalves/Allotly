@@ -64,6 +64,7 @@ registerTool({
   description: CHAT_TOOL_DESCRIPTION,
   inputSchema: ChatToolInputSchema,
   requiresAuth: true,
+  requiredScope: "mcp",
   handler: async (input, ctx) => {
     const principal = ctx.principal!;
     const wantsImages = hasImageContent(input.messages);

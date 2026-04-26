@@ -1810,5 +1810,26 @@
     },
     "keysPageLink": "Set up your AI tool →",
     "backToKeys": "Back to Keys"
+  },
+  "auth": {
+    "claim": {
+      "badge": "Step 2 of 2 — Claim your account",
+      "title": "Claim your Allotly account",
+      "subtitle": "Set an email and password so you can sign back in. Your usage, budget, and API key stay exactly as they are.",
+      "nameLabel": "Your name",
+      "namePlaceholder": "Ada Lovelace",
+      "emailLabel": "Work email",
+      "emailPlaceholder": "you@company.com",
+      "passwordLabel": "Choose a password",
+      "passwordPlaceholder": "At least 8 characters",
+      "passwordHint": "You'll use this to sign in from any browser. We'll never email it back to you.",
+      "submit": "Claim account and continue",
+      "submitting": "Claiming…",
+      "successTitle": "Account claimed",
+      "successBody": "You can now grant access to the requesting app.",
+      "errorTitle": "Couldn't claim that account",
+      "errorBody": "Please check the form and try again.",
+      "preserveNote": "Your existing budget, usage history, and API key are preserved."
+    }
   }
 }

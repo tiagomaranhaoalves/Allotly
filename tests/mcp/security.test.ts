@@ -47,4 +47,31 @@ describe("security: tool description pinning", () => {
     const computed = computeDescriptionHashes();
     expect(computed["chat"]).toBe(original);
   });
+
+  it("throws in production when a tool description has been mutated since the last snapshot", async () => {
+    const { listTools, pinDescriptionsAtStartup, PINNED_DESCRIPTION_HASHES } =
+      await import("../../server/lib/mcp/tools");
+
+    const chat = listTools().find((t) => t.name === "chat");
+    expect(chat).toBeDefined();
+    const originalDescription = chat!.description;
+    const originalPinned = PINNED_DESCRIPTION_HASHES["chat"];
+    const originalDeployFlag = process.env.REPLIT_DEPLOYMENT;
+
+    try {
+      // Simulate someone (or a malicious dependency) editing the prompt copy after deploy.
+      (chat as any).description = originalDescription + " [INJECTED INSTRUCTION]";
+      process.env.REPLIT_DEPLOYMENT = "1";
+
+      expect(() => pinDescriptionsAtStartup()).toThrow(/description drift/i);
+    } finally {
+      (chat as any).description = originalDescription;
+      PINNED_DESCRIPTION_HASHES["chat"] = originalPinned;
+      if (originalDeployFlag === undefined) {
+        delete process.env.REPLIT_DEPLOYMENT;
+      } else {
+        process.env.REPLIT_DEPLOYMENT = originalDeployFlag;
+      }
+    }
+  });
 });

@@ -1810,5 +1810,26 @@
     },
     "keysPageLink": "Configurar tu herramienta de IA →",
     "backToKeys": "Volver a Keys"
+  },
+  "auth": {
+    "claim": {
+      "badge": "Paso 2 de 2 — Reclama tu cuenta",
+      "title": "Reclama tu cuenta de Allotly",
+      "subtitle": "Configura un email y una contraseña para volver a iniciar sesión. Tu uso, presupuesto y clave API se mantienen tal cual.",
+      "nameLabel": "Tu nombre",
+      "namePlaceholder": "Ada Lovelace",
+      "emailLabel": "Email corporativo",
+      "emailPlaceholder": "tu@empresa.com",
+      "passwordLabel": "Elige una contraseña",
+      "passwordPlaceholder": "Mínimo 8 caracteres",
+      "passwordHint": "La usarás para iniciar sesión desde cualquier navegador. Nunca te la enviaremos por email.",
+      "submit": "Reclamar cuenta y continuar",
+      "submitting": "Reclamando…",
+      "successTitle": "Cuenta reclamada",
+      "successBody": "Ya puedes conceder acceso a la aplicación solicitante.",
+      "errorTitle": "No se pudo reclamar la cuenta",
+      "errorBody": "Revisa el formulario e inténtalo de nuevo.",
+      "preserveNote": "Tu presupuesto, historial de uso y clave API actuales se conservan."
+    }
   }
 }

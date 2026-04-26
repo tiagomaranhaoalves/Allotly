@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { buildConnectorSnippet } from "@shared/connector-snippets";
 
 const DEFAULT_FROM_EMAIL = "Allotly <onboarding@resend.dev>";
 
@@ -151,31 +152,11 @@ function snippetBlock(label: string, fileHint: string, code: string): string {
  * in the dashboard first.
  */
 function quickSetupBlock(voucherCode: string, dashboardUrl: string): string {
-  const cursorSnippet = JSON.stringify(
-    {
-      mcpServers: {
-        allotly: {
-          url: "https://allotly.ai/mcp",
-          headers: { Authorization: `Bearer ${voucherCode}` },
-        },
-      },
-    },
-    null,
-    2,
-  );
-  const claudeDesktopSnippet = JSON.stringify(
-    {
-      mcpServers: {
-        allotly: {
-          command: "npx",
-          args: ["-y", "@allotly/mcp@latest"],
-          env: { ALLOTLY_KEY: voucherCode },
-        },
-      },
-    },
-    null,
-    2,
-  );
+  // Shared module guarantees these snippets are byte-identical to what the
+  // recipient will later see in /dashboard/connect and on the post-redeem
+  // success view, so they can copy from any of those three surfaces.
+  const cursorSnippet = buildConnectorSnippet("cursor", { key: voucherCode });
+  const claudeDesktopSnippet = buildConnectorSnippet("claudeDesktop", { key: voucherCode });
   return `<div style="margin-top:24px;padding-top:24px;border-top:1px solid #e2e8f0">
 <h3 style="margin:0 0 8px;color:#1e293b;font-size:15px">⚡ Quick setup — paste &amp; go</h3>
 <p style="margin:0 0 12px;color:#475569;font-size:13px;line-height:1.6">Skip the redemption page entirely. Paste one of these snippets into your AI tool and the voucher will auto-redeem on first use.</p>

@@ -1,0 +1,18 @@
+{
+  "$note": "Auto-generated snapshot of SHA-256(tool.description) for every registered MCP tool. Regenerate with `npx tsx scripts/snapshot-description-hashes.ts` after intentionally editing a description; commit the diff. Drift at server startup is a hard error in production.",
+  "hashes": {
+    "chat": "6fbf40221757de323fabb5d04ff5ec91e758dee453078507f202b782aa54db20",
+    "compare_models": "be40d90156200bdde7d42aedff7fee204996b52daeb255baa0b7ff10ed200de7",
+    "diagnose": "347bc4cbe27e89391c2594999e991949096912854eb25734eccf1623e8dfdd76",
+    "list_available_models": "547b43744e3d560a98b89edffa8f6df2276484e3b22eeddc8117a39974bc68e1",
+    "my_budget": "dc01947d06bad519ccce0125380d002e91ea7d2cef403cd676c60208f21e5fd7",
+    "my_recent_usage": "17816d4299cd97b9674300ef700db99b6ea7ac2b95d5f5db4e5548d10f5e3ea4",
+    "my_status": "9b3376998046b996e2f59b1776e6248e2dbf4196d776ec005cfa32ab85af36b7",
+    "quickstart": "4db674b85f83eb8736387a0487a1f27d965f1aaf8f16b96b7ec12c749bef6534",
+    "recommend_model": "d68fa3935bf58f36b913ca80ed951f2794ba9e804d3d6269d0cf0053cfdf015d",
+    "redeem_and_chat": "f123cbb51d2316c9214a14ef255a84d647caec7d42b5eab45e0977622df574eb",
+    "redeem_voucher": "7a369dea60f170e7c1a1f95a128e42c5dee715dc2cbcb7e03d174d41d2dd289b",
+    "request_topup": "5c37b7bd19f8b23b1cbc650c6684528c4f4f2e522eaae4c1344383b23a1ddb2b",
+    "voucher_info": "5f25ea25797dfeb230005e84349c4ef96fe60865a8af8b62f987dc1d2603c7c6"
+  }
+}

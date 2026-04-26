@@ -13,6 +13,7 @@ registerTool({
   description: COMPARE_MODELS_DESCRIPTION,
   inputSchema: CompareModelsInputSchema,
   requiresAuth: true,
+  requiredScope: "mcp",
   handler: async (input, ctx) => {
     const principal = ctx.principal!;
     const allowedModels = principal.membership.allowedModels as string[] | null;

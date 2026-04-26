@@ -1,11 +1,12 @@
 import type { Request, Response, Express } from "express";
 import { z } from "zod";
-import { authenticate } from "./auth";
+import { authenticate, type McpPrincipal } from "./auth";
 import { McpToolError, toMcpRpcError } from "./errors";
 import { listTools, getTool, pinDescriptionsAtStartup } from "./tools";
 import { listPrompts, getPrompt } from "./prompts";
 import { RESOURCES, readResource } from "./resources";
 import { hashInput, recordAudit } from "./audit";
+import { scopeIncludes } from "../oauth/scopes";
 
 const PROTOCOL_VERSION = "2025-03-26";
 const MCP_VERSION = "1.0.0";
@@ -71,6 +72,11 @@ function zodToJsonSchema(s: z.ZodTypeAny): Record<string, any> {
   return {};
 }
 
+function principalAuditCols(p: McpPrincipal | null): { clientId: string | null; audience: string | null } {
+  if (!p || p.bearerKind !== "oauth") return { clientId: null, audience: null };
+  return { clientId: p.clientId ?? null, audience: p.resource ?? null };
+}
+
 async function handleJsonRpc(req: JsonRpcRequest, authHeader: string | undefined): Promise<JsonRpcResponse> {
   const id = req.id ?? null;
 
@@ -109,7 +115,7 @@ async function handleJsonRpc(req: JsonRpcRequest, authHeader: string | undefined
       return err(id, -32601, `Unknown tool: ${toolName}`);
     }
 
-    let principal = null;
+    let principal: McpPrincipal | null = null;
     let principalMembershipId: string | null = null;
     try {
       principal = await authenticate(authHeader, { allowAnonymous: !tool.requiresAuth });
@@ -128,10 +134,34 @@ async function handleJsonRpc(req: JsonRpcRequest, authHeader: string | undefined
       return err(id, -32001, "Authentication required for this tool");
     }
 
+    const auditCols = principalAuditCols(principal);
+
+    if (principal && tool.voucherOnly && principal.bearerKind !== "voucher") {
+      const inputHash = hashInput(args);
+      recordAudit({ membershipId: principalMembershipId, toolName, inputHash, ok: false, errorCode: -32002, latencyMs: Date.now() - start, ...auditCols });
+      return err(id, -32002, `Tool ${toolName} can only be invoked with a voucher bearer (ALLOT-...)`, {
+        hint: "Re-issue the call with the voucher code in the Authorization header.",
+        bearer_kind_received: principal.bearerKind,
+      });
+    }
+
+    if (principal && principal.bearerKind === "oauth" && tool.requiredScope) {
+      const granted = principal.scopes || [];
+      if (!scopeIncludes(granted, tool.requiredScope)) {
+        const inputHash = hashInput(args);
+        recordAudit({ membershipId: principalMembershipId, toolName, inputHash, ok: false, errorCode: -32002, latencyMs: Date.now() - start, ...auditCols });
+        return err(id, -32002, `OAuth token is missing required scope: ${tool.requiredScope}`, {
+          required_scope: tool.requiredScope,
+          granted_scopes: granted,
+          hint: "Request a new authorization with this scope.",
+        });
+      }
+    }
+
     const inputHash = hashInput(args);
     const parsed = tool.inputSchema.safeParse(args);
     if (!parsed.success) {
-      recordAudit({ membershipId: principalMembershipId, toolName, inputHash, ok: false, errorCode: -32100, latencyMs: Date.now() - start });
+      recordAudit({ membershipId: principalMembershipId, toolName, inputHash, ok: false, errorCode: -32100, latencyMs: Date.now() - start, ...auditCols });
       return err(id, -32100, "Invalid input", {
         message: "Input validation failed",
         hint: "Check the tool's input schema and retry.",
@@ -141,14 +171,14 @@ async function handleJsonRpc(req: JsonRpcRequest, authHeader: string | undefined
 
     try {
       const result = await tool.handler(parsed.data, { principal, authHeader });
-      recordAudit({ membershipId: principalMembershipId, toolName, inputHash, ok: true, errorCode: null, latencyMs: Date.now() - start });
+      recordAudit({ membershipId: principalMembershipId, toolName, inputHash, ok: true, errorCode: null, latencyMs: Date.now() - start, ...auditCols });
       return ok(id, {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         structuredContent: result,
       });
     } catch (toolErr: any) {
       const errCode = toolErr instanceof McpToolError ? toolErr.code : -32603;
-      recordAudit({ membershipId: principalMembershipId, toolName, inputHash, ok: false, errorCode: errCode, latencyMs: Date.now() - start });
+      recordAudit({ membershipId: principalMembershipId, toolName, inputHash, ok: false, errorCode: errCode, latencyMs: Date.now() - start, ...auditCols });
       if (toolErr instanceof McpToolError) {
         const rpc = toMcpRpcError(toolErr);
         return err(id, rpc.code, rpc.message, rpc.data);

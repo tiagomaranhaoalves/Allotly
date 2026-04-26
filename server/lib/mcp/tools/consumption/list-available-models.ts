@@ -44,6 +44,7 @@ registerTool({
   description: "List the AI models your Allotly key is allowed to use, with pricing and capabilities.",
   inputSchema: EmptyInputSchema,
   requiresAuth: true,
+  requiredScope: "mcp:read",
   handler: async (_input, ctx) => {
     const principal = ctx.principal!;
     const team = await storage.getTeam(principal.membership.teamId);

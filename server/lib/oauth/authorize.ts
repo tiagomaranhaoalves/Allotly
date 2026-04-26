@@ -19,6 +19,9 @@ interface PendingAuthRequest {
   state: string;
   codeChallenge: string;
   expiresAt: number;
+  // The session-bound user that started this consent flow. consentHandler
+  // refuses to mint a code if a different user is now logged in (RFC 6749 §10.12).
+  userId: string;
 }
 
 const pending = new Map<string, PendingAuthRequest>();
@@ -152,6 +155,7 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
     state,
     codeChallenge,
     expiresAt: Date.now() + PENDING_TTL_MS,
+    userId: user.id,
   });
 
   const csrfToken = newCsrfToken(req);
@@ -191,6 +195,15 @@ export async function consentHandler(req: Request, res: Response): Promise<void>
   const pendingReq = pending.get(authRequestId);
   if (!pendingReq) {
     res.status(400).type("text/plain").send("auth_request expired or unknown");
+    return;
+  }
+  // Session-binding: a pending request only belongs to the user that initiated
+  // /oauth/authorize. If the active session has changed (e.g. user logged out
+  // and a different user logged back in, or an attacker phished an authRequestId),
+  // refuse the consent. RFC 6749 §10.12.
+  if (pendingReq.userId !== sess.userId) {
+    pending.delete(authRequestId);
+    res.status(403).type("text/plain").send("session_user_mismatch");
     return;
   }
   pending.delete(authRequestId);

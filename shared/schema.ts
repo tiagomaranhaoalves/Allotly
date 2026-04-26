@@ -332,13 +332,19 @@ export const oauthTokens = pgTable("oauth_tokens", {
   membershipId: varchar("membership_id").notNull().references(() => teamMemberships.id),
   accessTokenJti: text("access_token_jti").notNull().unique(),
   refreshTokenHash: text("refresh_token_hash").unique(),
+  // sha256 hex of the authorization code that produced this token (nullable for tokens
+  // minted via refresh). Used to revoke the whole token chain on RFC 6749 §4.1.2 code reuse.
+  authorizationCodeHash: text("authorization_code_hash"),
   scope: text("scope").notNull(),
   resource: text("resource"),
   issuedAt: timestamp("issued_at").defaultNow().notNull(),
   accessExpiresAt: timestamp("access_expires_at").notNull(),
   refreshExpiresAt: timestamp("refresh_expires_at"),
   revokedAt: timestamp("revoked_at"),
-}, (t) => [index("oauth_tokens_membership_idx").on(t.membershipId)]);
+}, (t) => [
+  index("oauth_tokens_membership_idx").on(t.membershipId),
+  index("oauth_tokens_auth_code_idx").on(t.authorizationCodeHash),
+]);
 
 export const mcpIdempotency = pgTable("mcp_idempotency", {
   scope: text("scope").notNull(),

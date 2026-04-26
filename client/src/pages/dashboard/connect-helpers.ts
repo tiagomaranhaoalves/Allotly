@@ -1,15 +1,20 @@
-export const ALLOTLY_MCP_URL = "https://allotly.ai/mcp";
-export const ALLOTLY_MCP_PACKAGE = "@allotly/mcp";
+import {
+  ALLOTLY_MCP_URL,
+  ALLOTLY_MCP_PACKAGE,
+  CONNECTOR_IDS,
+  buildConnectorSnippet,
+  buildAllConnectorSnippets,
+  type ConnectorId,
+  type SnippetParams,
+} from "@shared/connector-snippets";
 
-export type ConnectorId = "cursor" | "vscode" | "claudeCode" | "codex" | "claudeDesktop";
-
-export const CONNECTOR_IDS: ConnectorId[] = [
-  "cursor",
-  "vscode",
-  "claudeCode",
-  "codex",
-  "claudeDesktop",
-];
+export {
+  ALLOTLY_MCP_URL,
+  ALLOTLY_MCP_PACKAGE,
+  CONNECTOR_IDS,
+  type ConnectorId,
+  type SnippetParams,
+};
 
 export const CONNECTOR_DEEP_LINKS: Partial<Record<ConnectorId, string>> = {
   cursor: "cursor://anysphere.cursor-deeplink/mcp/install?name=allotly",
@@ -32,80 +37,12 @@ export function isValidFullKey(fullKey: string, prefix: string): boolean {
   return fullKey.startsWith(cleanPrefix(prefix));
 }
 
-export interface SnippetParams {
-  key: string;
-  packageName?: string;
-  url?: string;
-}
-
 export function buildSnippet(connector: ConnectorId, params: SnippetParams): string {
-  const key = params.key;
-  const url = params.url ?? ALLOTLY_MCP_URL;
-  const pkg = params.packageName ?? ALLOTLY_MCP_PACKAGE;
-
-  switch (connector) {
-    case "cursor":
-      return JSON.stringify(
-        {
-          mcpServers: {
-            allotly: {
-              url,
-              headers: { Authorization: `Bearer ${key}` },
-            },
-          },
-        },
-        null,
-        2,
-      );
-    case "vscode":
-      return JSON.stringify(
-        {
-          servers: {
-            allotly: {
-              url,
-              type: "http",
-              headers: { Authorization: `Bearer ${key}` },
-            },
-          },
-        },
-        null,
-        2,
-      );
-    case "claudeCode":
-      return `claude mcp add --transport http allotly ${url} \\\n  --header "Authorization: Bearer ${key}"`;
-    case "codex":
-      // OpenAI Codex CLI uses TOML at ~/.codex/config.toml.
-      return [
-        "# ~/.codex/config.toml",
-        "[mcp_servers.allotly]",
-        `url = "${url}"`,
-        `http_headers = { "Authorization" = "Bearer ${key}" }`,
-      ].join("\n");
-    case "claudeDesktop":
-      return JSON.stringify(
-        {
-          mcpServers: {
-            allotly: {
-              command: "npx",
-              args: ["-y", `${pkg}@latest`],
-              env: { ALLOTLY_KEY: key },
-            },
-          },
-        },
-        null,
-        2,
-      );
-  }
+  return buildConnectorSnippet(connector, params);
 }
 
 export function buildAllSnippets(params: SnippetParams): Record<ConnectorId, string> {
-  return {
-    cursor: buildSnippet("cursor", params),
-    vscode: buildSnippet("vscode", params),
-    claudeCode: buildSnippet("claudeCode", params),
-    codex: buildSnippet("codex", params),
-    claudeDesktop: buildSnippet("claudeDesktop", params),
-  };
+  return buildAllConnectorSnippets(params);
 }
 
 export type TestState = "green" | "red" | "yellow";
@@ -126,25 +63,19 @@ interface MinimalResponse {
 export async function classifyTestResponse(res: MinimalResponse): Promise<TestResult> {
   const httpStatus = res.status;
 
-  // Auth failures => RED (key is invalid or revoked).
   if (httpStatus === 401 || httpStatus === 403) {
     let raw: unknown = undefined;
     try {
       raw = await res.json();
-    } catch {
-      // ignore parse errors on auth failure
-    }
+    } catch {}
     return { state: "red", httpStatus, raw, errorMessage: "unauthorized" };
   }
 
-  // Server errors => YELLOW (reachability/server-side problem, not the key).
   if (httpStatus >= 500) {
     let raw: unknown = undefined;
     try {
       raw = await res.json();
-    } catch {
-      // ignore
-    }
+    } catch {}
     return { state: "yellow", httpStatus, raw, errorMessage: "server_error" };
   }
 
@@ -152,13 +83,10 @@ export async function classifyTestResponse(res: MinimalResponse): Promise<TestRe
   try {
     body = await res.json();
   } catch {
-    // Couldn't parse => treat as transport/server problem, not key invalidity.
     return { state: "yellow", httpStatus, errorMessage: "invalid_json" };
   }
 
   if (body && typeof body === "object" && body.error) {
-    // JSON-RPC error envelope. -32001 (or similar -320xx auth codes) => RED (key issue).
-    // Anything else (e.g. -32603 internal error) => YELLOW (server issue).
     const code = body.error?.code;
     const isKeyError = code === -32001 || code === -32002 || code === -32003;
     return {
@@ -174,7 +102,6 @@ export async function classifyTestResponse(res: MinimalResponse): Promise<TestRe
     return { state: "green", httpStatus, toolCount: tools.length, raw: body };
   }
 
-  // Successful HTTP but unexpected payload shape => YELLOW (not a key problem).
   return { state: "yellow", httpStatus, raw: body, errorMessage: "unexpected_shape" };
 }
 

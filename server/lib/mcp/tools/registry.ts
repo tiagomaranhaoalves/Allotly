@@ -11,6 +11,10 @@ export interface ToolDefinition<TSchema extends z.ZodTypeAny = z.ZodTypeAny, TOu
   description: string;
   inputSchema: TSchema;
   requiresAuth: boolean;
+  /** Required OAuth scope when called with an OAuth bearer. Ignored for key/voucher bearers. */
+  requiredScope?: "mcp" | "mcp:read";
+  /** When true, only voucher-bearer principals may invoke (rejects key + oauth). */
+  voucherOnly?: boolean;
   handler: (input: z.infer<TSchema>, ctx: ToolContext) => Promise<TOut>;
 }
 

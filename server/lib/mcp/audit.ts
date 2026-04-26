@@ -22,6 +22,10 @@ export interface AuditEntry {
   ok: boolean;
   errorCode: number | null;
   latencyMs: number;
+  /** OAuth client_id when bearer is OAuth, otherwise null. */
+  clientId?: string | null;
+  /** RFC 8707 audience (resource indicator) when bearer is OAuth, otherwise null. */
+  audience?: string | null;
 }
 
 export function recordAudit(entry: AuditEntry): void {
@@ -34,6 +38,9 @@ export function recordAudit(entry: AuditEntry): void {
         ok: entry.ok,
         errorCode: entry.errorCode,
         latencyMs: entry.latencyMs,
+        clientId: entry.clientId ?? null,
+        audience: entry.audience ?? null,
+        principalHash: entry.principalHash ?? null,
       });
     } catch (err: any) {
       console.error(`[mcp:audit] write failed for ${entry.toolName}: ${err?.message}`);
