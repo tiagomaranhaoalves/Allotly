@@ -1,0 +1,306 @@
+M1 of V1.5.0: OAuth 2.1 + DCR backend + V1 cleanups. You have my
+full authorisation to execute end-to-end without further check-ins
+on routine decisions. Report once when M1 is complete with
+acceptance evidence, not progress updates along the way.
+
+CONTEXT
+You wrote the V1.5.0 alignment doc and I greenlit your sections 1, 2,
+4, and 5 entirely. Section 3 milestone shape is finalised at:
+  M1 — OAuth backend + 4 V1 cleanups (this task)
+  M2 — Connections page + OAuth UI + post-redeem claim CTA
+  M3 — multi-currency (USD/GBP/EUR/BRL) + LLM recommend + /v1/messages
+  M4 — Streaming progress for chat (split out per your suggestion)
+
+DECISIONS — LOCKED, IMPLEMENT VERBATIM
+
+D1. JWT signing — fail-loud in prod, ephemeral in dev:
+    const isProd = process.env.REPLIT_DEPLOYMENT === "1";
+    const secret = process.env.OAUTH_JWT_SECRET;
+    if (!secret || Buffer.byteLength(secret, "utf8") < 32) {
+      if (isProd) throw new Error(
+        "OAUTH_JWT_SECRET is missing or under 32 bytes. Set it in " +
+        "Replit Secrets before redeploying. " +
+        "Generate with: openssl rand -base64 32"
+      );
+      console.warn("[oauth] OAUTH_JWT_SECRET unset — generating " +
+                   "ephemeral dev secret. Tokens invalid after restart.");
+      return crypto.randomBytes(32);
+    }
+    return Buffer.from(secret, "utf8");
+    Add to .env.example:
+      # Required in production. Generate with: openssl rand -base64 32
+      OAUTH_JWT_SECRET=
+
+D2. Refresh tokens — 32-byte opaque, sha256 at rest, rotated on every
+    use, old revoked in the same DB transaction, 30-day expiry. The
+    atomic rotation lives in the same transaction as the new-token
+    insert so a crash mid-flight cannot leave two valid refresh tokens
+    or zero.
+
+D3. Audit identity — replace principalHash = sha256(bearer) with stable
+    composite per bearer kind:
+      key     -> "key:" + apiKeyId
+      voucher -> "voucher:" + sha256(voucherCode)
+      oauth   -> "oauth:" + clientId + ":" + userId
+    Add client_id and audience columns to mcp_audit_log. Add FK
+    membership_id ON DELETE SET NULL. Re-key the existing rate-limit
+    Redis keys to the new stable identity (so token rotation doesn't
+    reset the bucket).
+
+ENDPOINTS (server/lib/oauth/)
+
+  GET  /.well-known/oauth-authorization-server  — RFC 8414 metadata.
+       issuer = https://allotly.ai. Lists authorize/token/register/
+       revoke endpoints, scopes_supported = ["mcp", "mcp:read"],
+       grant_types = ["authorization_code","refresh_token"],
+       response_types = ["code"], code_challenge_methods = ["S256"]
+       only, token_endpoint_auth_methods = ["none","client_secret_basic"].
+
+  POST /oauth/register  — RFC 7591 DCR. Body { client_name,
+       redirect_uris[], grant_types?, response_types?, scope?,
+       token_endpoint_auth_method? }. No pre-approval. Rate limit
+       10/IP/hour. Validate redirect_uris regex (block localhost
+       except in dev). Returns { client_id, client_secret? (null
+       for public clients), client_id_issued_at,
+       client_secret_expires_at: 0, registration_access_token,
+       registration_client_uri, ...echoed metadata }. Stores in
+       oauth_clients with bcrypt(cost=12) on client_secret if set.
+
+  GET  /oauth/authorize  — Validates client_id, redirect_uri (must
+       match a registered URI), state, code_challenge,
+       code_challenge_method = "S256" (reject "plain" outright),
+       response_type = "code", scope subset of registered scopes,
+       resource (RFC 8707) MUST equal "https://allotly.ai/mcp" or
+       reject. If session unauthenticated, redirect to
+       /login?next=<this-url>. If users.isVoucherUser = true, redirect
+       to /oauth/claim-account?next=<this-url>. Otherwise render the
+       consent template.
+
+  POST /oauth/consent  — Receives form { auth_request_id, csrf, decision }.
+       Validates csrf against session. On approve: insert into
+       oauth_authorization_codes (code = 32 random bytes base64url,
+       stored as sha256, expires 60s, consumed_at NULL,
+       code_challenge, redirect_uri, scope, resource, membership_id),
+       redirect to redirect_uri with ?code=<plaintext>&state=<echoed>.
+       On deny: redirect with ?error=access_denied&state=<echoed>.
+
+  POST /oauth/token  — Two grant types:
+         (a) authorization_code: validate code via atomic
+             UPDATE oauth_authorization_codes
+               SET consumed_at = NOW()
+               WHERE code_hash = sha256(:code)
+                 AND consumed_at IS NULL
+                 AND expires_at > NOW()
+               RETURNING …
+             Compare PKCE verifier with crypto.timingSafeEqual against
+             stored code_challenge (S256). On match: issue access
+             (15min HS256 JWT { iss, sub: userId, aud: resource,
+             membership_id, client_id, scope, jti, iat, exp }) and
+             refresh (32 random bytes, sha256 stored). Insert into
+             oauth_tokens in same transaction.
+         (b) refresh_token: lookup by sha256, atomic mark-revoked,
+             issue new access + new refresh in same transaction.
+             Reject if old refresh was already revoked (replay
+             defence).
+       Reject any unknown grant_type with 400 unsupported_grant_type.
+
+  POST /oauth/revoke  — RFC 7009. Body { token, token_type_hint }.
+       Set revoked_at on the matching row. 200 always (don't leak
+       token existence). Add jti to Redis revoked set
+       (allotly:oauth:revoked:{jti}, TTL = remaining token lifetime)
+       so /mcp checks reject immediately without DB roundtrip.
+
+CONSENT SCREEN (server-rendered HTML, NO client JS)
+
+  consent-template.ts emits HTML with strict CSP:
+    Content-Security-Policy: default-src 'self'; script-src 'none';
+                             style-src 'self' 'unsafe-inline';
+                             img-src 'self'; form-action 'self'
+  Body shows: client_name, scopes (with human-readable labels from
+  scopes.ts), current user email, [Approve] [Deny] buttons that POST
+  to /oauth/consent. Hidden inputs: auth_request_id (signed token
+  encoding the validated request, 5-min expiry), csrf (from session).
+
+CRYPTO REQUIREMENTS
+
+  - Authorization codes: crypto.randomBytes(32).toString("base64url"),
+    stored as sha256 hash, 60s expiry, atomic single-use.
+  - PKCE: S256 only. Verifier comparison via crypto.timingSafeEqual.
+    Reject code_challenge_method !== "S256" at /oauth/authorize.
+  - JWT: HS256 with explicit alg whitelist (defend against alg=none
+    attack). Validate iss, aud, exp, jti-not-revoked.
+  - Refresh tokens: 32 random bytes, stored sha256, rotated atomically
+    on every use.
+  - Client secrets: bcrypt cost 12. Public clients (no secret) are
+    the norm for MCP — secret is null.
+
+SCHEMA — paste verbatim into shared/schema.ts at the bottom of the
+existing tables block:
+
+  export const oauthClients = pgTable("oauth_clients", {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    clientName: text("client_name").notNull(),
+    redirectUris: jsonb("redirect_uris").notNull(),
+    clientSecretHash: text("client_secret_hash"),
+    registrationAccessTokenHash: text("registration_access_token_hash").notNull(),
+    scopesAllowed: jsonb("scopes_allowed").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    lastUsedAt: timestamp("last_used_at"),
+    revokedAt: timestamp("revoked_at"),
+  });
+
+  export const oauthAuthorizationCodes = pgTable("oauth_authorization_codes", {
+    codeHash: text("code_hash").primaryKey(),
+    clientId: varchar("client_id").notNull().references(() => oauthClients.id),
+    membershipId: varchar("membership_id").notNull().references(() => teamMemberships.id),
+    redirectUri: text("redirect_uri").notNull(),
+    codeChallenge: text("code_challenge").notNull(),
+    resource: text("resource"),
+    scope: text("scope").notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    consumedAt: timestamp("consumed_at"),
+  });
+
+  export const oauthTokens = pgTable("oauth_tokens", {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    clientId: varchar("client_id").notNull().references(() => oauthClients.id),
+    membershipId: varchar("membership_id").notNull().references(() => teamMemberships.id),
+    accessTokenJti: text("access_token_jti").notNull().unique(),
+    refreshTokenHash: text("refresh_token_hash").unique(),
+    scope: text("scope").notNull(),
+    resource: text("resource"),
+    issuedAt: timestamp("issued_at").defaultNow().notNull(),
+    accessExpiresAt: timestamp("access_expires_at").notNull(),
+    refreshExpiresAt: timestamp("refresh_expires_at"),
+    revokedAt: timestamp("revoked_at"),
+  }, (t) => [index("oauth_tokens_membership_idx").on(t.membershipId)]);
+
+Modify mcp_audit_log:
+  - Add column client_id text (nullable)
+  - Add column audience text (nullable)
+  - Change membership_id reference to ON DELETE SET NULL
+
+Apply via npm run db:push.
+
+V1 CLEANUPS (fold into M1)
+
+  1. shared/connector-snippets.ts (NEW): extract snippet generation
+     from server/lib/email.ts (quickSetupBlock) and from
+     client/src/pages/dashboard/connect-helpers.ts (buildSnippet).
+     One source of truth for all 5 connector snippet shapes
+     (Cursor, VS Code, Claude Code, Codex, Claude Desktop).
+     Both call sites import from here.
+
+  2. server/lib/mcp/tools/index.ts: rewrite PINNED_DESCRIPTION_HASHES
+     from "init-empty-then-overwrite-at-startup" to a real pinning
+     mechanism. Snapshot actual hashes at first build to a checked-in
+     server/lib/mcp/tools/description-hashes.json. On subsequent
+     starts, compare actual against snapshot. Throw on mismatch (not
+     warn). Updating a description requires intentionally bumping
+     the snapshot in the same commit. Add a CI-friendly script
+     scripts/check-description-hashes.ts that runs in npm run check.
+
+  3. mcp_audit_log FK fix: per D3, ON DELETE SET NULL on membership_id
+     plus the new client_id and audience columns.
+
+  4. requiredScope on ToolDefinition: extend the type to include
+     requiredScope?: "mcp" | "mcp:read", default "mcp". my_recent_usage,
+     my_budget, my_status, list_available_models, voucher_info can
+     drop to "mcp:read". Enforce in transport.ts before tool.handler
+     runs. redeem_voucher / redeem_and_chat / request_topup MUST
+     reject bearerKind === "oauth" with Forbidden -32002.
+
+CLAIM-FROM-VOUCHER FLOW
+
+  POST /api/auth/claim-from-voucher (server/auth.ts)
+    body: { email, password, name }
+    Validates: current session has a voucher-user (users.isVoucherUser
+      = true), email is unique, password ≥ 8 chars, name non-empty.
+    Atomically: update user.email, user.name, user.passwordHash, set
+      isVoucherUser = false. Existing membership preserved.
+    Returns 200 with { success: true }. Existing session stays valid;
+    user is now permanent.
+
+  client/src/pages/oauth-claim-account.tsx (NEW): form rendering
+    with i18n keys auth.claim.* in en/es/pt-BR. POSTs to the new
+    endpoint. On success, redirects to req.query.next (the original
+    /oauth/authorize URL).
+
+ACCEPTANCE — must all pass
+
+  tests/oauth/integration.spec.ts — full RFC 6749/7591/7009/7636/8707
+  flows. Test cases (assert each):
+    1.  DCR happy path (anonymous client gets client_id back)
+    2.  Authorize happy path (logged-in user, S256 PKCE, redirect
+        with code+state)
+    3.  Authorize rejects code_challenge_method=plain
+    4.  Authorize rejects voucher-only users (302 to claim-account)
+    5.  Authorize rejects mismatched redirect_uri
+    6.  Authorize rejects mismatched resource (RFC 8707)
+    7.  Token exchange happy path (PKCE verifier matches)
+    8.  Token exchange rejects mismatched verifier (timingSafeEqual)
+    9.  Token exchange rejects reused code (atomic single-use)
+    10. Refresh happy path (new access + new refresh issued, old
+        refresh marked revoked in same transaction)
+    11. Refresh rejects already-revoked refresh
+    12. Revoke marks token revoked, jti added to Redis revoked set
+    13. /mcp call with valid OAuth bearer succeeds (tools/list → 13)
+    14. /mcp call with revoked OAuth bearer returns -32001
+    15. /mcp call with OAuth bearer to redeem_voucher returns -32002
+    16. /mcp call with OAuth bearer requesting "mcp:read"-only scope
+        is allowed for my_budget but rejected for chat
+    17. mcp_audit_log row for OAuth call carries client_id + audience
+
+  tests/mcp/security.test.ts — extend to verify the description-hash
+  pinning fails-loud on a deliberately mutated description.
+
+  Existing tests/mcp/* and tests/proxy-* and the bridge package's
+  tests all continue to pass.
+
+  npm run check — no NEW TypeScript errors beyond the existing ~81
+  pre-existing baseline.
+
+  npm run build — clean.
+
+CHECKPOINT STRATEGY
+
+  If your platform supports sub-checkpoints, sequence as:
+    Checkpoint 1: schema + V1 cleanups (4 items above)
+    Checkpoint 2: OAuth core (endpoints + crypto + consent template)
+    Checkpoint 3: integration (mcp/auth.ts extension + claim flow +
+                  all 17 acceptance tests)
+  If platform requires one checkpoint, that's fine — proceed with one.
+
+DO NOT
+
+  - Touch the existing bearer auth paths beyond extending
+    authenticate() with a third branch.
+  - Modify the published @allotly/mcp bridge package.
+  - Add new dependencies. Use Node's built-in crypto and the
+    existing drizzle/express stack. No oauth libraries
+    (node-oauth2-server, oauth4webapi, express-oauth-server are all
+    out — supply-chain risk, low surface justifies hand-rolling).
+  - Redeploy. After Tiago pushes to GitHub via the Git pane and I
+    review the diff, I'll signal redeploy.
+
+REPORT (once, at the end)
+
+  - Confirmation that D1, D2, D3 are implemented as specified.
+  - Checkpoint count + summary per checkpoint (if multi).
+  - All 17 OAuth integration tests + the existing test suite passing
+    (paste the test runner output).
+  - Output of npm run check and npm run build.
+  - Any V1 fragility you hit while implementing M1 beyond the four
+    items already folded in (per your alignment §5).
+  - Any deviations from the spec and why.
+
+PROCEED
+
+You have everything needed. Don't come back for clarifications on
+routine implementation choices — make reasonable assumptions and
+note them in your final report. Only stop if you hit:
+  (a) a contradiction in the spec
+  (b) a security concern requiring a design change
+  (c) a missing prerequisite outside this brief (e.g. database
+      column conflicts, env var collisions)
+For (a)/(b)/(c) only: stop and ask. Otherwise proceed end-to-end.
