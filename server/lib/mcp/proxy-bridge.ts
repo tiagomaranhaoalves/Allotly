@@ -5,7 +5,10 @@ import type { TeamMembership } from "@shared/schema";
 export interface BridgedChatInput {
   membership: TeamMembership;
   userId: string;
-  apiKeyId: string;
+  /** Null for OAuth principals; non-null for key/voucher. */
+  apiKeyId: string | null;
+  /** Non-null exactly for OAuth principals; null for key/voucher. */
+  oauthClientId?: string | null;
   body: any;
 }
 
@@ -14,6 +17,7 @@ export async function callChatCompletion(input: BridgedChatInput): Promise<Proce
     membership: input.membership,
     userId: input.userId,
     apiKeyId: input.apiKeyId,
+    oauthClientId: input.oauthClientId ?? null,
     body: input.body,
     stream: false,
     requestId: crypto.randomUUID(),

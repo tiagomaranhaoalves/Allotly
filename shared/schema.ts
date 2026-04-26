@@ -184,7 +184,18 @@ export const budgetAlerts = pgTable("budget_alerts", {
 export const proxyRequestLogs = pgTable("proxy_request_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   membershipId: varchar("membership_id").notNull().references(() => teamMemberships.id),
+  /**
+   * Nullable. NON-NULL for "key" and "voucher" bearer requests; NULL for
+   * OAuth-bearer requests where attribution lives on oauthClientId instead.
+   */
   apiKeyId: varchar("api_key_id").references(() => allotlyApiKeys.id),
+  /**
+   * NON-NULL exactly when the request was authenticated with an OAuth
+   * access token; NULL otherwise. Carries the DCR client_id so audit
+   * queries can attribute usage to the calling OAuth client without
+   * borrowing an arbitrary API key from the membership.
+   */
+  oauthClientId: varchar("oauth_client_id"),
   provider: providerEnum("provider").notNull(),
   model: text("model").notNull(),
   inputTokens: integer("input_tokens").notNull(),

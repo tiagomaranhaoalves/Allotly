@@ -53,16 +53,18 @@ export function computeDescriptionHashes(): Record<string, string> {
 
 /**
  * At server startup, compare every registered tool's description against the
- * snapshot in `description-hashes.json`. Drift in production is a hard error
- * (prevents silent prompt-injection / agent-instruction tampering after deploy);
- * drift in dev/test is a warning so iterating on copy isn't blocked.
+ * snapshot in `description-hashes.json`. Drift is a hard error EVERYWHERE
+ * (dev, test, prod) so unreviewed copy changes never reach a PR. The locked
+ * workflow: edit a tool description -> run `npx tsx scripts/snapshot-description-hashes.ts`
+ * -> commit the regenerated JSON in the same PR. The "warn-and-self-heal"
+ * path was removed because it defeated the point: drift in dev silently
+ * propagated to PRs without the hash file being intentionally bumped.
  *
- * To intentionally update copy: run `npx tsx scripts/snapshot-description-hashes.ts`,
- * commit the regenerated JSON, and ship.
+ * The same comparison logic backs `scripts/check-description-hashes.ts`
+ * (wired into `npm run check`) so CI catches drift before review.
  */
 export function pinDescriptionsAtStartup(): void {
   const computed = computeDescriptionHashes();
-  const isProd = process.env.REPLIT_DEPLOYMENT === "1";
   const drifted: Array<{ tool: string; pinned: string; actual: string }> = [];
   const missingPin: string[] = [];
 
@@ -70,7 +72,6 @@ export function pinDescriptionsAtStartup(): void {
     const pinned = PINNED_DESCRIPTION_HASHES[name];
     if (!pinned) {
       missingPin.push(name);
-      PINNED_DESCRIPTION_HASHES[name] = actual;
       continue;
     }
     if (pinned !== actual) {
@@ -79,21 +80,20 @@ export function pinDescriptionsAtStartup(): void {
   }
 
   if (missingPin.length > 0) {
-    const msg = `[mcp] description-hashes.json is missing entries for: ${missingPin.join(", ")}. ` +
-      `Run \`npx tsx scripts/snapshot-description-hashes.ts\` to regenerate.`;
-    if (isProd) throw new Error(msg);
-    console.warn(msg);
+    throw new Error(
+      `[mcp] description-hashes.json is missing entries for: ${missingPin.join(", ")}. ` +
+        `Run \`npx tsx scripts/snapshot-description-hashes.ts\` to regenerate, then commit the diff.`,
+    );
   }
 
   if (drifted.length > 0) {
     const summary = drifted
       .map((d) => `${d.tool}: pinned=${d.pinned.slice(0, 8)} actual=${d.actual.slice(0, 8)}`)
       .join("; ");
-    const msg = `[mcp] tool description drift detected vs description-hashes.json: ${summary}. ` +
-      `Re-snapshot with \`npx tsx scripts/snapshot-description-hashes.ts\` after review.`;
-    if (isProd) throw new Error(msg);
-    console.warn(msg);
-    for (const d of drifted) PINNED_DESCRIPTION_HASHES[d.tool] = d.actual;
+    throw new Error(
+      `[mcp] tool description drift detected vs description-hashes.json: ${summary}. ` +
+        `Re-snapshot with \`npx tsx scripts/snapshot-description-hashes.ts\` after reviewing the new copy, then commit.`,
+    );
   }
 }
 

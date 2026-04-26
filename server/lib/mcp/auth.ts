@@ -14,10 +14,21 @@ export type BearerKind = "key" | "voucher" | "oauth";
 export interface McpPrincipal {
   membership: TeamMembership;
   userId: string;
-  apiKeyId: string;
+  /**
+   * Allotly API key id. NULL for OAuth principals — OAuth IS the credential
+   * and is not conflated with an arbitrary key on the membership. For "key"
+   * and "voucher" bearers this is always non-null.
+   */
+  apiKeyId: string | null;
+  /**
+   * OAuth DCR client id. NON-NULL exactly when bearerKind === "oauth";
+   * NULL otherwise. Used to attribute proxy_request_logs / mcp_audit_log
+   * rows to the calling OAuth client without going through an API key.
+   */
+  oauthClientId: string | null;
   bearerKind: BearerKind;
   voucherCode?: string;
-  /** OAuth client_id (only set when bearerKind === "oauth"). */
+  /** OAuth client_id (only set when bearerKind === "oauth"). Mirror of oauthClientId for legacy call sites. */
   clientId?: string;
   /** Granted OAuth scopes (only set when bearerKind === "oauth"). */
   scopes?: string[];
@@ -80,6 +91,7 @@ export async function authenticate(authHeader: string | undefined, options: { al
       membership: result.membership,
       userId: result.userId,
       apiKeyId: result.apiKeyId,
+      oauthClientId: null,
       bearerKind: "key",
       principalHash: computePrincipalHash({ kind: "key", apiKeyId: result.apiKeyId }),
     };
@@ -134,22 +146,16 @@ async function resolveOauthBearer(bearer: string, allowAnonymous?: boolean): Pro
 
   const scopes = parseScopeString(claims.scope || "");
 
-  // Proxy/usage code paths require an api_key_id to log usage against.
-  // Use the membership's primary active key as the surrogate for OAuth bearers
-  // so /v1/chat/completions accounting still works.
-  const membershipKeys = await storage.getApiKeysByMembership(claims.membership_id);
-  const activeKey = membershipKeys.find((k) => k.status === "ACTIVE") || membershipKeys[0];
-  if (!activeKey) {
-    if (allowAnonymous) return null;
-    throw new McpToolError("Unauthorised", "OAuth bearer is valid but the bound membership has no Allotly API key", {
-      hint: "Create an API key for this membership at /dashboard/keys before using OAuth-tokenised MCP tools.",
-    });
-  }
-
+  // OAuth IS the credential — we do NOT borrow an arbitrary API key from the
+  // membership for usage attribution. proxy_request_logs.apiKeyId is nullable
+  // and proxy_request_logs.oauthClientId carries the calling DCR client id
+  // for OAuth-bearer requests. This keeps audit lineage clean when the
+  // membership has zero OR multiple API keys.
   return {
     membership,
     userId: claims.sub,
-    apiKeyId: activeKey.id,
+    apiKeyId: null,
+    oauthClientId: claims.client_id,
     bearerKind: "oauth",
     clientId: claims.client_id,
     scopes,
@@ -174,6 +180,7 @@ async function resolveVoucherBearer(voucherCode: string, allowAnonymous?: boolea
           membership,
           userId: data.userId,
           apiKeyId: data.apiKeyId,
+          oauthClientId: null,
           bearerKind: "voucher",
           voucherCode: upper,
           principalHash: computePrincipalHash({ kind: "voucher", voucherCode: upper }),
@@ -209,6 +216,7 @@ async function resolveVoucherBearer(voucherCode: string, allowAnonymous?: boolea
     membership: minted.membership,
     userId: minted.userId,
     apiKeyId: minted.apiKeyId,
+    oauthClientId: null,
     bearerKind: "voucher",
     voucherCode: upper,
     principalHash: computePrincipalHash({ kind: "voucher", voucherCode: upper }),

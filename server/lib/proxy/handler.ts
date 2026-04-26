@@ -169,7 +169,10 @@ export interface BudgetSnapshot {
 export interface ProcessChatCompletionInput {
   membership: any;
   userId: string;
-  apiKeyId: string;
+  /** Null for OAuth principals (OAuth IS the credential); non-null for key/voucher. */
+  apiKeyId: string | null;
+  /** Non-null exactly for OAuth principals; null for key/voucher. */
+  oauthClientId?: string | null;
   body: any;
   stream: boolean;
   requestId: string;
@@ -217,6 +220,7 @@ export async function processChatCompletion(
 ): Promise<ProcessChatCompletionResult> {
   const startTime = Date.now();
   const { membership, userId, apiKeyId, body, requestId } = input;
+  const oauthClientId = input.oauthClientId ?? null;
   const membershipId = membership.id;
   let reservedCostCents = 0;
   let concurrencyAcquired = false;
@@ -445,7 +449,8 @@ export async function processChatCompletion(
       try {
         await storage.createProxyRequestLog({
           membershipId,
-          apiKeyId,
+          apiKeyId: apiKeyId ?? null,
+          oauthClientId,
           provider,
           model: provider === "AZURE_OPENAI" && azureDeployment ? azureDeployment.modelId : parsed.model,
           inputTokens: actualInputTokens,
@@ -937,7 +942,10 @@ export async function handleChatCompletion(req: Request, res: Response) {
       try {
         await storage.createProxyRequestLog({
           membershipId: membershipId!,
-          apiKeyId,
+          apiKeyId: apiKeyId ?? null,
+          // /v1/chat/completions only authenticates via API keys; OAuth bearers
+          // reach the proxy through processChatCompletion, not this REST handler.
+          oauthClientId: null,
           provider,
           model: provider === "AZURE_OPENAI" && azureDeployment ? azureDeployment.modelId : parsed.model,
           inputTokens: actualInputTokens,

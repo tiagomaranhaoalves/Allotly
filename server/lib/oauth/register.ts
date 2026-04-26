@@ -8,7 +8,30 @@ import { SUPPORTED_SCOPES, normaliseScopes } from "./scopes";
 import { OAUTH_ISSUER } from "./jwt";
 import { redisGet, redisSet } from "../redis";
 
-const scryptAsync = promisify(crypto.scrypt);
+// promisify's typings only cover the 3-arg overload of crypto.scrypt; we use
+// the 4-arg form (with options) so we cast to a compatible signature.
+const scryptAsync = promisify(crypto.scrypt) as unknown as (
+  password: crypto.BinaryLike,
+  salt: crypto.BinaryLike,
+  keylen: number,
+  options: crypto.ScryptOptions,
+) => Promise<Buffer>;
+
+/**
+ * Why scrypt and not bcrypt: scrypt is a Node built-in (no native binary,
+ * no supply-chain footprint), memory-hard, and modern. We DELIBERATELY do
+ * not depend on `bcrypt` so the platform doesn't drag a node-gyp build into
+ * production. Parameter floor (per locked decision):
+ *   N = 2^15 (32768)  — CPU/memory cost; ~32 MB peak per hash
+ *   r = 8            — block size
+ *   p = 1            — parallelisation
+ *   salt = 16 bytes  — random per secret
+ *   dkLen = 64 bytes — derived key length
+ * If you ever need to bump these, increment N and re-issue all DCR client
+ * secrets (existing rows can't be re-derived without the original secret).
+ */
+const SCRYPT_PARAMS = { N: 1 << 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 } as const;
+const SCRYPT_DKLEN = 64;
 
 const REGISTER_RATE_LIMIT_PER_HOUR = 10;
 const URI_REGEX = /^(https?:)\/\/[^\s]+$/;
@@ -46,14 +69,14 @@ function isValidRedirectUri(uri: string, allowLocalhost: boolean): boolean {
 
 export async function hashClientSecret(secret: string): Promise<string> {
   const salt = crypto.randomBytes(16).toString("hex");
-  const buf = (await scryptAsync(secret, salt, 64)) as Buffer;
+  const buf = (await scryptAsync(secret, salt, SCRYPT_DKLEN, SCRYPT_PARAMS)) as Buffer;
   return `${buf.toString("hex")}.${salt}`;
 }
 
 export async function compareClientSecret(supplied: string, stored: string): Promise<boolean> {
   const [hashedHex, salt] = stored.split(".");
   if (!hashedHex || !salt) return false;
-  const buf = (await scryptAsync(supplied, salt, 64)) as Buffer;
+  const buf = (await scryptAsync(supplied, salt, SCRYPT_DKLEN, SCRYPT_PARAMS)) as Buffer;
   const stored_buf = Buffer.from(hashedHex, "hex");
   if (stored_buf.length !== buf.length) return false;
   return crypto.timingSafeEqual(buf, stored_buf);

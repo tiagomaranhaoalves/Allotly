@@ -31,6 +31,25 @@ function loadSecret(): string {
   return cachedSecret;
 }
 
+/**
+ * Fail-fast secret validation called at server boot in production
+ * (REPLIT_DEPLOYMENT=1). Runs only the "must exist + >=32 bytes" check; if it
+ * fails, the process throws BEFORE any HTTP listener is started so a
+ * misconfigured deploy never serves a single OAuth request with a missing or
+ * weak signing key. In dev the lazy loadSecret() path stays in charge so
+ * iterating without a secret still works (with the ephemeral-secret warning).
+ */
+export function assertSecretReady(): void {
+  const fromEnv = process.env.OAUTH_JWT_SECRET;
+  if (!fromEnv || fromEnv.length < 32) {
+    throw new Error(
+      "OAUTH_JWT_SECRET is missing or shorter than 32 chars. Generate one with `openssl rand -base64 32` and set it in production secrets before deploy.",
+    );
+  }
+  cachedSecret = fromEnv;
+  cachedSecretIsEphemeral = false;
+}
+
 export function isEphemeralSecret(): boolean {
   loadSecret();
   return cachedSecretIsEphemeral;

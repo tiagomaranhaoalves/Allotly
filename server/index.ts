@@ -9,6 +9,11 @@ import { WebhookHandlers } from './webhookHandlers';
 import { startJobScheduler } from './lib/jobs/scheduler';
 import { seedModelPricing } from './lib/seed-models';
 import { pool } from './db';
+import { assertSecretReady as assertOAuthSecretReady } from './lib/oauth/jwt';
+
+if (process.env.REPLIT_DEPLOYMENT === "1") {
+  assertOAuthSecretReady();
+}
 
 const app = express();
 app.set("trust proxy", 1);

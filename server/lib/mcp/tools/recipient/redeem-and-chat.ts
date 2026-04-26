@@ -44,6 +44,7 @@ registerTool({
       membership: principal.membership,
       userId: principal.userId,
       apiKeyId: principal.apiKeyId,
+      oauthClientId: principal.oauthClientId,
       body,
     });
 

@@ -1,0 +1,112 @@
+All four deviations green-lit. Here's the resolution per item.
+
+A. D1 fail-fast at boot
+  - In server/index.ts, after loading env config and BEFORE any
+    listen / IIFE, call:
+        if (process.env.REPLIT_DEPLOYMENT === "1") {
+          await import("./lib/oauth/jwt").then(m => m.assertSecretReady());
+        }
+    where assertSecretReady() is a new exported function in jwt.ts
+    that runs the same validation as loadSecret() but only the
+    "must exist + ≥32 bytes" check, and throws on failure. Lazy
+    loadSecret() stays as-is for non-prod.
+  - Add to .env.example:
+      # Required in production. Generate with: openssl rand -base64 32
+      OAUTH_JWT_SECRET=
+
+B. Keep crypto.scrypt for client secrets
+  Do NOT install bcrypt. scrypt is a Node built-in, memory-hard,
+  modern, and avoids the bcrypt native-binary supply-chain footprint.
+  Confirm scrypt parameters: N >= 2^15, r=8, p=1, salt 16 bytes,
+  derived-key length 64 bytes. If your current params are weaker,
+  bump them to those minimums. Document the choice in a comment in
+  register.ts so future-me doesn't second-guess.
+
+C. Description-hash drift = hard error everywhere
+  Change pinDescriptionsAtStartup() in server/lib/mcp/tools/index.ts
+  to THROW unconditionally on mismatch (not just in
+  REPLIT_DEPLOYMENT). The dev "warn-and-self-heal" path defeats the
+  whole point — drift in dev means drift will appear in PRs without
+  the hash file being intentionally bumped.
+  
+  Add scripts/check-description-hashes.ts that:
+    - Loads server/lib/mcp/tools/description-hashes.json.
+    - Computes current description hashes via the same logic as
+      pinDescriptionsAtStartup.
+    - Exits 1 with a clear diff if any hash mismatches.
+  
+  Update package.json:
+    "check": "tsc && tsx scripts/check-description-hashes.ts"
+  
+  This means CI/local both surface drift. Updating a tool description
+  requires running scripts/snapshot-description-hashes.ts and
+  committing the updated JSON in the same PR — exactly the workflow
+  the spec asked for.
+
+D. McpPrincipal.apiKeyId optional for OAuth
+  This is the meaty one. Design:
+  
+  1. Type change. In server/lib/mcp/auth.ts, change the McpPrincipal
+     type:
+       interface McpPrincipal {
+         membership: TeamMembership;
+         userId: string;
+         apiKeyId: string | null;       // null for OAuth principals
+         oauthClientId: string | null;  // non-null for OAuth principals
+         bearerKind: "key" | "voucher" | "oauth";
+         voucherCode?: string;
+         scopes?: string[];
+         resource?: string;
+         principalHash: string;
+       }
+  
+  2. resolveOauthBearer in auth.ts: stop looking up a primary active
+     API key. Just set apiKeyId = null, oauthClientId = principal's
+     clientId. If the membership has zero active API keys, that's
+     fine — OAuth is its own credential and doesn't need a key.
+  
+  3. Schema change. proxy_request_logs gains a new column
+     oauth_client_id varchar(36) NULL. Existing apiKeyId reference
+     stays but its column becomes nullable (or already is — check;
+     if not, ALTER it). Apply via npm run db:push.
+  
+  4. processChatCompletion in server/lib/proxy/handler.ts: change
+     the storage.createProxyRequestLog call to pass
+     apiKeyId: principal.apiKeyId ?? null, oauthClientId:
+     principal.oauthClientId ?? null. Same insert otherwise.
+  
+  5. Backfill semantics: existing rows have apiKeyId set,
+     oauth_client_id null. New OAuth rows are the inverse. No
+     migration needed — the new column defaults to null.
+  
+  6. Tests: in tests/oauth/e2e.test.ts, after the successful /mcp
+     tools/call with OAuth bearer, query proxy_request_logs and
+     assert oauth_client_id matches the test's client_id and
+     apiKeyId is null. Assert mcp_audit_log carries the same.
+  
+  7. The architect's philosophical rejection of "look up the
+     membership's primary active API key" is correct — OAuth IS the
+     credential, conflating it with an arbitrary key creates audit
+     confusion if the membership has multiple keys. Implement
+     option 1 above.
+
+ACCEPTANCE FOR THIS CLEANUP
+
+  - npm test: 418/418 still pass, plus the new OAuth-row assertion
+    on oauth_client_id.
+  - npm run check: hash check fires in CI; deliberately mutate one
+    tool description in a test branch and confirm the check fails.
+  - npm run dev with OAUTH_JWT_SECRET unset: dev still boots with
+    warning. With REPLIT_DEPLOYMENT=1 unset: prod-style boot throws
+    at startup before listen.
+  - Production smoke (after Tiago pushes + redeploys): GET
+    /.well-known/oauth-authorization-server returns 200 with our
+    issuer; POST /oauth/register with a fake client name returns
+    a client_id; full OAuth handshake from a CLI (curl) into a
+    /mcp tools/call works end-to-end.
+
+CHECKPOINT IT, REPORT, then Tiago pushes via the Git pane to GitHub
+so I can review the full M1 diff (28e8f5d through whatever this
+cleanup commit is) on origin/main before redeploy.
+
+No further design questions. Proceed.

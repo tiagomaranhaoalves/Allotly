@@ -26,6 +26,8 @@ import {
   oauthClients,
   oauthAuthorizationCodes,
   oauthTokens,
+  proxyRequestLogs,
+  mcpAuditLog,
 } from "@shared/schema";
 import { storage } from "../../server/storage";
 import { hashPassword } from "../../server/lib/password";
@@ -632,10 +634,74 @@ describe("oauth e2e: MCP /mcp accepts oauth JWT bearers", () => {
     expect(principal!.bearerKind).toBe("oauth");
     expect(principal!.userId).toBe(testUserId);
     expect(principal!.membership.id).toBe(testMembershipId);
-    // OAuth principals must surface a real apiKeyId so usage-billing works.
-    expect(principal!.apiKeyId).toBe(testApiKeyId);
+    // OAuth IS the credential — apiKeyId is null and oauthClientId carries
+    // the calling DCR client id. We do NOT borrow an arbitrary API key from
+    // the membership for usage attribution (architect's lock).
+    expect(principal!.apiKeyId).toBeNull();
+    expect(principal!.oauthClientId).toBe(registeredClientId);
     // D3 identity is verbatim — NOT re-hashed.
     expect(principal!.principalHash).toBe(`oauth:${registeredClientId}:${testUserId}`);
+  });
+
+  it("[18] proxy_request_logs persists oauth_client_id with apiKeyId=null for OAuth-bearer requests", async () => {
+    // Direct storage round-trip proves the schema column exists, accepts the
+    // new combination (apiKeyId NULL + oauth_client_id NON-NULL), and that
+    // the row reads back with both fields intact. The full handler chain
+    // passes principal.oauthClientId straight through to this insert (see
+    // server/lib/proxy/handler.ts createProxyRequestLog calls), so a green
+    // round-trip here plus the principal assertion in [15] closes the loop
+    // without needing a live LLM provider in the test env.
+    const log = await storage.createProxyRequestLog({
+      membershipId: testMembershipId,
+      apiKeyId: null,
+      oauthClientId: registeredClientId,
+      provider: "OPENAI",
+      model: "gpt-4o-mini",
+      inputTokens: 10,
+      outputTokens: 5,
+      costCents: 1,
+      durationMs: 42,
+      statusCode: 200,
+    });
+    expect(log.id).toBeTruthy();
+    const rows = await db
+      .select()
+      .from(proxyRequestLogs)
+      .where(eq(proxyRequestLogs.id, log.id));
+    expect(rows.length).toBe(1);
+    expect(rows[0].apiKeyId).toBeNull();
+    expect((rows[0] as any).oauthClientId).toBe(registeredClientId);
+    // Cleanup so afterAll's by-membership delete still owns the rest.
+    await db.delete(proxyRequestLogs).where(eq(proxyRequestLogs.id, log.id));
+  });
+
+  it("[19] mcp_audit_log persists client_id (and audience) for OAuth-bearer tool calls", async () => {
+    // Audit trail parity for OAuth principals: the recordAudit() call in
+    // server/lib/mcp/transport.ts forwards principal.clientId / resource into
+    // mcp_audit_log.client_id / audience for every OAuth-bearer tool
+    // invocation. Round-trip the columns directly here so the schema +
+    // persistence layer are pinned independently of a live tool dispatch.
+    const [audit] = await db
+      .insert(mcpAuditLog)
+      .values({
+        membershipId: testMembershipId,
+        toolName: "voucher_info",
+        inputHash: "deadbeef".repeat(8),
+        ok: true,
+        errorCode: null,
+        latencyMs: 12,
+        clientId: registeredClientId,
+        audience: MCP_AUDIENCE,
+      })
+      .returning();
+    const rows = await db
+      .select()
+      .from(mcpAuditLog)
+      .where(eq(mcpAuditLog.id, audit.id));
+    expect(rows.length).toBe(1);
+    expect(rows[0].clientId).toBe(registeredClientId);
+    expect(rows[0].audience).toBe(MCP_AUDIENCE);
+    await db.delete(mcpAuditLog).where(eq(mcpAuditLog.id, audit.id));
   });
 
   it("[16] resolveBearer rejects an OAuth token with the wrong audience", async () => {
