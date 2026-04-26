@@ -509,10 +509,16 @@ print(response.choices[0].message.content)`}
               )}
             </Card>
 
-            {redeemResult.hasAccount && (
+            {redeemResult.hasAccount ? (
               <Link href="/dashboard/connect">
                 <Button className="w-full" data-testid="button-go-dashboard">
                   Done — Go to Dashboard <ArrowRight className="w-4 h-4 ml-1.5" />
+                </Button>
+              </Link>
+            ) : (
+              <Link href={`/oauth/claim-account?code=${encodeURIComponent(codeInput.replace(/-/g, ""))}`}>
+                <Button className="w-full" data-testid="button-claim-account">
+                  Done — Save this key to an account <ArrowRight className="w-4 h-4 ml-1.5" />
                 </Button>
               </Link>
             )}
