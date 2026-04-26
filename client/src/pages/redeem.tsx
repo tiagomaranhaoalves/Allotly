@@ -12,9 +12,11 @@ import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { useState, useEffect, useRef } from "react";
 import { apiRequest } from "@/lib/queryClient";
+import { ConnectorGrid } from "@/components/connectors";
 import {
   Ticket, ArrowRight, Check, AlertTriangle, Copy, Clock, Shield,
   Zap, Code, Terminal, ExternalLink, Monitor, Wrench, GraduationCap, Blocks,
+  PlugZap,
 } from "lucide-react";
 
 type RedeemState = "input" | "preview" | "choose" | "redeeming" | "success";
@@ -371,6 +373,28 @@ export default function RedeemPage() {
 
             <KeyRevealCard keyValue={redeemResult.apiKey} masked={false} />
 
+            <div className="space-y-4" data-testid="section-post-redeem-connectors">
+              <div>
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                  <PlugZap className="w-5 h-5 text-primary" />
+                  Connect your AI tool
+                </h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Pick the tool you use, copy the snippet, paste it in. Your key is already filled in below.
+                </p>
+              </div>
+              <ConnectorGrid
+                mode="compact"
+                keyContext={{
+                  kind: "fixed",
+                  value: redeemResult.apiKey,
+                  prefix: redeemResult.keyPrefix,
+                }}
+                defaultMasked={false}
+                showExamples={false}
+              />
+            </div>
+
             <Card className="p-5 space-y-4">
               <h3 className="font-semibold">Quick Start</h3>
 
@@ -486,9 +510,9 @@ print(response.choices[0].message.content)`}
             </Card>
 
             {redeemResult.hasAccount && (
-              <Link href="/dashboard">
+              <Link href="/dashboard/connect">
                 <Button className="w-full" data-testid="button-go-dashboard">
-                  Go to Dashboard <ExternalLink className="w-4 h-4 ml-1.5" />
+                  Done — Go to Dashboard <ArrowRight className="w-4 h-4 ml-1.5" />
                 </Button>
               </Link>
             )}

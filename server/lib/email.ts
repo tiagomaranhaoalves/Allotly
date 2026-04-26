@@ -126,6 +126,65 @@ function alert(text: string, color: string): string {
 </div>`;
 }
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function snippetBlock(label: string, fileHint: string, code: string): string {
+  return `<div style="margin:12px 0">
+<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+<span style="color:#1e293b;font-size:13px;font-weight:600">${label}</span>
+<span style="color:#94a3b8;font-size:11px;font-family:monospace">${fileHint}</span>
+</div>
+<pre style="margin:0;background:#0f172a;color:#e2e8f0;border-radius:6px;padding:12px;font-family:monospace;font-size:11px;line-height:1.5;overflow-x:auto;white-space:pre-wrap;word-break:break-all">${escapeHtml(code)}</pre>
+</div>`;
+}
+
+/**
+ * Build the Quick Setup HTML block for the welcome email.
+ * Uses the voucher CODE as the bearer token — the Allotly MCP server
+ * auto-redeems voucher codes on first use, so the recipient can wire up
+ * their AI tool straight from the email without ever needing to redeem
+ * in the dashboard first.
+ */
+function quickSetupBlock(voucherCode: string, dashboardUrl: string): string {
+  const cursorSnippet = JSON.stringify(
+    {
+      mcpServers: {
+        allotly: {
+          url: "https://allotly.ai/mcp",
+          headers: { Authorization: `Bearer ${voucherCode}` },
+        },
+      },
+    },
+    null,
+    2,
+  );
+  const claudeDesktopSnippet = JSON.stringify(
+    {
+      mcpServers: {
+        allotly: {
+          command: "npx",
+          args: ["-y", "@allotly/mcp@latest"],
+          env: { ALLOTLY_KEY: voucherCode },
+        },
+      },
+    },
+    null,
+    2,
+  );
+  return `<div style="margin-top:24px;padding-top:24px;border-top:1px solid #e2e8f0">
+<h3 style="margin:0 0 8px;color:#1e293b;font-size:15px">⚡ Quick setup — paste &amp; go</h3>
+<p style="margin:0 0 12px;color:#475569;font-size:13px;line-height:1.6">Skip the redemption page entirely. Paste one of these snippets into your AI tool and the voucher will auto-redeem on first use.</p>
+${snippetBlock("Cursor", "~/.cursor/mcp.json", cursorSnippet)}
+${snippetBlock("Claude Desktop", "claude_desktop_config.json", claudeDesktopSnippet)}
+<p style="margin:12px 0 0;color:#64748b;font-size:12px;line-height:1.5">Using a different tool? Visit <a href="${dashboardUrl}" style="color:#6366F1;text-decoration:none">your Allotly dashboard</a> for VS Code, Claude Code, and OpenAI Codex setup snippets, plus a one-click connection test.</p>
+</div>`;
+}
+
 export const emailTemplates = {
   welcome(orgName: string, userName: string, loginUrl: string) {
     return {
@@ -185,6 +244,15 @@ export const emailTemplates = {
   },
 
   voucherNotification(recipientName: string, code: string, budgetDollars: string, expiresAt: string, redeemUrl: string) {
+    // Derive the dashboard/connect URL from the redeem URL's origin so it
+    // works in dev, staging, and production without a separate config knob.
+    let connectUrl = "https://allotly.ai/dashboard/connect";
+    try {
+      const u = new URL(redeemUrl);
+      connectUrl = `${u.origin}/dashboard/connect`;
+    } catch {
+      // fall back to default
+    }
     return {
       subject: `Your Allotly AI Access Voucher`,
       html: layout("You've Received an AI Access Voucher", [
@@ -197,6 +265,7 @@ export const emailTemplates = {
         kv("Expires", expiresAt),
         btn("Redeem Voucher", redeemUrl),
         p("Once redeemed, you'll receive an API key to use with Allotly's AI proxy."),
+        quickSetupBlock(code, connectUrl),
       ].join("")),
     };
   },

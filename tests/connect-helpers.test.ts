@@ -101,10 +101,18 @@ describe("buildSnippet", () => {
     expect(out).toContain(`"command": "npx"`);
   });
 
-  it("buildAllSnippets returns one snippet per connector", () => {
+  it("emits a TOML config block for OpenAI Codex with HTTP transport + Bearer header", () => {
+    const out = buildSnippet("codex", { key: SAMPLE_KEY });
+    expect(out).toContain("~/.codex/config.toml");
+    expect(out).toContain("[mcp_servers.allotly]");
+    expect(out).toContain(`url = "${ALLOTLY_MCP_URL}"`);
+    expect(out).toContain(`http_headers = { "Authorization" = "Bearer ${SAMPLE_KEY}" }`);
+  });
+
+  it("buildAllSnippets returns one snippet per connector (5 connectors incl. Codex)", () => {
     const all = buildAllSnippets({ key: SAMPLE_KEY });
     expect(Object.keys(all).sort()).toEqual(
-      ["claudeCode", "claudeDesktop", "cursor", "vscode"].sort(),
+      ["claudeCode", "claudeDesktop", "codex", "cursor", "vscode"].sort(),
     );
     for (const v of Object.values(all)) {
       expect(v).toContain(SAMPLE_KEY);
@@ -115,6 +123,15 @@ describe("buildSnippet", () => {
     const placeholder = "<paste-your-allotly-key>";
     const out = buildSnippet("cursor", { key: placeholder });
     expect(out).toContain(`Bearer ${placeholder}`);
+  });
+
+  it("accepts a voucher code as the bearer (used in pre-redemption email snippets)", () => {
+    const voucher = "ALLOT-1234-5678-9ABC";
+    const cursor = buildSnippet("cursor", { key: voucher });
+    const claudeDesktop = buildSnippet("claudeDesktop", { key: voucher });
+    expect(cursor).toContain(`"Authorization": "Bearer ${voucher}"`);
+    // The Claude Desktop snippet uses the npm bridge; the voucher rides ALLOTLY_KEY.
+    expect(claudeDesktop).toContain(`"ALLOTLY_KEY": "${voucher}"`);
   });
 });
 

@@ -1,9 +1,15 @@
 export const ALLOTLY_MCP_URL = "https://allotly.ai/mcp";
 export const ALLOTLY_MCP_PACKAGE = "@allotly/mcp";
 
-export type ConnectorId = "cursor" | "vscode" | "claudeCode" | "claudeDesktop";
+export type ConnectorId = "cursor" | "vscode" | "claudeCode" | "codex" | "claudeDesktop";
 
-export const CONNECTOR_IDS: ConnectorId[] = ["cursor", "vscode", "claudeCode", "claudeDesktop"];
+export const CONNECTOR_IDS: ConnectorId[] = [
+  "cursor",
+  "vscode",
+  "claudeCode",
+  "codex",
+  "claudeDesktop",
+];
 
 export const CONNECTOR_DEEP_LINKS: Partial<Record<ConnectorId, string>> = {
   cursor: "cursor://anysphere.cursor-deeplink/mcp/install?name=allotly",
@@ -67,6 +73,14 @@ export function buildSnippet(connector: ConnectorId, params: SnippetParams): str
       );
     case "claudeCode":
       return `claude mcp add --transport http allotly ${url} \\\n  --header "Authorization: Bearer ${key}"`;
+    case "codex":
+      // OpenAI Codex CLI uses TOML at ~/.codex/config.toml.
+      return [
+        "# ~/.codex/config.toml",
+        "[mcp_servers.allotly]",
+        `url = "${url}"`,
+        `http_headers = { "Authorization" = "Bearer ${key}" }`,
+      ].join("\n");
     case "claudeDesktop":
       return JSON.stringify(
         {
@@ -89,6 +103,7 @@ export function buildAllSnippets(params: SnippetParams): Record<ConnectorId, str
     cursor: buildSnippet("cursor", params),
     vscode: buildSnippet("vscode", params),
     claudeCode: buildSnippet("claudeCode", params),
+    codex: buildSnippet("codex", params),
     claudeDesktop: buildSnippet("claudeDesktop", params),
   };
 }

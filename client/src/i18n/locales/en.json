@@ -1778,6 +1778,11 @@
         "bestFor": "Best for: terminal-driven workflows.",
         "fileHint": "Run in your terminal"
       },
+      "codex": {
+        "title": "OpenAI Codex",
+        "bestFor": "Best for: OpenAI's terminal coding agent.",
+        "fileHint": "~/.codex/config.toml"
+      },
       "claudeDesktop": {
         "title": "Claude Desktop",
         "bestFor": "Best for: chatting with Claude outside the editor.",
