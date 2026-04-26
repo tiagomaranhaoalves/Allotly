@@ -1,0 +1,53 @@
+We're about to start V1.0.1 of the Allotly MCP. Before any code, I
+want to confirm we're aligned on what's already true and what's
+needed. Read these files first:
+
+  - server/lib/mcp/README.md   (V1 handover doc)
+  - server/lib/mcp/server.ts, transport.ts, tools/index.ts
+  - server/routes.ts (the mountMcp call near the bottom)
+  - shared/schema.ts (the three new tables: mcp_audit_log,
+    mcp_idempotency, voucher_topup_requests)
+
+Then answer the following — don't write any code yet, this is purely
+a written alignment check:
+
+  1. In one paragraph, summarise what V1 actually ships TODAY at
+     allotly.ai/mcp. Include: tool count, transport type, auth model,
+     and one example end-to-end flow (e.g. what happens when a Claude
+     Code user calls `my_budget`).
+
+  2. List the THREE biggest friction points a non-developer voucher
+     recipient hits between "I have a voucher code" and "I'm chatting
+     with AI through Allotly." Use the actual current UX, not what
+     you assume — if you don't know, look at the redeem flow in
+     server/routes.ts:3791 and client/src/pages/redeem.tsx (or
+     wherever it lives).
+
+  3. Three deliverables are planned for V1.0.1, in this order:
+       M1 — `allotly-mcp` npm bridge package (lets Claude Desktop and
+            stdio-only hosts connect via a one-line config).
+       M2 — /dashboard/connect page (4 host config snippets, copy
+            buttons, "Test connection" button).
+       M3 — Wire connectors into post-redeem flow + voucher email.
+     For each, state in 2-3 sentences what YOU think the deliverable
+     should produce. Where you disagree with the order or scope, say
+     so and propose the alternative.
+
+  4. List any concerns, prerequisites, or unknowns you'd want
+     resolved before starting M1. Examples: npm publishing
+     credentials, package naming, TypeScript build setup for an
+     in-repo package that isn't built by the main project, anything
+     else.
+
+  5. (Sanity check) Is there anything in V1's code that you'd flag as
+     fragile, under-tested, or worth fixing before we layer V1.0.1 on
+     top? You touched the codebase end-to-end during V1 deploy — your
+     read on this matters. If everything is clean, just say "no
+     concerns."
+
+Format your answer as 5 numbered sections. Keep total length under
+600 words. Do not modify any files. Do not run tests. Just read and
+write the alignment doc.
+
+When you're done, paste your full answer back to the human verbatim
+(no truncation) so they can hand it back to me for review.
