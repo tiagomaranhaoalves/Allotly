@@ -735,3 +735,65 @@ describe("oauth e2e: MCP /mcp accepts oauth JWT bearers", () => {
     await expect(authenticate("Bearer " + accessToken)).rejects.toThrow(/revoked/i);
   });
 });
+
+describe("oauth e2e: locked security defaults (state + CSP)", () => {
+  it("[20] GET /oauth/authorize without `state` is rejected with invalid_request", async () => {
+    _resetPendingForTest();
+    const req = mockReq({
+      query: {
+        client_id: registeredClientId,
+        redirect_uri: TEST_REDIRECT_URI,
+        response_type: "code",
+        code_challenge: pkceChallenge,
+        code_challenge_method: "S256",
+        scope: "mcp",
+        // state intentionally omitted
+        resource: MCP_AUDIENCE,
+      },
+      session: { userId: testUserId },
+    });
+    const res = mockRes();
+    await authorizeHandler(req as any, res as any);
+    expect(res.statusCode).toBe(302);
+    expect(res.redirected).toMatch(/error=invalid_request/);
+    expect(res.redirected).toMatch(/state%20is%20required|state\+is\+required|state_is_required/);
+    // Importantly: no `state=` param should be echoed back, since the client
+    // didn't supply one.
+    expect(res.redirected).not.toMatch(/[?&]state=/);
+  });
+
+  it("[21] /oauth/authorize consent response sends the locked CSP header", async () => {
+    _resetPendingForTest();
+    const req = mockReq({
+      query: {
+        client_id: registeredClientId,
+        redirect_uri: TEST_REDIRECT_URI,
+        response_type: "code",
+        code_challenge: pkceChallenge,
+        code_challenge_method: "S256",
+        scope: "mcp",
+        state: "csp-test",
+        resource: MCP_AUDIENCE,
+      },
+      session: { userId: testUserId },
+    });
+    const res = mockRes();
+    await authorizeHandler(req as any, res as any);
+    expect(res.statusCode).toBe(200);
+    const csp = res.headers["content-security-policy"];
+    expect(csp).toBeTruthy();
+    // Each locked directive must appear verbatim.
+    expect(csp).toContain("default-src 'self'");
+    expect(csp).toContain("style-src 'self' 'unsafe-inline'");
+    expect(csp).toContain("script-src 'none'");
+    expect(csp).toContain("img-src 'self'");
+    expect(csp).toContain("form-action 'self'");
+    expect(csp).toContain("base-uri 'none'");
+    expect(csp).toContain("frame-ancestors 'none'");
+    expect(res.headers["x-frame-options"]).toBe("DENY");
+    // Same policy is also embedded in the rendered HTML as defense in depth.
+    const html = String(res.body || "");
+    expect(html).toContain("default-src 'self'");
+    expect(html).toContain("script-src 'none'");
+  });
+});
