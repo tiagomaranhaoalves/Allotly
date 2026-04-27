@@ -82,14 +82,53 @@ async function takePending(nonce: string): Promise<PendingAuthRequest | null> {
 }
 
 // Single helper so every consent failure path emits a uniform, grep-able log.
-// Callers pass a stable cause code (MISS, SESSION_USER_MISMATCH, HMAC_INVALID,
-// MISSING_FIELDS, CSRF_MISMATCH, NO_SESSION) plus optional context.
+// Callers pass a stable cause code (MISS_EXPIRED, MISS_ALREADY_USED,
+// SESSION_USER_MISMATCH, HMAC_INVALID, MISSING_FIELDS, CSRF_MISMATCH,
+// NO_SESSION) plus optional context.
 function logConsentFailure(cause: string, ctx: Record<string, unknown> = {}): void {
   const parts = [`cause=${cause}`, `instance=${INSTANCE_ID}`];
   for (const [k, v] of Object.entries(ctx)) {
     if (v !== undefined && v !== null) parts.push(`${k}=${v}`);
   }
   console.log(`[oauth] consent FAIL ${parts.join(" ")}`);
+}
+
+/**
+ * Render a friendly HTML error page when the consent submission cannot complete.
+ * Replaces the prior plain-text "auth_request expired or unknown" so users (and
+ * MCP clients) can understand what happened. Distinguishes "expired" from
+ * "already used" using the timestamp embedded in the (HMAC-signed) token,
+ * which we can read without needing the pending Redis entry.
+ */
+function renderConsentErrorPage(opts: {
+  title: string;
+  heading: string;
+  body: string;
+  detail?: string;
+}): string {
+  const esc = (s: string) =>
+    String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(opts.title)} — Allotly</title></head><body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif"><div style="max-width:480px;margin:48px auto;padding:0 16px"><div style="text-align:center;margin-bottom:24px"><div style="display:inline-block;background:#6366F1;color:#fff;font-weight:700;font-size:18px;padding:6px 16px;border-radius:8px">allotly</div></div><div style="background:#fff;border-radius:12px;padding:32px;border:1px solid #e2e8f0"><h1 style="margin:0 0 12px;color:#1e293b;font-size:20px" data-testid="consent-error-heading">${esc(opts.heading)}</h1><p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 12px" data-testid="consent-error-body">${esc(opts.body)}</p>${opts.detail ? `<p style="color:#94a3b8;font-size:12px;line-height:1.5;margin:12px 0 0;font-family:monospace;background:#f8fafc;padding:8px 12px;border-radius:6px" data-testid="consent-error-detail">${esc(opts.detail)}</p>` : ""}</div></div></body></html>`;
+}
+
+/**
+ * Parse the embedded `expiresAtMs` from an auth_request_id (`<nonce>.<exp>.<hmac>`)
+ * WITHOUT verifying the HMAC. Used only to give a clearer error message when the
+ * pending Redis entry is missing — we can tell the user whether their link
+ * expired (timestamp in the past) or was already submitted (timestamp still
+ * in the future, so the only way the entry is gone is GETDEL consumed it).
+ * Returns null if the token is malformed.
+ */
+function readExpiryFromAuthRequestId(token: string): number | null {
+  const parts = String(token).split(".");
+  if (parts.length !== 3) return null;
+  const exp = Number(parts[1]);
+  return Number.isFinite(exp) ? exp : null;
 }
 
 /**
@@ -328,13 +367,64 @@ export async function consentHandler(req: Request, res: Response): Promise<void>
   const noncePart = String(authRequestId).split(".")[0];
   const pendingReq = await takePending(noncePart);
   if (!pendingReq) {
-    logConsentFailure("MISS", {
+    // Use the (HMAC-signed but not yet verified) timestamp embedded in the
+    // token to distinguish the two real-world causes of a MISS:
+    //   - expiry: > PENDING_TTL since /oauth/authorize, the Redis TTL fired
+    //   - already-used: timestamp still in the future, so the only way the
+    //     entry is gone is GETDEL consumed it on a prior submission. This is
+    //     what we observed in production: browser back-button or MCP-client
+    //     replay re-POSTed a consent form whose code was already issued.
+    const expAt = readExpiryFromAuthRequestId(String(authRequestId));
+    const now = Date.now();
+    // Three sub-causes:
+    //  - MISS_MALFORMED: token didn't parse (someone hand-crafted/tampered)
+    //  - MISS_EXPIRED:   tokenExpAt < now, the 10min Redis TTL fired
+    //  - MISS_ALREADY_USED: token still valid by time, so GETDEL must have
+    //    consumed the entry on a prior submission (browser back-button replay,
+    //    MCP-client retry, etc.) — by far the most common in practice.
+    let cause: "MISS_MALFORMED" | "MISS_EXPIRED" | "MISS_ALREADY_USED";
+    if (expAt === null) cause = "MISS_MALFORMED";
+    else if (now > expAt) cause = "MISS_EXPIRED";
+    else cause = "MISS_ALREADY_USED";
+    logConsentFailure(cause, {
       nonce: nonceTag(noncePart),
       authRequestIdLen: String(authRequestId).length,
       authRequestIdParts: String(authRequestId).split(".").length,
       sessionUserId: sess.userId,
+      tokenExpAt: expAt,
+      now,
+      ageSinceExpMs: expAt !== null ? now - expAt : null,
     });
-    res.status(400).type("text/plain").send("auth_request expired or unknown");
+    let errorPage;
+    if (cause === "MISS_EXPIRED") {
+      errorPage = {
+        title: "Authorization link expired",
+        heading: "This authorization link expired",
+        body: "More than 10 minutes passed between starting the sign-in and submitting consent. For your security, the link is no longer valid. Please return to the application that sent you here and start the sign-in again.",
+        detail: "code: MISS_EXPIRED",
+      };
+    } else if (cause === "MISS_MALFORMED") {
+      errorPage = {
+        title: "Invalid authorization request",
+        heading: "This authorization request is invalid",
+        body: "The link you submitted doesn't look like a valid Allotly authorization request. Please return to the application that sent you here and start the sign-in again from the beginning.",
+        detail: "code: MISS_MALFORMED",
+      };
+    } else {
+      errorPage = {
+        title: "Authorization already submitted",
+        heading: "This authorization was already submitted",
+        body: "This consent form has already been used to grant access. If your application didn't successfully receive the sign-in (for example because the redirect failed), please return to it and start a fresh sign-in — don't use the browser back button to retry, since each authorization can only be submitted once.",
+        detail: "code: MISS_ALREADY_USED",
+      };
+    }
+    // Defense in depth: same restrictive CSP we apply to the consent page.
+    // Helmet's global CSP is disabled, so this route-specific header matters.
+    res.setHeader(
+      "Content-Security-Policy",
+      "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'none'; img-src 'self'; form-action 'none'",
+    );
+    res.status(400).type("text/html").send(renderConsentErrorPage(errorPage));
     return;
   }
   // Session-binding (RFC 6749 §10.12): a pending request only belongs to the

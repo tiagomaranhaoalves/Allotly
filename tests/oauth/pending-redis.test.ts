@@ -188,7 +188,9 @@ describe("oauth pending-request: Redis-backed (regression for in-memory Map)", (
     expect(cRes.redirected).toMatch(/[?&]state=regression-1/);
 
     // Step 4: single-use enforcement — pending entry was atomically GETDELed,
-    // so a second consent submission with the same id MUST fail.
+    // so a second consent submission with the same id MUST fail. The error
+    // page distinguishes "already submitted" (MISS_ALREADY_USED) from "expired"
+    // (MISS_EXPIRED) using the timestamp embedded in the auth_request_id.
     const c2Req = mockReq({
       body: { auth_request_id: authRequestId, csrf: sess._oauthCsrf, decision: "approve" },
       session: sess,
@@ -196,7 +198,34 @@ describe("oauth pending-request: Redis-backed (regression for in-memory Map)", (
     const c2Res = mockRes();
     await consentHandler(c2Req as any, c2Res as any);
     expect(c2Res.statusCode).toBe(400);
-    expect(String(c2Res.body)).toMatch(/auth_request expired or unknown/);
+    // The token's expiresAtMs is still in the future (10min TTL), so this is
+    // the "already used" path (browser back-button / replay), not "expired".
+    expect(String(c2Res.body)).toMatch(/already submitted/i);
+    expect(String(c2Res.body)).toMatch(/MISS_ALREADY_USED/);
+  });
+
+  it("MISS_MALFORMED: a hand-crafted/garbage auth_request_id renders the malformed error page (no XSS)", async () => {
+    const sess: any = { userId: testUserId, _oauthCsrf: "test-csrf-token" };
+    // Note: the consent handler verifies CSRF BEFORE looking up the pending
+    // entry, so we need a valid CSRF in the session. The auth_request_id
+    // itself is the garbage being tested.
+    const req = mockReq({
+      body: {
+        auth_request_id: "<script>alert(1)</script>not-a-real-token",
+        csrf: "test-csrf-token",
+        decision: "approve",
+      },
+      session: sess,
+    });
+    const res = mockRes();
+    await consentHandler(req as any, res as any);
+    expect(res.statusCode).toBe(400);
+    expect(String(res.body)).toMatch(/MISS_MALFORMED/);
+    // XSS guard: the script tag from the input must be HTML-escaped, not
+    // rendered. The body should not contain the literal "<script>" substring.
+    expect(String(res.body)).not.toMatch(/<script>alert/);
+    // Defense-in-depth: the error page sets a restrictive CSP header.
+    expect(res.headers["content-security-policy"]).toMatch(/script-src 'none'/);
   });
 
   it("redisGetDel removes the key on first read (single-use semantics)", async () => {
