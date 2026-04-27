@@ -315,25 +315,14 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
     userEmail: user.email,
     userName: user.name,
   });
-  // CRITICAL: form-action restricts the URLs a form can submit to AND any
-  // HTTP redirects from that submission. Our consent flow POSTs to /oauth/consent
-  // ('self', allowed) which then 302-redirects to the client's redirect_uri
-  // (e.g. http://127.0.0.1:53831/callback for local MCP clients). With just
-  // `form-action 'self'` the browser SILENTLY blocks that cross-origin redirect
-  // — the user clicks Authorize and "nothing happens". To fix this without
-  // weakening the policy, we whitelist the specific redirect_uri origin that
-  // we already validated against the client's registered URIs above.
-  // Spec ref: https://www.w3.org/TR/CSP3/#directive-form-action — "If the
-  //   navigation is to a URL whose origin is not in the source list ... the
-  //   navigation MUST be blocked." This applies to redirect targets too.
-  // DO NOT regress this back to a static `form-action 'self'` string.
+  // CSP form-action also gates redirect targets from form submissions
+  // (CSP3 §form-action). Static 'self' would silently block the post-consent
+  // 302 to the client's cross-origin redirect_uri. Allow the validated origin.
   let formActionOrigin = "'self'";
   try {
-    const u = new URL(redirectUri);
-    formActionOrigin = `'self' ${u.origin}`;
+    formActionOrigin = `'self' ${new URL(redirectUri).origin}`;
   } catch {
-    // redirectUri was already validated above; if URL parsing somehow fails
-    // here we keep the strict 'self' fallback rather than crash.
+    // redirectUri was validated upstream; keep strict fallback.
   }
   res.setHeader(
     "Content-Security-Policy",
