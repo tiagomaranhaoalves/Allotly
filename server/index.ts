@@ -10,6 +10,7 @@ import { startJobScheduler } from './lib/jobs/scheduler';
 import { seedModelPricing } from './lib/seed-models';
 import { pool } from './db';
 import { assertSecretReady as assertOAuthSecretReady } from './lib/oauth/jwt';
+import { waitForRedisReady } from './lib/redis';
 
 if (process.env.REPLIT_DEPLOYMENT === "1") {
   assertOAuthSecretReady();
@@ -166,51 +167,66 @@ app.use((req, res, next) => {
 
 (async () => {
   try {
-    const migResult = await (pool as any).query(
-      `UPDATE provider_connections SET azure_api_version = NULL WHERE provider = 'AZURE_OPENAI' AND azure_api_version = '2024-10-21'`
-    );
-    if (migResult.rowCount > 0) {
-      console.log(`[migration] Cleared stale azure_api_version='2024-10-21' on ${migResult.rowCount} connection(s)`);
+    // Redis must be reachable before we mark the app ready. In production
+    // (NODE_ENV=production), waitForRedisReady() rejects when REDIS_URL is
+    // missing, when ioredis instantiation fails, or after a 10s connect
+    // timeout. We explicitly process.exit(1) on failure because the HTTP
+    // server is already listening (top of file) and an unhandled rejection
+    // would otherwise leave it serving 503s forever. In dev/test this
+    // resolves immediately or returns after the in-memory fallback log
+    // line — see server/lib/redis.ts.
+    await waitForRedisReady();
+
+    try {
+      const migResult = await (pool as any).query(
+        `UPDATE provider_connections SET azure_api_version = NULL WHERE provider = 'AZURE_OPENAI' AND azure_api_version = '2024-10-21'`
+      );
+      if (migResult.rowCount > 0) {
+        console.log(`[migration] Cleared stale azure_api_version='2024-10-21' on ${migResult.rowCount} connection(s)`);
+      }
+    } catch (e: any) {
+      console.error("[migration] azure api-version cleanup failed:", e.message);
     }
-  } catch (e: any) {
-    console.error("[migration] azure api-version cleanup failed:", e.message);
+
+    await initStripe();
+    await seedModelPricing();
+    await registerRoutes(httpServer, app);
+
+    app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+      if (res.headersSent) {
+        return next(err);
+      }
+
+      if (err.type === 'entity.parse.failed' || (err instanceof SyntaxError && 'body' in err)) {
+        return res.status(400).json({
+          error: {
+            code: "invalid_request",
+            message: "Invalid JSON in request body",
+            type: "allotly_error",
+          },
+        });
+      }
+
+      const status = err.status || err.statusCode || 500;
+      const message = err.message || "Internal Server Error";
+
+      console.error("Internal Server Error:", err);
+
+      return res.status(status).json({ message });
+    });
+
+    if (process.env.NODE_ENV === "production") {
+      serveStatic(app);
+    } else {
+      const { setupVite } = await import("./vite");
+      await setupVite(httpServer, app);
+    }
+
+    appReady = true;
+    log(`serving on port ${port}`);
+    startJobScheduler();
+  } catch (err: any) {
+    console.error("[boot] Fatal error during initialization:", err?.message ?? err);
+    process.exit(1);
   }
-
-  await initStripe();
-  await seedModelPricing();
-  await registerRoutes(httpServer, app);
-
-  app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
-    if (res.headersSent) {
-      return next(err);
-    }
-
-    if (err.type === 'entity.parse.failed' || (err instanceof SyntaxError && 'body' in err)) {
-      return res.status(400).json({
-        error: {
-          code: "invalid_request",
-          message: "Invalid JSON in request body",
-          type: "allotly_error",
-        },
-      });
-    }
-
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-
-    console.error("Internal Server Error:", err);
-
-    return res.status(status).json({ message });
-  });
-
-  if (process.env.NODE_ENV === "production") {
-    serveStatic(app);
-  } else {
-    const { setupVite } = await import("./vite");
-    await setupVite(httpServer, app);
-  }
-
-  appReady = true;
-  log(`serving on port ${port}`);
-  startJobScheduler();
 })();
