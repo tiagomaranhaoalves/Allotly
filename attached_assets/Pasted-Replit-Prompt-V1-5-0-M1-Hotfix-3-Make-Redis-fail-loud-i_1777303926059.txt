@@ -1,0 +1,96 @@
+Replit Prompt — V1.5.0 M1 Hotfix #3: Make Redis fail-loud in production (unblock OAuth consent)
+You are fixing a production bug observed live: even after Hotfix #2 (Redis-backed pending-request store), the OAuth consent step still fails with "auth_request expired or unknown" because server/lib/redis.ts silently falls back to in-memory when (a) the Redis connection hasn't fired its connect event yet, or (b) Redis emits a transient error. This is the project-wide infrastructure issue Hotfix #2's report flagged but did not fix.
+
+You said in the Hotfix #2 report: "The shared server/lib/redis.ts still silently falls back to in-memory storage when the Redis client emits an error in production. That is project-wide infrastructure used by every Redis caller (rate limits, sessions, etc.) — fixing it is a behavioural change that needs its own task." This is that task.
+
+Locked decisions — implement, do not ask. One end-of-task report.
+
+Locked decisions
+Behavior gate: process.env.NODE_ENV === "production" AND process.env.REDIS_URL is set → fail-loud. Any other case (dev with no REDIS_URL, test environment, dev with REDIS_URL but Redis flaky) → keep current in-memory fallback. Do NOT change test/dev behavior — only production.
+Boot-time guarantee: in production, initRedis() MUST await the connect event with a 10-second timeout before letting any request be served. If it does not connect in time, throw and crash the process. Replit will restart and surface the error.
+Runtime guarantee: in production, every redisGet/redisSet/redisDel/redisGetDel/redisExpire/redisIncr/redisDecr/redisIncrBy/redisDecrBy/redisKeys call MUST throw if redis === null or if the underlying ioredis call throws. Do not flip useMemory = true. Do not silently swallow errors.
+The useMemory = true flip on redis.on("error", ...) must be removed — error events are normal during transient Redis hiccups (single command timeouts, etc.). The ioredis client auto-reconnects with the existing retryStrategy. Flipping to in-memory on a transient blip is exactly what corrupted OAuth consent.
+In dev (no REDIS_URL or NODE_ENV !== "production"): keep the existing fallback. Dev shouldn't require Redis.
+Server boot integration: wherever the express app is created (likely server/index.ts), call await waitForRedisReady() before app.listen(...). The cold-start 503 guard already exists — this just adds Redis to the readiness check.
+No DB changes. No db:push.
+Scope — exact deliverables
+server/lib/redis.ts
+Surgical changes:
+
+A. Add a production-strict mode flag at module top:
+
+const REDIS_REQUIRED = process.env.NODE_ENV === "production" && !!process.env.REDIS_URL;
+B. Refactor initRedis() so it returns a Promise<void> that resolves when Redis is connected (or in dev/test, immediately):
+
+Remove the redis.on("error", ...) handler that flips useMemory = true (keep the console.error log for visibility, but do NOT change useMemory).
+The connect event handler stays as-is (sets useMemory = false).
+In production with REDIS_URL: race redis.connect() against a 10-second timeout. If timeout wins, throw new Error("[redis] Failed to connect within 10s — refusing to boot in production").
+In dev without REDIS_URL: behave as today (set useMemory = true, log, return).
+In dev with REDIS_URL: try to connect, but if it fails, log and use memory (today's behavior).
+C. Export a waitForRedisReady(): Promise<void> for the boot path:
+
+let initPromise: Promise<void> = initRedis();
+export function waitForRedisReady(): Promise<void> { return initPromise; }
+D. Wrap every helper (redisGet, redisSet, redisDel, redisGetDel, redisExpire, redisIncr, redisDecr, redisIncrBy, redisDecrBy, redisKeys) with the same shape:
+
+export async function redisGet(key: string): Promise<string | null> {
+  if (REDIS_REQUIRED) {
+    if (!redis) throw new Error("[redis] Required in production but not connected");
+    return redis.get(key);  // let any ioredis error propagate
+  }
+  if (!useMemory && redis) {
+    return redis.get(key);
+  }
+  return cleanExpired(key);
+}
+Note: in production, the useMemory branch is unreachable. In dev, behavior is unchanged.
+
+server/index.ts
+Find where the express app starts listening (the app.listen(...) call after the boot checks). Add:
+
+import { waitForRedisReady } from "./lib/redis";
+// ...
+await waitForRedisReady();
+// ... then app.listen(...)
+Place it after the existing assertSecretReady() calls (so secrets are validated first) and before app.listen. If waitForRedisReady throws, the unhandled promise rejection will crash the process — which is what we want.
+
+Tests
+Update existing tests if any rely on redis.ts swallowing errors. The fail-loud behavior is gated on NODE_ENV === "production", which tests do NOT have set, so existing tests should be unaffected. Verify by running the full suite.
+
+Add one new regression test in a new file tests/oauth/redis-failopen-prod.test.ts:
+
+"regression: in production mode with REDIS_URL set, redisSet throws when redis is unavailable"
+
+Approach:
+
+process.env.NODE_ENV = "production"; process.env.REDIS_URL = "redis://nonexistent.invalid:6379"
+Re-import redis.ts (use vi.resetModules() + await import(...)) to re-trigger initRedis() with the bad URL
+await waitForRedisReady() should reject within 10s
+After rejection, await redisSet("k", "v") should throw, NOT silently succeed
+Restore env vars in afterAll. Skip this test if it would interfere with the rest of the suite — wrap in describe.serial if vitest supports it, or test.sequential.
+
+If wiring this test cleanly is hard, settle for asserting just the waitForRedisReady() rejection — that alone proves the boot guard works.
+
+Out of scope — DO NOT TOUCH
+The OAuth handlers themselves — the existing Hotfix #2 code is correct, it just needs the underlying Redis layer to not lie.
+The MCP transport.
+DB schema.
+Any other Redis caller (rate limits, budget ledger, sessions). They will all benefit from the fail-loud change automatically.
+The server's existing 503 cold-start middleware — leave it alone; this fix runs before app.listen.
+Acceptance checklist
+npm run check       # type check
+npm run test        # full suite, all green (1 new regression test)
+npm run build       # esbuild bundle
+In dev preview, the boot log should show either:
+
+[redis] Connected to Redis (REDIS_URL set, healthy)
+[redis] No REDIS_URL, using in-memory store (dev without Redis)
+It must NOT show [redis] Connection error, falling back to memory — that path is gone.
+
+Final report format
+One message:
+
+Files modified.
+Test results.
+Confirmation that boot fails loudly when REDIS_URL is set but Redis is unreachable (paste the error log line).
+Anything you couldn't do and why.
