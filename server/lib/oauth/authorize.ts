@@ -9,9 +9,25 @@ import { MCP_AUDIENCE, SUPPORTED_SCOPES, parseScopeString } from "./scopes";
 import { renderConsent } from "./consent-template";
 import { redisSet, redisGetDel, redisKeys, redisDel } from "../redis";
 
-const PENDING_TTL_MS = 5 * 60 * 1000; // RFC-aligned: consent screens expire fast
-const PENDING_TTL_SECONDS = 300;
+// 10 min: gives MCP clients (Claude Desktop, Cursor, etc.) and slow human
+// flows enough headroom. Was 5 min, but we observed users hitting "auth_request
+// expired or unknown" on flows that involved a fresh login mid-consent.
+const PENDING_TTL_MS = 10 * 60 * 1000;
+const PENDING_TTL_SECONDS = 600;
 const CODE_TTL_MS = 60 * 1000;
+
+// Short, replica-stable id so cross-replica / cross-process log lines can be
+// correlated when debugging "auth_request expired or unknown". process.pid
+// alone is unreliable on autoscale because the same pid can be reused, but
+// combined with startup time it's unique-enough for log grep.
+const INSTANCE_ID = `${process.pid}-${Date.now().toString(36)}`;
+
+// Truncate the 32-hex nonce to its first 8 chars for logging. Full nonces
+// are secrets (anyone with one can submit consent before TTL); the prefix
+// is enough to correlate setPending → takePending pairs without leaking auth.
+function nonceTag(n: string): string {
+  return String(n).slice(0, 8);
+}
 
 interface PendingAuthRequest {
   clientId: string;
@@ -35,17 +51,45 @@ const PENDING_KEY = (nonce: string) => `allotly:oauth:pending:${nonce}`;
 
 async function setPending(nonce: string, p: PendingAuthRequest): Promise<void> {
   await redisSet(PENDING_KEY(nonce), JSON.stringify(p), PENDING_TTL_SECONDS);
+  console.log(
+    `[oauth] setPending nonce=${nonceTag(nonce)} userId=${p.userId} clientId=${p.clientId} expAt=${p.expiresAt} ttl=${PENDING_TTL_SECONDS}s instance=${INSTANCE_ID}`,
+  );
 }
 
 async function takePending(nonce: string): Promise<PendingAuthRequest | null> {
+  const now = Date.now();
   // GETDEL = atomic read-and-delete; prevents consent double-submission.
   const raw = await redisGetDel(PENDING_KEY(nonce));
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as PendingAuthRequest;
-  } catch {
+  if (!raw) {
+    console.log(
+      `[oauth] takePending MISS nonce=${nonceTag(nonce)} now=${now} instance=${INSTANCE_ID} — key not in Redis (TTL expired, double-submit consumed it, or written by a different REDIS_URL)`,
+    );
     return null;
   }
+  try {
+    const parsed = JSON.parse(raw) as PendingAuthRequest;
+    const ageMs = now - (parsed.expiresAt - PENDING_TTL_MS);
+    console.log(
+      `[oauth] takePending HIT nonce=${nonceTag(nonce)} userId=${parsed.userId} clientId=${parsed.clientId} ageMs=${ageMs} expIn=${parsed.expiresAt - now}ms instance=${INSTANCE_ID}`,
+    );
+    return parsed;
+  } catch {
+    console.log(
+      `[oauth] takePending PARSE-FAIL nonce=${nonceTag(nonce)} instance=${INSTANCE_ID} rawLen=${raw.length}`,
+    );
+    return null;
+  }
+}
+
+// Single helper so every consent failure path emits a uniform, grep-able log.
+// Callers pass a stable cause code (MISS, SESSION_USER_MISMATCH, HMAC_INVALID,
+// MISSING_FIELDS, CSRF_MISMATCH, NO_SESSION) plus optional context.
+function logConsentFailure(cause: string, ctx: Record<string, unknown> = {}): void {
+  const parts = [`cause=${cause}`, `instance=${INSTANCE_ID}`];
+  for (const [k, v] of Object.entries(ctx)) {
+    if (v !== undefined && v !== null) parts.push(`${k}=${v}`);
+  }
+  console.log(`[oauth] consent FAIL ${parts.join(" ")}`);
 }
 
 /**
@@ -242,6 +286,7 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
 export async function consentHandler(req: Request, res: Response): Promise<void> {
   const sess = req.session as any;
   if (!sess?.userId) {
+    logConsentFailure("NO_SESSION", { sessionId: req.sessionID });
     res.status(401).type("text/plain").send("unauthorized");
     return;
   }
@@ -251,10 +296,21 @@ export async function consentHandler(req: Request, res: Response): Promise<void>
   const decision = body.decision;
 
   if (!authRequestId || !csrf || !decision) {
+    logConsentFailure("MISSING_FIELDS", {
+      hasAuthRequestId: !!authRequestId,
+      hasCsrf: !!csrf,
+      hasDecision: !!decision,
+      contentType: req.headers["content-type"],
+      bodyKeys: Object.keys(body).join(",") || "(empty)",
+    });
     res.status(400).type("text/plain").send("invalid_request");
     return;
   }
   if (!sess._oauthCsrf || csrf !== sess._oauthCsrf) {
+    logConsentFailure("CSRF_MISMATCH", {
+      hasSessionCsrf: !!sess._oauthCsrf,
+      sessionId: req.sessionID,
+    });
     res.status(403).type("text/plain").send("csrf_mismatch");
     return;
   }
@@ -272,6 +328,12 @@ export async function consentHandler(req: Request, res: Response): Promise<void>
   const noncePart = String(authRequestId).split(".")[0];
   const pendingReq = await takePending(noncePart);
   if (!pendingReq) {
+    logConsentFailure("MISS", {
+      nonce: nonceTag(noncePart),
+      authRequestIdLen: String(authRequestId).length,
+      authRequestIdParts: String(authRequestId).split(".").length,
+      sessionUserId: sess.userId,
+    });
     res.status(400).type("text/plain").send("auth_request expired or unknown");
     return;
   }
@@ -279,12 +341,22 @@ export async function consentHandler(req: Request, res: Response): Promise<void>
   // user that initiated /oauth/authorize. If the active session has changed,
   // refuse to mint a code.
   if (pendingReq.userId !== sess.userId) {
+    logConsentFailure("SESSION_USER_MISMATCH", {
+      nonce: nonceTag(noncePart),
+      pendingUserId: pendingReq.userId,
+      sessionUserId: sess.userId,
+    });
     res.status(403).type("text/plain").send("session_user_mismatch");
     return;
   }
   // HMAC verification + freshness (5min) + clientId binding.
   const verified = verifyAuthRequestId(authRequestId, sess.userId, pendingReq.clientId);
   if (!verified) {
+    logConsentFailure("HMAC_INVALID", {
+      nonce: nonceTag(noncePart),
+      userId: sess.userId,
+      clientId: pendingReq.clientId,
+    });
     res.status(400).type("text/plain").send("auth_request expired or invalid");
     return;
   }
