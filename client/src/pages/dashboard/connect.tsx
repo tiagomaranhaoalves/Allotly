@@ -143,19 +143,18 @@ export default function ConnectPage() {
             data-testid="text-oauth-section-heading"
           >
             <Link2 className="w-5 h-5 text-primary" />
-            Or connect a hosted AI tool via OAuth
+            {t("connect.oauthSection.heading")}
           </h2>
           <p className="text-sm text-muted-foreground">
-            For Claude.ai, ChatGPT, and Gemini — paste the MCP URL into your tool of choice and
-            authorize Allotly when prompted. Manage approved apps anytime from{" "}
+            {t("connect.oauthSection.descriptionPrefix")}{" "}
             <Link
               href="/dashboard/connections"
               className="text-primary hover-elevate active-elevate-2 rounded px-1 py-0.5"
               data-testid="link-to-connections"
             >
-              Connections
+              {t("dashboard.connections.heading")}
             </Link>
-            .
+            {t("connect.oauthSection.descriptionSuffix")}
           </p>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

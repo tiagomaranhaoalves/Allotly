@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -40,10 +41,10 @@ interface ConnectionsResponse {
   connections: Connection[];
 }
 
-function formatDate(iso: string | null): string {
-  if (!iso) return "—";
+function formatDate(iso: string | null, locale: string | undefined, fallback: string): string {
+  if (!iso) return fallback;
   const d = new Date(iso);
-  return d.toLocaleDateString(undefined, {
+  return d.toLocaleDateString(locale, {
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -51,6 +52,7 @@ function formatDate(iso: string | null): string {
 }
 
 export default function ConnectionsPage() {
+  const { t, i18n } = useTranslation();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [pending, setPending] = useState<Connection | null>(null);
@@ -68,15 +70,17 @@ export default function ConnectionsPage() {
       const conn = data?.connections.find((c) => c.clientId === clientId);
       queryClient.invalidateQueries({ queryKey: ["/api/oauth/connections"] });
       toast({
-        title: "Access revoked",
-        description: conn ? `Revoked access for ${conn.clientName}` : "Connection revoked",
+        title: t("dashboard.connections.toastRevokedTitle"),
+        description: conn
+          ? t("dashboard.connections.toastRevokedDescription", { clientName: conn.clientName })
+          : t("dashboard.connections.toastRevokedFallback"),
       });
       setPending(null);
     },
     onError: (e: any) => {
       toast({
-        title: "Revoke failed",
-        description: e?.message || "Could not revoke access",
+        title: t("dashboard.connections.toastRevokeFailedTitle"),
+        description: e?.message || t("dashboard.connections.toastRevokeFailedFallback"),
         variant: "destructive",
       });
       setPending(null);
@@ -84,6 +88,8 @@ export default function ConnectionsPage() {
   });
 
   const connections = data?.connections ?? [];
+  const dateLocale = i18n.language || undefined;
+  const notUsedFallback = t("dashboard.connections.table.notUsed");
 
   return (
     <div className="space-y-6 max-w-6xl">
@@ -93,10 +99,10 @@ export default function ConnectionsPage() {
           data-testid="text-connections-heading"
         >
           <Link2 className="w-6 h-6 text-primary" />
-          Connections
+          {t("dashboard.connections.heading")}
         </h1>
         <p className="text-muted-foreground mt-1" data-testid="text-connections-subtitle">
-          OAuth apps that have access to your Allotly account.
+          {t("dashboard.connections.subtitle")}
         </p>
       </div>
 
@@ -111,10 +117,10 @@ export default function ConnectionsPage() {
       {!isLoading && connections.length === 0 && (
         <EmptyState
           icon={<Link2 className="w-10 h-10 text-muted-foreground" />}
-          title="No OAuth connections yet"
-          description="Connect Allotly to claude.ai, ChatGPT or Gemini and the apps you authorize will appear here."
+          title={t("dashboard.connections.empty.title")}
+          description={t("dashboard.connections.empty.description")}
           action={{
-            label: "Connect your first AI tool →",
+            label: t("dashboard.connections.empty.cta"),
             onClick: () => setLocation("/dashboard/connect"),
           }}
         />
@@ -125,11 +131,13 @@ export default function ConnectionsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>App name</TableHead>
-                <TableHead>Scopes</TableHead>
-                <TableHead>First authorized</TableHead>
-                <TableHead>Last used</TableHead>
-                <TableHead className="text-right">Action</TableHead>
+                <TableHead>{t("dashboard.connections.table.appName")}</TableHead>
+                <TableHead>{t("dashboard.connections.table.scopes")}</TableHead>
+                <TableHead>{t("dashboard.connections.table.firstAuthorized")}</TableHead>
+                <TableHead>{t("dashboard.connections.table.lastUsed")}</TableHead>
+                <TableHead className="text-right">
+                  {t("dashboard.connections.table.action")}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -139,7 +147,7 @@ export default function ConnectionsPage() {
                     {conn.clientName}
                     {conn.activeTokenCount > 1 && (
                       <span className="ml-2 text-xs text-muted-foreground">
-                        ({conn.activeTokenCount} active tokens)
+                        {t("dashboard.connections.activeTokens", { count: conn.activeTokenCount })}
                       </span>
                     )}
                   </TableCell>
@@ -161,13 +169,13 @@ export default function ConnectionsPage() {
                     className="text-sm text-muted-foreground"
                     data-testid={`text-connection-first-${conn.clientId}`}
                   >
-                    {formatDate(conn.firstAuthorizedAt)}
+                    {formatDate(conn.firstAuthorizedAt, dateLocale, notUsedFallback)}
                   </TableCell>
                   <TableCell
                     className="text-sm text-muted-foreground"
                     data-testid={`text-connection-last-${conn.clientId}`}
                   >
-                    {formatDate(conn.lastUsedAt)}
+                    {formatDate(conn.lastUsedAt, dateLocale, notUsedFallback)}
                   </TableCell>
                   <TableCell className="text-right">
                     <Button
@@ -177,7 +185,7 @@ export default function ConnectionsPage() {
                       data-testid={`button-revoke-${conn.clientId}`}
                     >
                       <Trash2 className="w-3.5 h-3.5 mr-1" />
-                      Revoke
+                      {t("dashboard.connections.revokeButton")}
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -188,27 +196,30 @@ export default function ConnectionsPage() {
       )}
 
       <p className="text-xs text-muted-foreground">
-        Need to add a new app?{" "}
+        {t("dashboard.connections.footerNote")}{" "}
         <Link
           href="/dashboard/connect"
           className="text-primary hover-elevate active-elevate-2 rounded px-1 py-0.5"
           data-testid="link-to-connect"
         >
-          Go to Connect AI Tool →
+          {t("dashboard.connections.footerLink")}
         </Link>
       </p>
 
       <AlertDialog open={pending !== null} onOpenChange={(open) => !open && setPending(null)}>
         <AlertDialogContent data-testid="dialog-confirm-revoke">
           <AlertDialogHeader>
-            <AlertDialogTitle>Revoke access for {pending?.clientName}?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("dashboard.connections.dialog.title", { clientName: pending?.clientName ?? "" })}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This immediately revokes every active token this app holds against your account.
-              Anyone using this connection will be signed out and will need to re-authorize.
+              {t("dashboard.connections.dialog.description")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel data-testid="button-cancel-revoke">Cancel</AlertDialogCancel>
+            <AlertDialogCancel data-testid="button-cancel-revoke">
+              {t("dashboard.connections.dialog.cancel")}
+            </AlertDialogCancel>
             <AlertDialogAction
               data-testid="button-confirm-revoke"
               onClick={(e) => {
@@ -217,7 +228,9 @@ export default function ConnectionsPage() {
               }}
               disabled={revokeMutation.isPending}
             >
-              {revokeMutation.isPending ? "Revoking…" : "Revoke access"}
+              {revokeMutation.isPending
+                ? t("dashboard.connections.dialog.revoking")
+                : t("dashboard.connections.dialog.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Copy, Check, ExternalLink, MessageSquare, Bot, Sparkles } from "lucide-react";
@@ -15,6 +16,7 @@ export interface OAuthConnectorCardProps {
 }
 
 export function OAuthConnectorCard({ spec }: OAuthConnectorCardProps) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const Icon = ICON_MAP[spec.id];
 
@@ -61,7 +63,7 @@ export function OAuthConnectorCard({ spec }: OAuthConnectorCardProps) {
           className="absolute top-1.5 right-1.5 h-7 w-7"
           onClick={onCopy}
           data-testid={`button-copy-oauth-url-${spec.id}`}
-          aria-label="Copy MCP URL"
+          aria-label={t("dashboard.oauthConnectors.copyMcpUrl")}
         >
           {copied ? (
             <Check className="w-4 h-4 text-emerald-500" />
@@ -88,7 +90,7 @@ export function OAuthConnectorCard({ spec }: OAuthConnectorCardProps) {
         data-testid={`link-oauth-learn-more-${spec.id}`}
       >
         <ExternalLink className="w-3 h-3" />
-        Learn more
+        {t("dashboard.oauthConnectors.learnMore")}
       </a>
     </Card>
   );

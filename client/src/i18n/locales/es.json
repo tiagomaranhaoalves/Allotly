@@ -1733,6 +1733,44 @@
         "teams": "Teams",
         "vouchers": "Vouchers"
       }
+    },
+    "connections": {
+      "heading": "Conexiones",
+      "subtitle": "Aplicaciones OAuth con acceso a tu cuenta de Allotly.",
+      "activeTokens_one": "({{count}} token activo)",
+      "activeTokens_other": "({{count}} tokens activos)",
+      "revokeButton": "Revocar",
+      "footerNote": "¿Necesitas añadir una nueva app?",
+      "footerLink": "Conectar herramienta de IA →",
+      "empty": {
+        "title": "Aún no tienes conexiones OAuth",
+        "description": "Conecta Allotly a claude.ai, ChatGPT o Gemini y las apps que autorices aparecerán aquí.",
+        "cta": "Conecta tu primera herramienta de IA →"
+      },
+      "table": {
+        "appName": "Aplicación",
+        "scopes": "Permisos",
+        "firstAuthorized": "Primera autorización",
+        "lastUsed": "Último uso",
+        "action": "Acción",
+        "notUsed": "—"
+      },
+      "toastRevokedTitle": "Acceso revocado",
+      "toastRevokedDescription": "Acceso revocado para {{clientName}}",
+      "toastRevokedFallback": "Conexión revocada",
+      "toastRevokeFailedTitle": "Error al revocar",
+      "toastRevokeFailedFallback": "No se pudo revocar el acceso",
+      "dialog": {
+        "title": "¿Revocar el acceso de {{clientName}}?",
+        "description": "Esto revoca de inmediato todos los tokens activos que esta app tenga sobre tu cuenta. Cualquier persona que esté usando esta conexión cerrará sesión y deberá volver a autorizarla.",
+        "cancel": "Cancelar",
+        "confirm": "Revocar acceso",
+        "revoking": "Revocando…"
+      }
+    },
+    "oauthConnectors": {
+      "copyMcpUrl": "Copiar URL del MCP",
+      "learnMore": "Más información"
     }
   },
   "connect": {
@@ -1810,7 +1848,12 @@
       "prompt3": "¿Cuánto presupuesto me queda?"
     },
     "keysPageLink": "Configurar tu herramienta de IA →",
-    "backToKeys": "Volver a Keys"
+    "backToKeys": "Volver a Keys",
+    "oauthSection": {
+      "heading": "O conecta una herramienta de IA alojada vía OAuth",
+      "descriptionPrefix": "Para Claude.ai, ChatGPT y Gemini — pega la URL del MCP en tu herramienta y autoriza a Allotly cuando se te pida. Gestiona las apps aprobadas desde",
+      "descriptionSuffix": "."
+    }
   },
   "auth": {
     "claim": {

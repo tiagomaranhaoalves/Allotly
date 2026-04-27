@@ -1733,6 +1733,44 @@
         "teams": "Teams",
         "vouchers": "Vouchers"
       }
+    },
+    "connections": {
+      "heading": "Connections",
+      "subtitle": "OAuth apps that have access to your Allotly account.",
+      "activeTokens_one": "({{count}} active token)",
+      "activeTokens_other": "({{count}} active tokens)",
+      "revokeButton": "Revoke",
+      "footerNote": "Need to add a new app?",
+      "footerLink": "Connect AI tool →",
+      "empty": {
+        "title": "No OAuth connections yet",
+        "description": "Connect Allotly to claude.ai, ChatGPT or Gemini and the apps you authorize will appear here.",
+        "cta": "Connect your first AI tool →"
+      },
+      "table": {
+        "appName": "App name",
+        "scopes": "Scopes",
+        "firstAuthorized": "First authorized",
+        "lastUsed": "Last used",
+        "action": "Action",
+        "notUsed": "—"
+      },
+      "toastRevokedTitle": "Access revoked",
+      "toastRevokedDescription": "Revoked access for {{clientName}}",
+      "toastRevokedFallback": "Connection revoked",
+      "toastRevokeFailedTitle": "Revoke failed",
+      "toastRevokeFailedFallback": "Could not revoke access",
+      "dialog": {
+        "title": "Revoke access for {{clientName}}?",
+        "description": "This immediately revokes every active token this app holds against your account. Anyone using this connection will be signed out and will need to re-authorize.",
+        "cancel": "Cancel",
+        "confirm": "Revoke access",
+        "revoking": "Revoking…"
+      }
+    },
+    "oauthConnectors": {
+      "copyMcpUrl": "Copy MCP URL",
+      "learnMore": "Learn more"
     }
   },
   "connect": {
@@ -1810,7 +1848,12 @@
       "prompt3": "How much budget do I have left?"
     },
     "keysPageLink": "Set up your AI tool →",
-    "backToKeys": "Back to Keys"
+    "backToKeys": "Back to Keys",
+    "oauthSection": {
+      "heading": "Or connect a hosted AI tool via OAuth",
+      "descriptionPrefix": "For Claude.ai, ChatGPT, and Gemini — paste the MCP URL into your tool of choice and authorize Allotly when prompted. Manage approved apps anytime from",
+      "descriptionSuffix": "."
+    }
   },
   "auth": {
     "claim": {
