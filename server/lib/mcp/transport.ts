@@ -149,13 +149,14 @@ async function handleJsonRpc(req: JsonRpcRequest, authHeader: string | undefined
       });
     }
 
-    if (principal && principal.bearerKind === "oauth" && tool.requiredScope) {
+    if (principal && principal.bearerKind === "oauth") {
+      const requiredScope: "mcp" | "mcp:read" = tool.requiredScope ?? "mcp";
       const granted = principal.scopes || [];
-      if (!scopeIncludes(granted, tool.requiredScope)) {
+      if (!scopeIncludes(granted, requiredScope)) {
         const inputHash = hashInput(args);
         recordAudit({ membershipId: principalMembershipId, toolName, inputHash, ok: false, errorCode: -32002, latencyMs: Date.now() - start, ...auditCols });
-        return err(id, -32002, `OAuth token is missing required scope: ${tool.requiredScope}`, {
-          required_scope: tool.requiredScope,
+        return err(id, -32002, `OAuth token is missing required scope: ${requiredScope}`, {
+          required_scope: requiredScope,
           granted_scopes: granted,
           hint: "Request a new authorization with this scope.",
         });

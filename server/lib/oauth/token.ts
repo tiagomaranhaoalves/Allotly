@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { db, pool } from "../../db";
-import { oauthClients, oauthAuthorizationCodes, oauthTokens } from "@shared/schema";
+import { oauthClients, oauthAuthorizationCodes } from "@shared/schema";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { hashAuthorizationCode, hashRefreshToken, newRefreshToken, verifyPkceS256 } from "./pkce";
 import { issueAccessToken, ACCESS_TOKEN_TTL_SECONDS } from "./jwt";
@@ -131,16 +131,102 @@ async function handleAuthCodeGrant(req: Request, res: Response, body: any): Prom
   }
 
   const codeHash = hashAuthorizationCode(code);
-  const consumeQ = await pool.query(
-    `UPDATE oauth_authorization_codes
-       SET consumed_at = NOW()
-     WHERE code_hash = $1
-       AND consumed_at IS NULL
-       AND expires_at > NOW()
-     RETURNING client_id, membership_id, redirect_uri, code_challenge, scope, resource`,
-    [codeHash],
-  );
-  if (consumeQ.rowCount === 0) {
+  const dbClient = await pool.connect();
+  let consumed = false;
+  try {
+    await dbClient.query("BEGIN");
+    const consumeQ = await dbClient.query(
+      `UPDATE oauth_authorization_codes
+         SET consumed_at = NOW()
+       WHERE code_hash = $1
+         AND consumed_at IS NULL
+         AND expires_at > NOW()
+       RETURNING client_id, membership_id, redirect_uri, code_challenge, scope, resource`,
+      [codeHash],
+    );
+    if (consumeQ.rowCount === 0) {
+      await dbClient.query("ROLLBACK");
+      consumed = true; // jump to reuse-detection branch below (outside txn)
+    } else {
+      const row = consumeQ.rows[0];
+
+      if (row.client_id !== clientAuth.clientId) {
+        await dbClient.query("ROLLBACK");
+        res.status(400).json({ error: "invalid_grant", error_description: "code does not belong to this client" });
+        return;
+      }
+      if (row.redirect_uri !== redirectUri) {
+        await dbClient.query("ROLLBACK");
+        res.status(400).json({ error: "invalid_grant", error_description: "redirect_uri mismatch" });
+        return;
+      }
+      if (!verifyPkceS256(codeVerifier, row.code_challenge)) {
+        await dbClient.query("ROLLBACK");
+        res.status(400).json({ error: "invalid_grant", error_description: "PKCE verifier mismatch" });
+        return;
+      }
+
+      const userId = await membershipUserId(row.membership_id);
+      if (!userId) {
+        await dbClient.query("ROLLBACK");
+        res.status(400).json({ error: "invalid_grant", error_description: "membership not found" });
+        return;
+      }
+
+      const access = issueAccessToken({
+        userId,
+        membershipId: row.membership_id,
+        clientId: row.client_id,
+        scope: row.scope,
+        resource: row.resource,
+      });
+      const refresh = newRefreshToken();
+      const refreshExpiresAt = new Date(Date.now() + REFRESH_TTL_SECONDS * 1000);
+
+      await dbClient.query(
+        `INSERT INTO oauth_tokens
+            (client_id, membership_id, access_token_jti, refresh_token_hash,
+             authorization_code_hash, scope, resource, access_expires_at, refresh_expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          row.client_id,
+          row.membership_id,
+          access.jti,
+          refresh.tokenHash,
+          codeHash,
+          row.scope,
+          row.resource,
+          access.expiresAt,
+          refreshExpiresAt,
+        ],
+      );
+
+      await dbClient.query("COMMIT");
+
+      // Best-effort outside the txn; non-critical bookkeeping.
+      pool
+        .query("UPDATE oauth_clients SET last_used_at = NOW() WHERE id = $1", [row.client_id])
+        .catch(() => {});
+
+      res.json({
+        access_token: access.token,
+        token_type: "Bearer",
+        expires_in: ACCESS_TOKEN_TTL_SECONDS,
+        refresh_token: refresh.token,
+        scope: row.scope,
+      });
+      return;
+    }
+  } catch (e) {
+    try {
+      await dbClient.query("ROLLBACK");
+    } catch {}
+    throw e;
+  } finally {
+    dbClient.release();
+  }
+
+  if (consumed) {
     // RFC 6749 §4.1.2 — if a previously-consumed code is presented again, the
     // server MUST attempt to revoke all access tokens issued from it. We mark
     // every oauth_tokens row that points to this code_hash as revoked, and
@@ -170,58 +256,6 @@ async function handleAuthCodeGrant(req: Request, res: Response, body: any): Prom
     res.status(400).json({ error: "invalid_grant", error_description: "code is invalid, expired, or already used" });
     return;
   }
-  const row = consumeQ.rows[0];
-
-  if (row.client_id !== clientAuth.clientId) {
-    res.status(400).json({ error: "invalid_grant", error_description: "code does not belong to this client" });
-    return;
-  }
-  if (row.redirect_uri !== redirectUri) {
-    res.status(400).json({ error: "invalid_grant", error_description: "redirect_uri mismatch" });
-    return;
-  }
-  if (!verifyPkceS256(codeVerifier, row.code_challenge)) {
-    res.status(400).json({ error: "invalid_grant", error_description: "PKCE verifier mismatch" });
-    return;
-  }
-
-  const userId = await membershipUserId(row.membership_id);
-  if (!userId) {
-    res.status(400).json({ error: "invalid_grant", error_description: "membership not found" });
-    return;
-  }
-
-  const access = issueAccessToken({
-    userId,
-    membershipId: row.membership_id,
-    clientId: row.client_id,
-    scope: row.scope,
-    resource: row.resource,
-  });
-  const refresh = newRefreshToken();
-  const refreshExpiresAt = new Date(Date.now() + REFRESH_TTL_SECONDS * 1000);
-
-  await db.insert(oauthTokens).values({
-    clientId: row.client_id,
-    membershipId: row.membership_id,
-    accessTokenJti: access.jti,
-    refreshTokenHash: refresh.tokenHash,
-    authorizationCodeHash: codeHash,
-    scope: row.scope,
-    resource: row.resource,
-    accessExpiresAt: access.expiresAt,
-    refreshExpiresAt,
-  });
-
-  await pool.query("UPDATE oauth_clients SET last_used_at = NOW() WHERE id = $1", [row.client_id]);
-
-  res.json({
-    access_token: access.token,
-    token_type: "Bearer",
-    expires_in: ACCESS_TOKEN_TTL_SECONDS,
-    refresh_token: refresh.token,
-    scope: row.scope,
-  });
 }
 
 async function handleRefreshGrant(req: Request, res: Response, body: any): Promise<void> {

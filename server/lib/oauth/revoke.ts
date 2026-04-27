@@ -5,36 +5,33 @@ import { verifyAccessToken } from "./jwt";
 import { redisSet } from "../redis";
 import { ACCESS_TOKEN_TTL_SECONDS } from "./jwt";
 
-/**
- * Revoke every non-revoked oauth_tokens row owned by (clientId, membershipId)
- * in a single UPDATE. Used by the dashboard "revoke connection" action so a
- * user can sever a third-party MCP host's access without touching the
- * oauth_clients row (other memberships may still rely on it).
- *
- * Idempotent: zero affected rows is a normal outcome (already revoked, or the
- * client was never connected to this membership). Returns the number of
- * tokens just transitioned from active → revoked. Each revoked access JTI is
- * mirrored into the Redis revocation set for the remainder of its TTL so
- * in-flight bearer checks reject it before the DB lookup ever runs.
- */
+// Remaining lifetime for the access JTI in seconds, floored at 1.
+function remainingTtlSeconds(expiresAt: Date | string | null | undefined): number {
+  if (!expiresAt) return ACCESS_TOKEN_TTL_SECONDS;
+  const ms = new Date(expiresAt).getTime() - Date.now();
+  if (!Number.isFinite(ms) || ms <= 0) return 1;
+  return Math.max(1, Math.ceil(ms / 1000));
+}
+
+// Revoke every non-revoked oauth_tokens row for (clientId, membershipId).
+// Idempotent. Each revoked JTI is mirrored into Redis for its remaining TTL.
 export async function revokeAllTokensForClientMembership(
   clientId: string,
   membershipId: string,
 ): Promise<number> {
-  const result = await pool.query(
+  const result = await pool.query<{ access_token_jti: string; access_expires_at: Date }>(
     `UPDATE oauth_tokens
         SET revoked_at = NOW()
       WHERE client_id = $1
         AND membership_id = $2
         AND revoked_at IS NULL
-   RETURNING access_token_jti`,
+   RETURNING access_token_jti, access_expires_at`,
     [clientId, membershipId],
   );
-  const jtis = (result.rows || []).map((r: { access_token_jti: string }) => r.access_token_jti);
-  for (const jti of jtis) {
-    await redisSet(`allotly:oauth:revoked:${jti}`, "1", ACCESS_TOKEN_TTL_SECONDS);
+  for (const row of result.rows) {
+    await redisSet(`allotly:oauth:revoked:${row.access_token_jti}`, "1", remainingTtlSeconds(row.access_expires_at));
   }
-  return jtis.length;
+  return result.rows.length;
 }
 
 export async function revokeHandler(req: Request, res: Response): Promise<void> {
@@ -64,25 +61,30 @@ export async function revokeHandler(req: Request, res: Response): Promise<void> 
   }
 
   if (revokedAccessJti) {
-    const r = await pool.query(
-      `UPDATE oauth_tokens SET revoked_at = NOW() WHERE access_token_jti = $1 AND revoked_at IS NULL RETURNING access_token_jti`,
+    const r = await pool.query<{ access_token_jti: string; access_expires_at: Date }>(
+      `UPDATE oauth_tokens
+          SET revoked_at = NOW()
+        WHERE access_token_jti = $1
+          AND revoked_at IS NULL
+    RETURNING access_token_jti, access_expires_at`,
       [revokedAccessJti],
     );
-    if (r.rowCount && r.rowCount > 0) {
-      await redisSet(`allotly:oauth:revoked:${revokedAccessJti}`, "1", ACCESS_TOKEN_TTL_SECONDS);
-    } else {
-      await redisSet(`allotly:oauth:revoked:${revokedAccessJti}`, "1", ACCESS_TOKEN_TTL_SECONDS);
-    }
+    const ttl = r.rowCount && r.rowCount > 0 ? remainingTtlSeconds(r.rows[0].access_expires_at) : ACCESS_TOKEN_TTL_SECONDS;
+    await redisSet(`allotly:oauth:revoked:${revokedAccessJti}`, "1", ttl);
   }
 
   if (revokedRefreshHash) {
-    const r = await pool.query(
-      `UPDATE oauth_tokens SET revoked_at = NOW() WHERE refresh_token_hash = $1 AND revoked_at IS NULL RETURNING access_token_jti`,
+    const r = await pool.query<{ access_token_jti: string; access_expires_at: Date }>(
+      `UPDATE oauth_tokens
+          SET revoked_at = NOW()
+        WHERE refresh_token_hash = $1
+          AND revoked_at IS NULL
+    RETURNING access_token_jti, access_expires_at`,
       [revokedRefreshHash],
     );
     if (r.rowCount && r.rowCount > 0) {
-      const jti = r.rows[0].access_token_jti as string;
-      await redisSet(`allotly:oauth:revoked:${jti}`, "1", ACCESS_TOKEN_TTL_SECONDS);
+      const row = r.rows[0];
+      await redisSet(`allotly:oauth:revoked:${row.access_token_jti}`, "1", remainingTtlSeconds(row.access_expires_at));
     }
   }
 
