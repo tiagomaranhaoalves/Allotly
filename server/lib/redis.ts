@@ -227,15 +227,13 @@ export async function redisDel(key: string): Promise<void> {
 }
 
 export async function redisGetDel(key: string): Promise<string | null> {
-  // Atomic GETDEL (Redis 6.2+, ioredis ^5.10). Required for single-use
-  // semantics (e.g. OAuth pending-request consumption); no GET+DEL fallback.
+  // Atomic GETDEL (Redis 6.2+, ioredis ^5.10) for single-use semantics
+  // (e.g. OAuth pending-request consumption).
   if (REDIS_REQUIRED) {
-    const v = await (requireRedisOrThrow() as any).getdel(key);
-    return v ?? null;
+    return (await requireRedisOrThrow().getdel(key)) ?? null;
   }
   if (!useMemory && redis) {
-    const v = await (redis as any).getdel(key);
-    return v ?? null;
+    return (await redis.getdel(key)) ?? null;
   }
   const v = cleanExpired(key);
   if (v !== null) memoryStore.delete(key);
