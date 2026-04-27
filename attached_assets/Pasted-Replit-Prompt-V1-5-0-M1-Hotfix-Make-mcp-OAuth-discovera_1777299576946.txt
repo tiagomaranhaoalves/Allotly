@@ -1,0 +1,129 @@
+Replit Prompt — V1.5.0 M1 Hotfix: Make /mcp OAuth-discoverable per RFC 9728 / MCP spec
+You are fixing a missed deliverable from V1.5.0 M1 that blocks OAuth from working with Claude.ai, ChatGPT, and Gemini even though the server-side OAuth flow is live.
+
+Symptom (verified live on prod just now): Tiago added Allotly as a custom connector at claude.ai/settings/connectors with URL https://allotly.ai/mcp. Claude.ai marked the connector as connected (because tools/list is public and returned 13 tools), but the OAuth flow never kicked off. Tool invocation will silently fail.
+
+Root cause: the MCP transport returns HTTP 200 + JSON-RPC error envelope for unauthenticated tools/call requests, instead of HTTP 401 + WWW-Authenticate: Bearer resource_metadata="...". And /.well-known/oauth-protected-resource (RFC 9728) doesn't exist. So OAuth-discovering MCP clients (Claude.ai, ChatGPT, Gemini Workspace) never enter their OAuth handshake branch — they assume the resource isn't OAuth-protected.
+
+Locked decisions — implement, do not ask. One end-of-task report. No progress check-ins.
+
+Locked decisions
+Reuse, don't refactor. Existing files: server/lib/mcp/transport.ts, server/lib/oauth/discovery.ts, server/lib/oauth/index.ts. Keep the JSON-RPC error envelope in the response body — only change the HTTP status code and add a header.
+Resource metadata URL: https://allotly.ai/.well-known/oauth-protected-resource. Mount in the same place as the other discovery endpoint (server/lib/oauth/index.ts).
+Resource identifier: https://allotly.ai/mcp (the canonical MCP audience — same string already used as MCP_AUDIENCE in server/lib/mcp/auth.ts / server/lib/oauth/scopes.ts. Reuse that constant.)
+Authorization server: https://allotly.ai (the OAuth issuer, already in OAUTH_ISSUER from server/lib/oauth/jwt.ts. Reuse.)
+HTTP 401 ONLY when the request has no Authorization header, OR an invalid/expired/revoked OAuth bearer. If the request has a malformed key or expired voucher, return HTTP 401 too — same handshake. The decision rule is simple: any time authenticate() throws because of missing/invalid bearer, return HTTP 401 with WWW-Authenticate. That covers all three bearer kinds; clients that don't speak OAuth just see a 401 with a JSON-RPC error body and behave the same as today.
+HTTP 403 + WWW-Authenticate: Bearer error="insufficient_scope" when the bearer is valid but lacks the required scope. This is the RFC 6750 §3.1 mapping. Currently we return JSON-RPC -32002 with HTTP 200 — change to HTTP 403 + header. Body keeps the JSON-RPC envelope.
+Voucher-only tool rejection of OAuth bearers (current -32002 "Tool X cannot be invoked with OAuth bearer") stays as HTTP 200 — it's not a discovery handshake, it's a policy rejection. Leave it alone.
+tools/list, prompts/list, resources/list, initialize, ping stay public (HTTP 200). Discovery endpoints must work without auth so MCP clients can find what's there before authenticating.
+Update the auth-error message body in server/lib/mcp/auth.ts:80: the hint currently says only Set Authorization: Bearer allotly_sk_... or Authorization: Bearer ALLOT-XXXX-XXXX-XXXX. — add OAuth as a third option: Or complete the OAuth flow at https://allotly.ai/.well-known/oauth-authorization-server.
+WWW-Authenticate format (verbatim, both endpoints):
+For 401 (missing/invalid bearer):
+Bearer realm="MCP", resource_metadata="https://allotly.ai/.well-known/oauth-protected-resource", error="invalid_token"
+For 403 (insufficient scope):
+Bearer realm="MCP", resource_metadata="https://allotly.ai/.well-known/oauth-protected-resource", error="insufficient_scope", scope="<required-scope>"
+No DB changes. No db:push.
+Tests are mandatory — see Tests section.
+Scope — exact deliverables
+Backend
+File: new server/lib/oauth/protected-resource.ts
+
+Single handler protectedResourceHandler(req, res) returning Content-Type: application/json with this body:
+
+{
+  "resource": "https://allotly.ai/mcp",
+  "authorization_servers": ["https://allotly.ai"],
+  "scopes_supported": ["mcp", "mcp:read"],
+  "bearer_methods_supported": ["header"],
+  "resource_documentation": "https://allotly.ai/docs"
+}
+Use the existing MCP_AUDIENCE, OAUTH_ISSUER, and SUPPORTED_SCOPES constants — do not hardcode strings. Cache-Control: public, max-age=3600.
+
+Mount in server/lib/oauth/index.ts on the line after the existing /.well-known/oauth-authorization-server:
+
+app.get("/.well-known/oauth-protected-resource", protectedResourceHandler);
+Update the console.log("[oauth] mounted ...") line to include the new endpoint.
+
+File: server/lib/mcp/transport.ts
+
+This is the surgical change. The current app.post(path, ...) handler at transport.ts:252 always returns HTTP 200. Refactor handleJsonRpc to optionally signal an HTTP status to the outer handler.
+
+Concrete approach (pick whichever is cleanest, but the constraint is: HTTP status flows out from handleJsonRpc to the express handler):
+
+Change handleJsonRpc return type to { httpStatus: number; wwwAuthenticate?: string; body: JsonRpcResponse }.
+Default httpStatus: 200, no header.
+In the tools/call auth catch block at transport.ts:123-128: when authErr is the "Missing or invalid Authorization header" error or any auth failure (token expired, revoked, signature invalid, audience mismatch, etc.), set httpStatus: 401 and wwwAuthenticate: 'Bearer realm="MCP", resource_metadata="https://allotly.ai/.well-known/oauth-protected-resource", error="invalid_token"'.
+In the requiresAuth && !principal branch at transport.ts:131-135: same — HTTP 401 + WWW-Authenticate.
+In the OAuth scope-check branch at transport.ts:152-167: set httpStatus: 403 and wwwAuthenticate: 'Bearer realm="MCP", resource_metadata="https://allotly.ai/.well-known/oauth-protected-resource", error="insufficient_scope", scope="${requiredScope}"'.
+In the voucherOnly && bearerKind === "oauth" branch at transport.ts:143-150: keep HTTP 200 (this is policy, not discovery).
+All other paths (success, unknown tool, internal errors) stay HTTP 200.
+Then in app.post(path, ...) at transport.ts:252: use the returned httpStatus and set the WWW-Authenticate header before res.json(...).
+
+For batched requests at transport.ts:263-266: if ANY response in the batch has httpStatus === 401, the batch response is HTTP 401 with the strongest WWW-Authenticate. If the batch is mixed (some 401, some 200), the spec is ambiguous — for our case, either:
+
+return HTTP 207-ish behavior (200 with mixed body) — DO NOT do this, it's non-standard;
+or just return the highest HTTP status (401 > 403 > 200) and the corresponding header.
+Use the simple "highest status wins" approach. Document it with a one-line comment.
+File: server/lib/mcp/auth.ts:80
+
+Update the error message hint string. Currently:
+
+Set Authorization: Bearer allotly_sk_... or Authorization: Bearer ALLOT-XXXX-XXXX-XXXX.
+Change to (single line):
+
+Set Authorization: Bearer allotly_sk_..., or Authorization: Bearer ALLOT-XXXX-XXXX-XXXX, or complete the OAuth flow advertised at /.well-known/oauth-protected-resource.
+Tests
+New file: tests/oauth/protected-resource.test.ts (Vitest)
+
+GET /.well-known/oauth-protected-resource returns HTTP 200, application/json, with resource, authorization_servers, scopes_supported, and bearer_methods_supported fields matching the locked values exactly.
+Cache-Control header is public, max-age=3600.
+New file: tests/mcp/transport-auth-discovery.test.ts (Vitest, follow patterns in existing tests/mcp/ files)
+
+POST /mcp with body {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"my_status","arguments":{}}} and NO Authorization header → HTTP 401, header WWW-Authenticate matches the locked 401 format exactly, body is a valid JSON-RPC error with code -32001.
+Same call with Authorization: Bearer invalid-junk → HTTP 401 + same WWW-Authenticate header.
+Same call with an expired/revoked OAuth bearer (mint one and revoke it via the existing test helpers) → HTTP 401 + same header.
+Same call with a valid OAuth bearer that has only mcp:read scope, against a tool that requires mcp (e.g. chat) → HTTP 403, header WWW-Authenticate matches the locked 403 format with scope="mcp", body is a valid JSON-RPC error with code -32002.
+Same call with a voucher-only tool (redeem_voucher) and a valid OAuth bearer → HTTP 200 (policy rejection, NOT a discovery handshake), body code -32002. This is the regression guard for locked decision #7.
+POST /mcp with tools/list and no Authorization header → HTTP 200 (public discovery). Regression guard for locked decision #8.
+POST /mcp with a batched body where one request is tools/list (public) and another is tools/call (auth-required, no bearer) → HTTP 401 with the locked WWW-Authenticate header (highest-status-wins per locked decision in the file).
+Existing 46 OAuth tests + 7 connections tests + every other MCP test must still pass. If tests/mcp/* or tests/oauth/integration.test.ts had assumptions like expect(res.statusCode).toBe(200) for unauth tool-call cases, fix them to expect 401.
+
+Out of scope — DO NOT TOUCH
+The OAuth flow itself (server/lib/oauth/{authorize,token,register,revoke,connections}.ts) — already shipped and correct.
+DCR endpoint, consent screen, token issuance — unchanged.
+shared/schema.ts — no DB changes.
+The npm bridge package — clients don't need updates; they already speak HTTP 401 correctly.
+Any V1 / M2 frontend — no UI changes here.
+server/routes.ts and server/webhookHandlers.ts pre-existing TS errors — leave them.
+Acceptance checklist
+npm run check     # type + description-hash check
+npm run test      # full suite — 46 OAuth + 7 connections + new tests + everything else, all green
+npm run build     # esbuild bundle
+Then live-verify in the dev preview:
+
+# Discovery endpoint exists
+curl -s https://<dev-url>/.well-known/oauth-protected-resource
+
+# Unauth tools/call returns 401 + WWW-Authenticate
+curl -s -i -X POST https://<dev-url>/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"my_status","arguments":{}}}' \
+  | grep -E "HTTP|WWW-Authenticate"
+
+# tools/list still public (200)
+curl -s -i -X POST https://<dev-url>/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
+  | grep "HTTP"
+Expected: discovery endpoint returns the locked JSON; unauth tools/call returns HTTP/2 401 and WWW-Authenticate: Bearer realm="MCP", resource_metadata="https://allotly.ai/.well-known/oauth-protected-resource", error="invalid_token"; tools/list still returns HTTP/2 200.
+
+Final report format
+One message containing:
+
+Files created (paths only).
+Files modified (paths only).
+Test results: <n> passed.
+Build result: success.
+Live-verify curl outputs (HTTP status + WWW-Authenticate line for each).
+Anything you couldn't do and why.
+Push to GitHub via the Git pane immediately after the report. Do NOT push automatically. Do NOT redeploy.

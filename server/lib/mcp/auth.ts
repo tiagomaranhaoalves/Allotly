@@ -77,7 +77,9 @@ function looksLikeJwt(s: string): boolean {
 export async function authenticate(authHeader: string | undefined, options: { allowAnonymous?: boolean } = {}): Promise<McpPrincipal | null> {
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     if (options.allowAnonymous) return null;
-    throw new McpToolError("Unauthorised", "Missing or invalid Authorization header");
+    throw new McpToolError("Unauthorised", "Missing or invalid Authorization header", {
+      hint: "Set Authorization: Bearer allotly_sk_..., or Authorization: Bearer ALLOT-XXXX-XXXX-XXXX, or complete the OAuth flow advertised at /.well-known/oauth-protected-resource.",
+    });
   }
   const bearer = authHeader.slice(7).trim();
 

@@ -7,9 +7,16 @@ import { listPrompts, getPrompt } from "./prompts";
 import { RESOURCES, readResource } from "./resources";
 import { hashInput, recordAudit } from "./audit";
 import { scopeIncludes } from "../oauth/scopes";
+import { OAUTH_ISSUER } from "../oauth/jwt";
 
 const PROTOCOL_VERSION = "2025-03-26";
 const MCP_VERSION = "1.0.0";
+
+const RESOURCE_METADATA_URL = `${OAUTH_ISSUER}/.well-known/oauth-protected-resource`;
+const WWW_AUTH_INVALID_TOKEN = `Bearer realm="MCP", resource_metadata="${RESOURCE_METADATA_URL}", error="invalid_token"`;
+function wwwAuthInsufficientScope(scope: string): string {
+  return `Bearer realm="MCP", resource_metadata="${RESOURCE_METADATA_URL}", error="insufficient_scope", scope="${scope}"`;
+}
 
 interface JsonRpcRequest {
   jsonrpc: "2.0";
@@ -25,6 +32,12 @@ interface JsonRpcResponse {
   error?: { code: number; message: string; data?: any };
 }
 
+interface JsonRpcEnvelope {
+  httpStatus: number;
+  wwwAuthenticate?: string;
+  body: JsonRpcResponse;
+}
+
 function ok(id: any, result: any): JsonRpcResponse {
   return { jsonrpc: "2.0", id, result };
 }
@@ -33,13 +46,17 @@ function err(id: any, code: number, message: string, data?: any): JsonRpcRespons
   return { jsonrpc: "2.0", id, error: { code, message, ...(data ? { data } : {}) } };
 }
 
+function envelope(body: JsonRpcResponse, httpStatus = 200, wwwAuthenticate?: string): JsonRpcEnvelope {
+  return wwwAuthenticate ? { httpStatus, wwwAuthenticate, body } : { httpStatus, body };
+}
+
 function setMcpHeaders(res: Response): void {
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("X-Allotly-Mcp-Version", MCP_VERSION);
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, MCP-Session-Id");
-  res.setHeader("Access-Control-Expose-Headers", "MCP-Session-Id, X-Allotly-Mcp-Version");
+  res.setHeader("Access-Control-Expose-Headers", "MCP-Session-Id, X-Allotly-Mcp-Version, WWW-Authenticate");
 }
 
 function jsonSchemaFor(zSchema: z.ZodTypeAny): Record<string, any> {
@@ -77,11 +94,11 @@ function principalAuditCols(p: McpPrincipal | null): { clientId: string | null; 
   return { clientId: p.clientId ?? null, audience: p.resource ?? null };
 }
 
-async function handleJsonRpc(req: JsonRpcRequest, authHeader: string | undefined): Promise<JsonRpcResponse> {
+async function handleJsonRpc(req: JsonRpcRequest, authHeader: string | undefined): Promise<JsonRpcEnvelope> {
   const id = req.id ?? null;
 
   if (req.method === "initialize") {
-    return ok(id, {
+    return envelope(ok(id, {
       protocolVersion: PROTOCOL_VERSION,
       capabilities: {
         tools: { listChanged: false },
@@ -89,11 +106,11 @@ async function handleJsonRpc(req: JsonRpcRequest, authHeader: string | undefined
         resources: { listChanged: false, subscribe: false },
       },
       serverInfo: { name: "allotly-mcp", version: MCP_VERSION },
-    });
+    }));
   }
 
-  if (req.method === "notifications/initialized") return ok(id, {});
-  if (req.method === "ping") return ok(id, {});
+  if (req.method === "notifications/initialized") return envelope(ok(id, {}));
+  if (req.method === "ping") return envelope(ok(id, {}));
 
   if (req.method === "tools/list") {
     const tools = listTools().map(t => ({
@@ -101,7 +118,7 @@ async function handleJsonRpc(req: JsonRpcRequest, authHeader: string | undefined
       description: t.description,
       inputSchema: jsonSchemaFor(t.inputSchema),
     }));
-    return ok(id, { tools });
+    return envelope(ok(id, { tools }));
   }
 
   if (req.method === "tools/call") {
@@ -112,7 +129,7 @@ async function handleJsonRpc(req: JsonRpcRequest, authHeader: string | undefined
     const tool = getTool(toolName);
     if (!tool) {
       recordAudit({ membershipId: null, toolName: toolName || "<unknown>", inputHash: hashInput(args), ok: false, errorCode: -32601, latencyMs: Date.now() - start });
-      return err(id, -32601, `Unknown tool: ${toolName}`);
+      return envelope(err(id, -32601, `Unknown tool: ${toolName}`));
     }
 
     let principal: McpPrincipal | null = null;
@@ -124,14 +141,20 @@ async function handleJsonRpc(req: JsonRpcRequest, authHeader: string | undefined
       const inputHash = hashInput(args);
       const errCode = authErr instanceof McpToolError ? authErr.code : -32001;
       recordAudit({ membershipId: null, toolName, inputHash, ok: false, errorCode: errCode, latencyMs: Date.now() - start });
-      if (authErr instanceof McpToolError) return err(id, authErr.code, authErr.message, authErr.data);
-      return err(id, -32001, authErr.message || "Authentication failed");
+      // Per RFC 9728 / MCP spec: any authenticate() failure on a protected
+      // tool is a discovery handshake — return HTTP 401 + WWW-Authenticate so
+      // OAuth-aware clients (Claude.ai, ChatGPT, Gemini) can find the
+      // resource-metadata document and start their OAuth flow.
+      const body = authErr instanceof McpToolError
+        ? err(id, authErr.code, authErr.message, authErr.data)
+        : err(id, -32001, authErr.message || "Authentication failed");
+      return envelope(body, 401, WWW_AUTH_INVALID_TOKEN);
     }
 
     if (tool.requiresAuth && !principal) {
       const inputHash = hashInput(args);
       recordAudit({ membershipId: null, toolName, inputHash, ok: false, errorCode: -32001, latencyMs: Date.now() - start });
-      return err(id, -32001, "Authentication required for this tool");
+      return envelope(err(id, -32001, "Authentication required for this tool"), 401, WWW_AUTH_INVALID_TOKEN);
     }
 
     const auditCols = principalAuditCols(principal);
@@ -140,13 +163,17 @@ async function handleJsonRpc(req: JsonRpcRequest, authHeader: string | undefined
     // not legacy raw-key callers. The intent is "do not let a third-party OAuth
     // client redeem on a user's behalf"; key-bearer humans/scripts may still
     // mint a voucher session for themselves.
+    //
+    // This is a POLICY rejection, not an OAuth discovery handshake — keep
+    // HTTP 200 so OAuth clients don't try to re-auth (they're already
+    // authenticated; they're just calling a tool they're never allowed to call).
     if (principal && tool.voucherOnly && principal.bearerKind === "oauth") {
       const inputHash = hashInput(args);
       recordAudit({ membershipId: principalMembershipId, toolName, inputHash, ok: false, errorCode: -32002, latencyMs: Date.now() - start, ...auditCols });
-      return err(id, -32002, `Tool ${toolName} cannot be invoked with an OAuth bearer; pass the voucher code (ALLOT-...) directly`, {
+      return envelope(err(id, -32002, `Tool ${toolName} cannot be invoked with an OAuth bearer; pass the voucher code (ALLOT-...) directly`, {
         hint: "Re-issue the call with the voucher code in the Authorization header.",
         bearer_kind_received: principal.bearerKind,
-      });
+      }));
     }
 
     if (principal && principal.bearerKind === "oauth") {
@@ -155,11 +182,12 @@ async function handleJsonRpc(req: JsonRpcRequest, authHeader: string | undefined
       if (!scopeIncludes(granted, requiredScope)) {
         const inputHash = hashInput(args);
         recordAudit({ membershipId: principalMembershipId, toolName, inputHash, ok: false, errorCode: -32002, latencyMs: Date.now() - start, ...auditCols });
-        return err(id, -32002, `OAuth token is missing required scope: ${requiredScope}`, {
+        // RFC 6750 §3.1: bearer is valid but lacks the required scope.
+        return envelope(err(id, -32002, `OAuth token is missing required scope: ${requiredScope}`, {
           required_scope: requiredScope,
           granted_scopes: granted,
           hint: "Request a new authorization with this scope.",
-        });
+        }), 403, wwwAuthInsufficientScope(requiredScope));
       }
     }
 
@@ -167,29 +195,29 @@ async function handleJsonRpc(req: JsonRpcRequest, authHeader: string | undefined
     const parsed = tool.inputSchema.safeParse(args);
     if (!parsed.success) {
       recordAudit({ membershipId: principalMembershipId, toolName, inputHash, ok: false, errorCode: -32100, latencyMs: Date.now() - start, ...auditCols });
-      return err(id, -32100, "Invalid input", {
+      return envelope(err(id, -32100, "Invalid input", {
         message: "Input validation failed",
         hint: "Check the tool's input schema and retry.",
         issues: parsed.error.issues.map(i => ({ path: i.path, message: i.message, code: i.code })),
-      });
+      }));
     }
 
     try {
       const result = await tool.handler(parsed.data, { principal, authHeader });
       recordAudit({ membershipId: principalMembershipId, toolName, inputHash, ok: true, errorCode: null, latencyMs: Date.now() - start, ...auditCols });
-      return ok(id, {
+      return envelope(ok(id, {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         structuredContent: result,
-      });
+      }));
     } catch (toolErr: any) {
       const errCode = toolErr instanceof McpToolError ? toolErr.code : -32603;
       recordAudit({ membershipId: principalMembershipId, toolName, inputHash, ok: false, errorCode: errCode, latencyMs: Date.now() - start, ...auditCols });
       if (toolErr instanceof McpToolError) {
         const rpc = toMcpRpcError(toolErr);
-        return err(id, rpc.code, rpc.message, rpc.data);
+        return envelope(err(id, rpc.code, rpc.message, rpc.data));
       }
       console.error(`[mcp:tool:${toolName}] unexpected error:`, toolErr);
-      return err(id, -32603, toolErr?.message || "Internal error");
+      return envelope(err(id, -32603, toolErr?.message || "Internal error"));
     }
   }
 
@@ -199,33 +227,33 @@ async function handleJsonRpc(req: JsonRpcRequest, authHeader: string | undefined
       description: p.description,
       arguments: p.arguments || [],
     }));
-    return ok(id, { prompts });
+    return envelope(ok(id, { prompts }));
   }
 
   if (req.method === "prompts/get") {
     const name = req.params?.name;
     const args = req.params?.arguments || {};
     const prompt = getPrompt(name);
-    if (!prompt) return err(id, -32601, `Unknown prompt: ${name}`);
-    return ok(id, prompt.render(args));
+    if (!prompt) return envelope(err(id, -32601, `Unknown prompt: ${name}`));
+    return envelope(ok(id, prompt.render(args)));
   }
 
   if (req.method === "resources/list") {
-    return ok(id, { resources: RESOURCES });
+    return envelope(ok(id, { resources: RESOURCES }));
   }
 
   if (req.method === "resources/read") {
     const uri = req.params?.uri;
-    if (!uri) return err(id, -32602, "uri parameter required");
+    if (!uri) return envelope(err(id, -32602, "uri parameter required"));
     let principal = null;
     try {
       principal = await authenticate(authHeader, { allowAnonymous: true });
     } catch {}
     const content = await readResource(uri, principal);
-    return ok(id, { contents: [content] });
+    return envelope(ok(id, { contents: [content] }));
   }
 
-  return err(id, -32601, `Method not found: ${req.method}`);
+  return envelope(err(id, -32601, `Method not found: ${req.method}`));
 }
 
 export function mountMcp(app: Express, path: string = "/mcp"): void {
@@ -261,13 +289,20 @@ export function mountMcp(app: Express, path: string = "/mcp"): void {
     }
 
     if (Array.isArray(body)) {
-      const responses = await Promise.all(body.map(r => handleJsonRpc(r, authHeader)));
-      res.json(responses.filter(r => r.id !== null || r.error));
+      const envelopes = await Promise.all(body.map(r => handleJsonRpc(r, authHeader)));
+      // Highest-status-wins for batched requests (401 > 403 > 200). The MCP +
+      // RFC 9728 spec is silent on mixed-status batch responses, so we surface
+      // the strongest discovery signal so OAuth-aware clients enter the
+      // handshake instead of silently swallowing per-item failures.
+      const winner = envelopes.reduce((acc, e) => (e.httpStatus > acc.httpStatus ? e : acc), envelopes[0] || { httpStatus: 200 } as JsonRpcEnvelope);
+      if (winner.wwwAuthenticate) res.setHeader("WWW-Authenticate", winner.wwwAuthenticate);
+      res.status(winner.httpStatus).json(envelopes.map(e => e.body).filter(b => b.id !== null || b.error));
       return;
     }
 
-    const response = await handleJsonRpc(body as JsonRpcRequest, authHeader);
-    res.json(response);
+    const env = await handleJsonRpc(body as JsonRpcRequest, authHeader);
+    if (env.wwwAuthenticate) res.setHeader("WWW-Authenticate", env.wwwAuthenticate);
+    res.status(env.httpStatus).json(env.body);
   });
 
   console.log(`[mcp] mounted at ${path} — ${listTools().length} tools, ${listPrompts().length} prompts, ${RESOURCES.length} resources`);
