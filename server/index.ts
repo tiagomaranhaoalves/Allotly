@@ -167,14 +167,9 @@ app.use((req, res, next) => {
 
 (async () => {
   try {
-    // Redis must be reachable before we mark the app ready. In production
-    // (NODE_ENV=production), waitForRedisReady() rejects when REDIS_URL is
-    // missing, when ioredis instantiation fails, or after a 10s connect
-    // timeout. We explicitly process.exit(1) on failure because the HTTP
-    // server is already listening (top of file) and an unhandled rejection
-    // would otherwise leave it serving 503s forever. In dev/test this
-    // resolves immediately or returns after the in-memory fallback log
-    // line — see server/lib/redis.ts.
+    // Production: rejects on missing REDIS_URL or 10s connect timeout.
+    // Outer catch calls process.exit(1) since the HTTP server is already
+    // listening and an unhandled rejection would leave it serving 503s.
     await waitForRedisReady();
 
     try {

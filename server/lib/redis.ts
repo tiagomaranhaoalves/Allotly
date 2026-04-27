@@ -9,17 +9,9 @@ const isTestEnv =
   process.env.VITEST === "true" ||
   !!process.env.VITEST_WORKER_ID;
 
-// Production-strict mode. When true:
-//   * Boot must successfully connect to Redis within REDIS_CONNECT_TIMEOUT_MS
-//     or the process refuses to start (initRedis throws).
-//   * Every helper throws if `redis` is null OR if the underlying ioredis
-//     call fails — no silent fallback to in-memory storage. This holds
-//     EVEN when REDIS_URL is unset, so a misconfigured prod deploy that
-//     somehow gets past the boot check still cannot serve fake state from
-//     per-process memory.
-// In all other cases (dev, test, dev-with-flaky-Redis), the existing
-// in-memory fallback is preserved so local development and the vitest suite
-// behave exactly as they did before this hotfix.
+// In production, fail loud: boot rejects if Redis is unreachable, and
+// helpers throw rather than silently falling back to in-memory storage.
+// Dev/test keep the in-memory fallback unchanged.
 const REDIS_REQUIRED = process.env.NODE_ENV === "production" && !isTestEnv;
 
 const REDIS_CONNECT_TIMEOUT_MS = 10_000;
@@ -33,12 +25,7 @@ function initRedis(): Promise<void> {
 
   if (!url) {
     if (process.env.NODE_ENV === "production") {
-      // Missing REDIS_URL in prod is the exact same silent-degrade trap
-      // as an unreachable host — fail loud so the deploy stops booting
-      // instead of quietly serving from per-process memory.
-      const err = new Error(
-        "[redis] REDIS_URL is required in production — refusing to boot",
-      );
+      const err = new Error("[redis] REDIS_URL is required in production — refusing to boot");
       console.error(err.message);
       return Promise.reject(err);
     }
@@ -66,17 +53,12 @@ function initRedis(): Promise<void> {
     console.log("[redis] Connected to Redis");
     useMemory = false;
   });
-  // Keep the listener — removing it would let an EventEmitter `error` event
-  // crash the process on every transient blip. Just don't flip useMemory:
-  // ioredis auto-reconnects via retryStrategy, and silently swapping to
-  // per-process memory is what corrupted OAuth pending state.
+  // Listener kept (removing it would crash on any transient error event),
+  // but no useMemory flip — ioredis auto-reconnects via retryStrategy.
   redis.on("error", (err) => {
     console.error("[redis] Connection error:", err.message);
   });
 
-  // redis.connect() returns a Promise<void> that resolves on the `ready`
-  // event (after AUTH/SELECT complete). Race it against a hard timeout so
-  // the process can either come up healthy or die loudly.
   if (REDIS_REQUIRED) {
     return new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -91,8 +73,6 @@ function initRedis(): Promise<void> {
         .connect()
         .then(() => {
           clearTimeout(timer);
-          // The `connect` event handler already flipped useMemory; this is
-          // belt-and-braces for ordering across ioredis versions.
           useMemory = false;
           resolve();
         })
@@ -107,7 +87,7 @@ function initRedis(): Promise<void> {
     });
   }
 
-  // Dev with REDIS_URL: try, but fall back to memory on failure (today's behaviour).
+  // Dev with REDIS_URL: try, fall back to memory on failure.
   return redis
     .connect()
     .then(() => {
@@ -120,13 +100,8 @@ function initRedis(): Promise<void> {
 }
 
 const initPromise: Promise<void> = initRedis();
-
-// Surface unhandled rejection of initPromise so a missing/late awaitor
-// in dev doesn't crash the process at an unexpected time. The boot path
-// in server/index.ts awaits this explicitly.
-initPromise.catch(() => {
-  /* awaited in server boot — see waitForRedisReady() */
-});
+// Awaited explicitly in server/index.ts via waitForRedisReady().
+initPromise.catch(() => {});
 
 export function waitForRedisReady(): Promise<void> {
   return initPromise;
@@ -252,12 +227,8 @@ export async function redisDel(key: string): Promise<void> {
 }
 
 export async function redisGetDel(key: string): Promise<string | null> {
-  // Atomic read-and-delete. Required by callers that must guarantee
-  // single-use semantics (e.g. OAuth pending-request consumption on
-  // /oauth/consent). ioredis ^5.10 (see package.json) ships native GETDEL
-  // (Redis 6.2+), which is invoked directly here — no GET+DEL fallback,
-  // because that would leave a race window where two concurrent consents
-  // could both succeed.
+  // Atomic GETDEL (Redis 6.2+, ioredis ^5.10). Required for single-use
+  // semantics (e.g. OAuth pending-request consumption); no GET+DEL fallback.
   if (REDIS_REQUIRED) {
     const v = await (requireRedisOrThrow() as any).getdel(key);
     return v ?? null;
