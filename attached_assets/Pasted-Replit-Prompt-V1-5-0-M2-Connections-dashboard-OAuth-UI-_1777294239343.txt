@@ -1,0 +1,104 @@
+Replit Prompt — V1.5.0 M2: Connections dashboard + OAuth UI
+You are implementing M2 of Allotly V1.5.0. M1 (OAuth 2.1 + DCR) is already shipped and live in production. This milestone adds the user-facing UI for OAuth: a Connections dashboard page, OAuth-connect cards on the existing Connect page, and a post-redeem upgrade path. Estimated half a day.
+
+Locked decisions — do NOT ask, just implement. A single end-of-task report when everything is done. No progress check-ins.
+
+Locked decisions
+Stack: existing wouter routing in client/src/App.tsx, existing DashboardShell layout, existing shared/schema.ts for OAuth tables (oauthClients, oauthTokens). Reuse ConnectorCard / ConnectorGrid from client/src/components/connectors/. Reuse shared/connector-snippets.ts as the single source of truth for any new snippets.
+No new DB columns. All M2 data comes from existing oauthClients + oauthTokens joined by client_id. "Last used" = MAX(oauth_tokens.issued_at) per client for the membership.
+Revocation semantics: revoking an OAuth app from the UI sets revokedAt = NOW() on every non-revoked oauth_tokens row WHERE client_id = :clientId AND membership_id = :membershipId. Do NOT touch oauthClients itself (other memberships may still use it). Reuse the existing chain-revoke helper in server/lib/oauth/revoke.ts if it fits; otherwise write a small helper next to it (revokeAllTokensForClientMembership).
+OAuth-connect cards for claude.ai, ChatGPT (Pro/Team/Enterprise/MCP-mode), and Gemini (Workspace/Vertex) on the existing /dashboard/connect page. These are informational cards — they explain how the user adds Allotly as an MCP server inside that product (which then triggers our discovery → DCR → authorize flow). They are NOT buttons that initiate /oauth/authorize from our side, because the OAuth flow is always client-initiated by the third-party MCP host. Each card has: logo, "Add Allotly to [Product]" heading, 2–4 step instructions, the MCP URL (https://allotly.ai/mcp) with copy button, and a "Learn more" link to a docs anchor (use /docs#oauth-claude-ai, /docs#oauth-chatgpt, /docs#oauth-gemini — leave the docs content for a follow-up, just point to the anchors).
+Post-redeem CTA upgrade: in client/src/pages/redeem.tsx, after a successful redemption, show a new section below the ConnectorGrid titled "Want to use Allotly with claude.ai?" with one CTA button "Claim a permanent account" → routes to existing /oauth/claim-account page. Only show this section for synthetic voucher users (@allotly.local email domain). For users who redeemed while already logged into a real account, hide it.
+Empty state on /dashboard/connections: when no OAuth tokens exist for the membership, render a friendly empty state with a link to /dashboard/connect ("Connect your first AI tool →"). Do NOT show the table.
+Auth: all new endpoints sit under the existing dashboard auth (session cookie). Use the same middleware pattern as /dashboard/keys endpoints.
+Tests: add Vitest integration tests for the new endpoints under tests/oauth/connections.test.ts. No new e2e tests required.
+Scope — exact deliverables
+Backend
+File: new server/lib/oauth/connections.ts
+
+Two route handlers, mounted in server/lib/oauth/index.ts:
+
+GET /api/oauth/connections — returns { connections: Connection[] } for the authenticated user's active membership. Connection = { clientId: string, clientName: string, scopes: string[], firstAuthorizedAt: ISO8601, lastUsedAt: ISO8601 | null, activeTokenCount: number }. Query: SELECT from oauthClients JOIN oauthTokens ON client_id, WHERE oauth_tokens.membership_id = :membershipId AND oauth_tokens.revoked_at IS NULL, GROUP BY client_id. firstAuthorizedAt = MIN(issued_at), lastUsedAt = MAX(issued_at), activeTokenCount = COUNT(*). scopes = distinct values from the matching oauth_tokens.scope strings, split on space.
+DELETE /api/oauth/connections/:clientId — revokes all non-revoked tokens for (clientId, membershipId) in a single UPDATE. Returns { revokedCount: number }. Logs to mcp_audit_log with tool_name = "oauth.revoke", client_id = :clientId, no audience. Idempotent: revoking when no active tokens returns { revokedCount: 0 } and 200, not 404.
+Mount both in server/lib/oauth/index.ts after the existing routes.
+
+Frontend
+New page: client/src/pages/dashboard/connections.tsx
+
+Wire route in client/src/App.tsx after /dashboard/connect:
+
+<Route path="/dashboard/connections">
+  {() => <DashboardRoute component={ConnectionsPage} />}
+</Route>
+Add nav entry in client/src/components/dashboard-shell.tsx directly after connect-ai-tool:
+
+{ testId: "connections", i18nKey: "dashboard.sidebar.connections", href: "/dashboard/connections", icon: Link2 },
+(Use Link2 from lucide-react.) Add the i18n key dashboard.sidebar.connections = "Connections" to all locale files that already define dashboard.sidebar.connectAiTool.
+
+Page contents:
+
+Header: "Connections" + subtitle "OAuth apps that have access to your Allotly account."
+Use useQuery (TanStack) to fetch /api/oauth/connections.
+Loading: skeleton rows.
+Empty: friendly empty state per locked decision #6.
+Populated: a <Table> (use existing shadcn Table component) with columns: App name, Scopes (badges), First authorized, Last used, Action. Action column has a "Revoke" button (destructive variant) that opens an AlertDialog confirmation. On confirm, useMutation calls DELETE /api/oauth/connections/:clientId, on success invalidates the connections query and toasts "Revoked access for {clientName}".
+All interactive elements MUST have data-testid attributes following the project convention (button-revoke-{clientId}, dialog-confirm-revoke, etc.).
+Updated page: client/src/pages/dashboard/connect.tsx
+
+Add a new section below the existing connector grid titled "Connect via OAuth (advanced)" with a 3-card grid:
+
+Claude.ai card → MCP URL https://allotly.ai/mcp, instructions: 1. Open Claude.ai → Settings → Connectors. 2. Click "Add custom connector". 3. Paste the MCP URL above. 4. Authorize Allotly when prompted.
+ChatGPT card → same MCP URL, instructions: 1. ChatGPT Pro/Team/Enterprise required. 2. Settings → Beta features → MCP. 3. Add server with the URL above. 4. Sign in via Allotly when prompted.
+Gemini card → same MCP URL, instructions: 1. Workspace or Vertex AI tier required. 2. Open Agent Builder → Tools → Add MCP. 3. Use URL above. 4. Authorize via Allotly.
+Build a new OAuthConnectorCard component at client/src/components/connectors/oauth-connector-card.tsx (sibling of connector-card.tsx) for these. Export from client/src/components/connectors/index.ts. Each card: logo (use generic icons from lucide if no asset), heading, numbered steps, copyable MCP URL field, "Learn more" link.
+
+Updated page: client/src/pages/redeem.tsx
+
+After the existing post-redeem ConnectorGrid, add the upgrade CTA per locked decision #5. Detect synthetic user via the existing user object — if user.email ends with @allotly.local, show the section.
+
+Snippets
+If you add new snippet strings (MCP URL paste blocks for the OAuth cards), put them in shared/connector-snippets.ts under a new oauthConnectors export. Do NOT inline them in the React components. Honour the description-hash pinning system — run npm run check and update hashes as the script directs.
+
+Tests
+New file: tests/oauth/connections.test.ts (Vitest, follow the pattern of tests/oauth/integration.test.ts)
+
+Cover:
+
+GET /api/oauth/connections returns empty array for membership with no tokens.
+After completing an OAuth flow (use the existing test helpers), the new client appears with correct scopes/timestamps.
+After issuing 2 access tokens for the same client, activeTokenCount === 2, single row.
+DELETE /api/oauth/connections/:clientId revokes both tokens; subsequent GET excludes the client.
+Repeated DELETE returns 200 with revokedCount: 0.
+DELETE for a client owned by a different membership returns 200 with revokedCount: 0 (no info leak, no error). Do NOT 404.
+Unauthenticated GET / DELETE returns 401.
+All 7 tests must pass. Existing 35 OAuth tests must still pass.
+
+Out of scope — DO NOT TOUCH
+server/lib/oauth/{authorize,token,register,discovery,revoke}.ts core flow logic (M1 is shipped and signed off — only ADD, never modify).
+server/lib/mcp/** — no MCP changes.
+shared/schema.ts — no new tables, no new columns.
+npm run db:push — not needed.
+Pre-existing TypeScript errors in server/webhookHandlers.ts, server/lib/plan-limits.ts, server/lib/jobs/* — leave them.
+Streaming, multi-currency, /v1/messages, LLM recommend — those are M3/M4.
+Docs page content for the /docs#oauth-* anchors — out of scope, just point to them.
+Acceptance checklist
+Run before reporting done:
+
+npm run check        # type + description-hash check, must pass
+npm run test         # full Vitest suite, must be green (35 OAuth + 7 new = 42 OAuth tests)
+npm run build        # esbuild bundle, must succeed
+Then visually verify in the dev preview:
+
+/dashboard/connections renders empty state with no fixtures.
+Sidebar shows "Connections" entry below "Connect AI Tool".
+/dashboard/connect shows 3 new "Connect via OAuth" cards below existing connectors.
+/redeem post-success view shows ConnectorGrid + the new "Claim a permanent account" CTA when the synthetic user flag is set.
+Final report format
+When done, send Tiago one message containing:
+
+Files created (paths only).
+Files modified (paths only).
+Test results: 42 passed.
+Build result: success.
+Anything you couldn't do and why (should be nothing — if you hit a real blocker, ask before guessing).
+Push to GitHub via the Git pane immediately after the report. Do NOT push automatically. Do NOT redeploy.

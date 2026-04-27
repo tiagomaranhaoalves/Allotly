@@ -13,6 +13,7 @@ import { Link } from "wouter";
 import { useState, useEffect, useRef } from "react";
 import { apiRequest } from "@/lib/queryClient";
 import { ConnectorGrid } from "@/components/connectors";
+import { useAuth } from "@/lib/auth";
 import {
   Ticket, ArrowRight, Check, AlertTriangle, Copy, Clock, Shield,
   Zap, Code, Terminal, ExternalLink, Monitor, Wrench, GraduationCap, Blocks,
@@ -52,6 +53,7 @@ function formatCode(raw: string): string {
 
 export default function RedeemPage() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [state, setState] = useState<RedeemState>("input");
   const [codeInput, setCodeInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -394,6 +396,26 @@ export default function RedeemPage() {
                 showExamples={false}
               />
             </div>
+
+            {/* Synthetic-voucher upsell: only show for users currently signed in
+                under an @allotly.local synthetic identity (instant redemption).
+                Real-account users already have a permanent account, so this
+                CTA is suppressed for them. */}
+            {user?.email?.endsWith("@allotly.local") && (
+              <Card className="p-5 space-y-3" data-testid="section-oauth-upsell">
+                <h3 className="font-semibold">Want to use Allotly with claude.ai?</h3>
+                <p className="text-sm text-muted-foreground">
+                  Claim a permanent account to connect your key to Claude.ai, ChatGPT, or Gemini
+                  via OAuth. You keep the same budget and key — you just gain a way to manage it
+                  later.
+                </p>
+                <Link href={`/oauth/claim-account?code=${encodeURIComponent(codeInput.replace(/-/g, ""))}`}>
+                  <Button className="w-full" data-testid="button-oauth-claim-cta">
+                    Claim a permanent account <ArrowRight className="w-4 h-4 ml-1.5" />
+                  </Button>
+                </Link>
+              </Card>
+            )}
 
             <Card className="p-5 space-y-4">
               <h3 className="font-semibold">Quick Start</h3>

@@ -101,3 +101,69 @@ export function buildAllConnectorSnippets(params: SnippetParams): Record<Connect
     claudeDesktop: buildConnectorSnippet("claudeDesktop", params),
   };
 }
+
+/**
+ * OAuth-connect cards on /dashboard/connect. These are informational cards —
+ * the OAuth flow is always client-initiated by the third-party MCP host
+ * (Claude.ai, ChatGPT, Gemini), so the card just tells the user where to
+ * paste our MCP URL. Once they do, the host kicks off discovery → DCR →
+ * authorize → callback into our /oauth/* endpoints. The MCP URL itself is
+ * the same ALLOTLY_MCP_URL constant used for bearer connectors above, so a
+ * URL change in production only needs touching here.
+ */
+export type OAuthConnectorId = "claudeAi" | "chatgpt" | "gemini";
+
+export interface OAuthConnectorSpec {
+  id: OAuthConnectorId;
+  title: string;
+  /** One-line description shown under the title. */
+  blurb: string;
+  /** Numbered setup steps. Render as <ol>. */
+  steps: string[];
+  /** External documentation link for the host's MCP setup. */
+  learnMoreUrl: string;
+  /** MCP URL the user pastes into the host. */
+  mcpUrl: string;
+}
+
+export const OAUTH_CONNECTORS: OAuthConnectorSpec[] = [
+  {
+    id: "claudeAi",
+    title: "Claude.ai",
+    blurb: "Add Allotly as a custom connector inside Claude.ai (web).",
+    steps: [
+      "Open Claude.ai → Settings → Connectors.",
+      'Click "Add custom connector".',
+      "Paste the MCP URL above.",
+      "Authorize Allotly when prompted.",
+    ],
+    learnMoreUrl: "/docs#oauth-claude-ai",
+    mcpUrl: ALLOTLY_MCP_URL,
+  },
+  {
+    id: "chatgpt",
+    title: "ChatGPT",
+    blurb: "Pro / Team / Enterprise required (MCP beta).",
+    steps: [
+      "ChatGPT Pro / Team / Enterprise required.",
+      "Settings → Beta features → MCP.",
+      "Add server with the URL above.",
+      "Sign in via Allotly when prompted.",
+    ],
+    learnMoreUrl: "/docs#oauth-chatgpt",
+    mcpUrl: ALLOTLY_MCP_URL,
+  },
+  {
+    id: "gemini",
+    title: "Gemini",
+    blurb: "Workspace or Vertex AI tier (Agent Builder).",
+    steps: [
+      "Workspace or Vertex AI tier required.",
+      "Open Agent Builder → Tools → Add MCP.",
+      "Use the URL above.",
+      "Authorize via Allotly.",
+    ],
+    learnMoreUrl: "/docs#oauth-gemini",
+    mcpUrl: ALLOTLY_MCP_URL,
+  },
+];

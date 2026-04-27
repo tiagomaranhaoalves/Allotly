@@ -4,8 +4,9 @@ import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/brand/empty-state";
-import { PlugZap, Key as KeyIcon } from "lucide-react";
-import { ConnectorGrid } from "@/components/connectors";
+import { PlugZap, Key as KeyIcon, Link2 } from "lucide-react";
+import { ConnectorGrid, OAuthConnectorCard } from "@/components/connectors";
+import { OAUTH_CONNECTORS } from "@shared/connector-snippets";
 
 interface MyKey {
   id: string;
@@ -130,6 +131,39 @@ export default function ConnectPage() {
           onSelectKey: setSelectedKeyId,
         }}
       />
+
+      {/* OAuth section: hosted-AI tools (claude.ai, ChatGPT, Gemini) cannot
+          accept a pasted bearer token, so the flow there is "paste our MCP URL
+          and let the host run OAuth against us". After consent, the resulting
+          connection appears under /dashboard/connections. */}
+      <section className="space-y-3 pt-2" data-testid="section-oauth-connectors">
+        <div className="space-y-1">
+          <h2
+            className="text-xl font-semibold tracking-tight flex items-center gap-2"
+            data-testid="text-oauth-section-heading"
+          >
+            <Link2 className="w-5 h-5 text-primary" />
+            Or connect a hosted AI tool via OAuth
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            For Claude.ai, ChatGPT, and Gemini — paste the MCP URL into your tool of choice and
+            authorize Allotly when prompted. Manage approved apps anytime from{" "}
+            <Link
+              href="/dashboard/connections"
+              className="text-primary hover-elevate active-elevate-2 rounded px-1 py-0.5"
+              data-testid="link-to-connections"
+            >
+              Connections
+            </Link>
+            .
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {OAUTH_CONNECTORS.map((spec) => (
+            <OAuthConnectorCard key={spec.id} spec={spec} />
+          ))}
+        </div>
+      </section>
 
       <p className="text-xs text-muted-foreground">
         <Link

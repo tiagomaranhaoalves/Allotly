@@ -14,7 +14,7 @@ import { Link, useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   LayoutDashboard, Plug, PlugZap, Users, UserCheck, Ticket, Package, BarChart3, FileText,
-  Settings, Sun, Moon, LogOut, ChevronDown, Key, BookOpen, Swords, ExternalLink,
+  Settings, Sun, Moon, LogOut, ChevronDown, Key, BookOpen, Swords, ExternalLink, Link2,
 } from "lucide-react";
 import { AdminRoleBadge } from "./brand/role-badge";
 import { Skeleton } from "./ui/skeleton";
@@ -37,6 +37,7 @@ const ROOT_ADMIN_NAV: NavItem[] = [
   { testId: "vouchers", i18nKey: "dashboard.sidebar.vouchers", href: "/dashboard/vouchers", icon: Ticket },
   { testId: "api-keys", i18nKey: "dashboard.sidebar.apiKeys", href: "/dashboard/keys", icon: Key },
   { testId: "connect-ai-tool", i18nKey: "dashboard.sidebar.connectAiTool", href: "/dashboard/connect", icon: PlugZap },
+  { testId: "connections", i18nKey: "dashboard.sidebar.connections", href: "/dashboard/connections", icon: Link2 },
   { testId: "bundles", i18nKey: "dashboard.sidebar.bundles", href: "/dashboard/bundles", icon: Package },
   { testId: "analytics", i18nKey: "dashboard.sidebar.analytics", href: "/dashboard/analytics", icon: BarChart3 },
   { testId: "audit-log", i18nKey: "dashboard.sidebar.auditLog", href: "/dashboard/audit-log", icon: FileText },
@@ -51,6 +52,7 @@ const TEAM_ADMIN_NAV: NavItem[] = [
   { testId: "bundles", i18nKey: "dashboard.sidebar.bundles", href: "/dashboard/bundles", icon: Package },
   { testId: "analytics", i18nKey: "dashboard.sidebar.analytics", href: "/dashboard/analytics", icon: BarChart3 },
   { testId: "connect-ai-tool", i18nKey: "dashboard.sidebar.connectAiTool", href: "/dashboard/connect", icon: PlugZap },
+  { testId: "connections", i18nKey: "dashboard.sidebar.connections", href: "/dashboard/connections", icon: Link2 },
   { testId: "settings", i18nKey: "dashboard.sidebar.settings", href: "/dashboard/settings", icon: Settings },
   { testId: "docs", i18nKey: "dashboard.sidebar.docs", href: "/docs", icon: BookOpen },
 ];

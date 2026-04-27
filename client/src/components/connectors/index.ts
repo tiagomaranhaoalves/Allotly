@@ -4,3 +4,5 @@ export { ConnectorTestPanel } from "./connector-test-panel";
 export type { ConnectorTestPanelProps } from "./connector-test-panel";
 export { ConnectorGrid } from "./connector-grid";
 export type { ConnectorGridProps, KeyContext, SelectableKey } from "./connector-grid";
+export { OAuthConnectorCard } from "./oauth-connector-card";
+export type { OAuthConnectorCardProps } from "./oauth-connector-card";

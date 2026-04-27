@@ -39,6 +39,7 @@ import SettingsPage from "@/pages/dashboard/settings";
 import KeysPage from "@/pages/dashboard/keys";
 import UsagePage from "@/pages/dashboard/usage";
 import ConnectPage from "@/pages/dashboard/connect";
+import ConnectionsPage from "@/pages/dashboard/connections";
 
 function DashboardRoute({ component: Component }: { component: React.ComponentType }) {
   return (
@@ -106,6 +107,9 @@ function Router() {
       </Route>
       <Route path="/dashboard/connect">
         {() => <DashboardRoute component={ConnectPage} />}
+      </Route>
+      <Route path="/dashboard/connections">
+        {() => <DashboardRoute component={ConnectionsPage} />}
       </Route>
       <Route path="/dashboard/usage">
         {() => <DashboardRoute component={UsagePage} />}
