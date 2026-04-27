@@ -204,6 +204,39 @@ describe("oauth pending-request: Redis-backed (regression for in-memory Map)", (
     expect(String(c2Res.body)).toMatch(/MISS_ALREADY_USED/);
   });
 
+  it("regression: consent CSP form-action whitelists the redirect_uri origin (so browsers follow the 302 to MCP client callbacks instead of silently blocking)", async () => {
+    // The consent screen's prior CSP `form-action 'self'` caused browsers to
+    // silently block the cross-origin 302 to redirect_uri. Symptom: user clicks
+    // Authorize, nothing happens, retries, and gets MISS_ALREADY_USED on the
+    // second submit. This test locks in the fix: the consent CSP must include
+    // the validated redirect_uri origin in form-action.
+    await _resetPendingForTest();
+    const sess: any = { userId: testUserId };
+    const aReq = mockReq({
+      query: {
+        client_id: registeredClientId,
+        redirect_uri: TEST_REDIRECT_URI, // http://localhost:3333/cb
+        response_type: "code",
+        code_challenge: pkceChallenge,
+        code_challenge_method: "S256",
+        scope: "mcp",
+        state: "csp-test",
+        resource: MCP_AUDIENCE,
+      },
+      session: sess,
+    });
+    const aRes = mockRes();
+    await authorizeHandler(aReq as any, aRes as any);
+    expect(aRes.statusCode).toBe(200);
+    const csp = aRes.headers["content-security-policy"];
+    expect(csp).toBeDefined();
+    // Must allow 'self' for the form action AND the redirect_uri's origin
+    // for the post-submit 302. Without the second token, browsers block the
+    // navigation silently and the user sees "nothing happens".
+    expect(csp).toMatch(/form-action [^;]*'self'/);
+    expect(csp).toMatch(/form-action [^;]*http:\/\/localhost:3333/);
+  });
+
   it("MISS_MALFORMED: a hand-crafted/garbage auth_request_id renders the malformed error page (no XSS)", async () => {
     const sess: any = { userId: testUserId, _oauthCsrf: "test-csrf-token" };
     // Note: the consent handler verifies CSRF BEFORE looking up the pending

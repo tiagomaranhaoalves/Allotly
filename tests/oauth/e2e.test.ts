@@ -758,7 +758,7 @@ describe("oauth e2e: locked security defaults (state + CSP)", () => {
     expect(res.redirected).not.toMatch(/[?&]state=/);
   });
 
-  it("[21] /oauth/authorize consent response sends the locked CSP header verbatim", async () => {
+  it("[21] /oauth/authorize consent response sends the locked CSP header (form-action whitelists redirect_uri origin)", async () => {
     await _resetPendingForTest();
     const req = mockReq({
       query: {
@@ -776,8 +776,13 @@ describe("oauth e2e: locked security defaults (state + CSP)", () => {
     const res = mockRes();
     await authorizeHandler(req as any, res as any);
     expect(res.statusCode).toBe(200);
+    // Note: form-action MUST include the validated redirect_uri origin in
+    // addition to 'self'. Without the redirect_uri origin, browsers silently
+    // block the post-consent 302 redirect and users see "nothing happens"
+    // when they click Authorize. The other directives stay strict.
+    const expectedRedirectOrigin = new URL(TEST_REDIRECT_URI).origin;
     expect(res.headers["content-security-policy"]).toBe(
-      "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'none'; img-src 'self'; form-action 'self'",
+      `default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'none'; img-src 'self'; form-action 'self' ${expectedRedirectOrigin}`,
     );
   });
 });
