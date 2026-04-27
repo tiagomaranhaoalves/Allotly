@@ -1,7 +1,5 @@
 import crypto from "crypto";
-import fs from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
 import { listTools } from "./registry";
 
 import "./consumption/list-available-models";
@@ -19,29 +17,16 @@ import "./recipient/redeem-voucher";
 import "./recipient/redeem-and-chat";
 import "./recipient/request-topup";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const HASHES_FILE = path.resolve(__dirname, "description-hashes.json");
+import pinnedFile from "./description-hashes.json";
 
 export interface PinnedHashesFile {
   $note?: string;
   hashes: Record<string, string>;
 }
 
-export const PINNED_DESCRIPTION_HASHES: Record<string, string> = loadPinnedFile();
-
-function loadPinnedFile(): Record<string, string> {
-  try {
-    const raw = fs.readFileSync(HASHES_FILE, "utf8");
-    const parsed = JSON.parse(raw) as PinnedHashesFile;
-    return { ...(parsed.hashes || {}) };
-  } catch (e: any) {
-    if (e?.code === "ENOENT") {
-      return {};
-    }
-    throw new Error(`[mcp] failed to load pinned description hashes from ${HASHES_FILE}: ${e?.message}`);
-  }
-}
+export const PINNED_DESCRIPTION_HASHES: Record<string, string> = {
+  ...((pinnedFile as PinnedHashesFile).hashes || {}),
+};
 
 export function computeDescriptionHashes(): Record<string, string> {
   const out: Record<string, string> = {};
@@ -98,7 +83,7 @@ export function pinDescriptionsAtStartup(): void {
 }
 
 export function getPinnedHashesFilePath(): string {
-  return HASHES_FILE;
+  return path.resolve(process.cwd(), "server/lib/mcp/tools/description-hashes.json");
 }
 
 export { listTools, getTool } from "./registry";
