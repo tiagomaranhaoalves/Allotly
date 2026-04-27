@@ -14,6 +14,13 @@ registerTool({
   inputSchema: RedeemVoucherInputSchema,
   requiresAuth: true,
   voucherOnly: true,
+  annotations: {
+    title: "Redeem an Allotly voucher",
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
   handler: async (input, ctx) => {
     const principal = ctx.principal!;
     const code = input.code.toUpperCase();

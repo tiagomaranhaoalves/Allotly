@@ -11,6 +11,13 @@ registerTool({
   inputSchema: EmptyInputSchema,
   requiresAuth: true,
   requiredScope: "mcp",
+  annotations: {
+    title: "Get a quickstart guide",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   handler: async (_input, ctx) => {
     const principal = ctx.principal!;
     const m = principal.membership;

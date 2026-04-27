@@ -45,6 +45,13 @@ registerTool({
   inputSchema: EmptyInputSchema,
   requiresAuth: true,
   requiredScope: "mcp:read",
+  annotations: {
+    title: "List available AI models",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   handler: async (_input, ctx) => {
     const principal = ctx.principal!;
     const team = await storage.getTeam(principal.membership.teamId);

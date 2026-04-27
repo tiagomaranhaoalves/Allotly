@@ -19,6 +19,13 @@ registerTool({
   inputSchema: RequestTopupInputSchema,
   requiresAuth: true,
   voucherOnly: true,
+  annotations: {
+    title: "Request a budget top-up",
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
   handler: async (input, ctx) => {
     const principal = ctx.principal!;
     await checkMcpRateLimit(principal.principalHash, "request_topup", 5);

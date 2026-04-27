@@ -20,6 +20,13 @@ registerTool({
   inputSchema: RecommendModelInputSchema,
   requiresAuth: true,
   requiredScope: "mcp",
+  annotations: {
+    title: "Recommend the best model for a task",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   handler: async (input, ctx) => {
     const principal = ctx.principal!;
     const team = await storage.getTeam(principal.membership.teamId);

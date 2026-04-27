@@ -10,6 +10,13 @@ registerTool({
   inputSchema: EmptyInputSchema,
   requiresAuth: true,
   requiredScope: "mcp:read",
+  annotations: {
+    title: "View remaining budget",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   handler: async (_input, ctx) => {
     const principal = ctx.principal!;
     const snap = await buildBudgetSnapshot(principal.membership);

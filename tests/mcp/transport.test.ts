@@ -68,6 +68,40 @@ describe("mcp transport: initialize + tools/list", () => {
     }
   });
 
+  it("tools/list includes MCP 2025-03-26 annotations on every tool", async () => {
+    const app = makeApp();
+    const server = app.listen(0);
+    try {
+      const r = await rpc(server, { jsonrpc: "2.0", id: 99, method: "tools/list", params: {} });
+      const tools: Array<{ name: string; annotations?: any }> = r.body.result.tools;
+      const expectedTitles: Record<string, string> = {
+        chat: "Chat with an AI model",
+        compare_models: "Compare outputs from multiple models",
+        list_available_models: "List available AI models",
+        recommend_model: "Recommend the best model for a task",
+        diagnose: "Diagnose proxy or routing issues",
+        my_budget: "View remaining budget",
+        my_recent_usage: "View recent usage history",
+        my_status: "View account status, budget, and limits",
+        quickstart: "Get a quickstart guide",
+        redeem_and_chat: "Redeem a voucher and chat in one call",
+        redeem_voucher: "Redeem an Allotly voucher",
+        request_topup: "Request a budget top-up",
+        voucher_info: "Look up voucher details",
+      };
+      for (const t of tools) {
+        expect(t.annotations, `tool ${t.name} missing annotations`).toBeDefined();
+        expect(t.annotations.title, `tool ${t.name} missing title`).toBe(expectedTitles[t.name]);
+        expect(typeof t.annotations.readOnlyHint).toBe("boolean");
+        expect(typeof t.annotations.destructiveHint).toBe("boolean");
+        expect(typeof t.annotations.idempotentHint).toBe("boolean");
+        expect(typeof t.annotations.openWorldHint).toBe("boolean");
+      }
+    } finally {
+      server.close();
+    }
+  });
+
   it("rejects tools/call without auth for protected tools", async () => {
     const app = makeApp();
     const server = app.listen(0);

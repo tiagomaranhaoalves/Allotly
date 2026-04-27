@@ -13,6 +13,13 @@ registerTool({
   inputSchema: EmptyInputSchema,
   requiresAuth: true,
   requiredScope: "mcp:read",
+  annotations: {
+    title: "View account status, budget, and limits",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   handler: async (_input, ctx) => {
     const principal = ctx.principal!;
     const m = principal.membership;

@@ -65,6 +65,13 @@ registerTool({
   inputSchema: ChatToolInputSchema,
   requiresAuth: true,
   requiredScope: "mcp",
+  annotations: {
+    title: "Chat with an AI model",
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
   handler: async (input, ctx) => {
     const principal = ctx.principal!;
     const wantsImages = hasImageContent(input.messages);

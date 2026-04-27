@@ -42,6 +42,13 @@ registerTool({
   inputSchema: EmptyInputSchema,
   requiresAuth: true,
   requiredScope: "mcp",
+  annotations: {
+    title: "Diagnose proxy or routing issues",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   handler: async (_input, ctx) => {
     const principal = ctx.principal!;
     const m = principal.membership;

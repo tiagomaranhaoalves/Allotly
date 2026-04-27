@@ -128,6 +128,11 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 
+// Browsers and some clients still hit /favicon.ico even when the page links
+// /favicon.svg. Redirect rather than ship a duplicate ICO asset.
+// Registered before the SPA catch-all so it wins.
+app.get("/favicon.ico", (_req, res) => res.redirect(301, "/favicon.svg"));
+
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
     hour: "numeric",

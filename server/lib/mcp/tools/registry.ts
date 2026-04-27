@@ -15,6 +15,14 @@ export interface ToolDefinition<TSchema extends z.ZodTypeAny = z.ZodTypeAny, TOu
   requiredScope?: "mcp" | "mcp:read";
   /** When true, only voucher-bearer principals may invoke (rejects key + oauth). */
   voucherOnly?: boolean;
+  /** MCP 2025-03-26 tool annotations — surfaced in tools/list to help clients render and reason about behaviour. */
+  annotations?: {
+    title?: string;
+    readOnlyHint?: boolean;
+    destructiveHint?: boolean;
+    idempotentHint?: boolean;
+    openWorldHint?: boolean;
+  };
   handler: (input: z.infer<TSchema>, ctx: ToolContext) => Promise<TOut>;
 }
 

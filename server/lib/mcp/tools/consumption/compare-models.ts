@@ -14,6 +14,13 @@ registerTool({
   inputSchema: CompareModelsInputSchema,
   requiresAuth: true,
   requiredScope: "mcp",
+  annotations: {
+    title: "Compare outputs from multiple models",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+  },
   handler: async (input, ctx) => {
     const principal = ctx.principal!;
     const allowedModels = principal.membership.allowedModels as string[] | null;

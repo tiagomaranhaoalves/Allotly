@@ -11,6 +11,13 @@ registerTool({
   inputSchema: RecentUsageInputSchema,
   requiresAuth: true,
   requiredScope: "mcp:read",
+  annotations: {
+    title: "View recent usage history",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   handler: async (input, ctx) => {
     const principal = ctx.principal!;
     const limit = input.limit ?? 20;

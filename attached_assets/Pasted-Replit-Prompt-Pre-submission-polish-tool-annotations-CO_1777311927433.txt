@@ -1,0 +1,117 @@
+Replit Prompt — Pre-submission polish: tool annotations + CORS + favicon
+You are preparing the Allotly MCP server for submission to Anthropic's Connectors Directory (https://clau.de/mcp-directory-submission). Three small gaps from the directory's technical checklist.
+
+Locked decisions — implement, do not ask. One end-of-task report.
+
+Locked decisions
+Tool annotations: add an annotations field to ToolDefinition matching the MCP 2025-03-26 spec shape: { title?: string; readOnlyHint?: boolean; destructiveHint?: boolean; idempotentHint?: boolean; openWorldHint?: boolean }. Wire it through transport.ts's tools/list response (after inputSchema).
+Per-tool annotations — set every tool's annotations to the values in the table below. These are non-negotiable; don't second-guess them.
+CORS allowlist: the existing wildcard Access-Control-Allow-Origin: * in server/lib/mcp/transport.ts:39 becomes an Origin-header validation. Allowlist (exact match): https://claude.ai, https://www.claude.ai, https://chatgpt.com, https://www.chatgpt.com, https://gemini.google.com. Requests with NO Origin header (CLI clients like Cursor, Claude Desktop bridge, Claude Code, curl) MUST still pass through — these aren't browsers and don't trigger CORS. Requests with an Origin header NOT in the allowlist get a CORS-failing response (omit the Access-Control-Allow-Origin header entirely; do not echo back). Update both the OPTIONS preflight and the POST/GET responses.
+Favicon: add a redirect handler in server/index.ts (before the SPA catch-all): app.get("/favicon.ico", (_req, res) => res.redirect(301, "/favicon.svg"));. Cleanest fix; no new asset file needed.
+Tool annotations table
+Tool	title	readOnlyHint	destructiveHint	idempotentHint	openWorldHint
+chat	"Chat with an AI model"	false	false	false	true
+compare_models	"Compare outputs from multiple models"	true	false	true	true
+list_available_models	"List available AI models"	true	false	true	false
+recommend_model	"Recommend the best model for a task"	true	false	true	false
+diagnose	"Diagnose proxy or routing issues"	true	false	true	false
+my_budget	"View remaining budget"	true	false	true	false
+my_recent_usage	"View recent usage history"	true	false	true	false
+my_status	"View account status, budget, and limits"	true	false	true	false
+quickstart	"Get a quickstart guide"	true	false	true	false
+redeem_and_chat	"Redeem a voucher and chat in one call"	false	false	false	true
+redeem_voucher	"Redeem an Allotly voucher"	false	false	false	false
+request_topup	"Request a budget top-up"	false	false	false	false
+voucher_info	"Look up voucher details"	true	false	true	false
+Description-hash pinning: if npm run check flags a hash drift after adding annotations to descriptions… annotations are NOT part of the description; hashes should be unaffected. If check fails for any other reason, fix per the existing convention.
+No DB changes. No db:push.
+Scope
+server/lib/mcp/tools/registry.ts
+Add to ToolDefinition:
+
+annotations?: {
+  title?: string;
+  readOnlyHint?: boolean;
+  destructiveHint?: boolean;
+  idempotentHint?: boolean;
+  openWorldHint?: boolean;
+};
+server/lib/mcp/transport.ts
+Two changes:
+
+A. tools/list pass-through at transport.ts:118:
+
+const tools = listTools().map(t => ({
+  name: t.name,
+  description: t.description,
+  inputSchema: jsonSchemaFor(t.inputSchema),
+  ...(t.annotations ? { annotations: t.annotations } : {}),
+}));
+B. Origin-header validation — replace the existing setMcpHeaders() function. New shape:
+
+const ALLOWED_ORIGINS = new Set([
+  "https://claude.ai",
+  "https://www.claude.ai",
+  "https://chatgpt.com",
+  "https://www.chatgpt.com",
+  "https://gemini.google.com",
+]);
+
+function setMcpHeaders(req: Request, res: Response): void {
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("X-Allotly-Mcp-Version", MCP_VERSION);
+  const origin = req.headers.origin;
+  if (typeof origin === "string" && ALLOWED_ORIGINS.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+    res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, MCP-Session-Id");
+    res.setHeader("Access-Control-Expose-Headers", "MCP-Session-Id, X-Allotly-Mcp-Version, WWW-Authenticate");
+  }
+  // No-Origin requests (CLI clients) get no CORS headers — they don't need them.
+  // Disallowed Origin gets no CORS headers — browser will block per spec.
+}
+Update both call sites (the OPTIONS handler at transport.ts:234 and POST handler at transport.ts:252 and the GET handler at transport.ts:239) to pass req to setMcpHeaders. The OPTIONS handler should still return 204 even if origin is disallowed (don't leak that we have an opinion; just don't grant CORS).
+
+Per-tool annotations
+In each of the 13 tool files (server/lib/mcp/tools/{consumption,recipient}/*.ts), add the annotations block to the registerTool({...}) call per the table above. Keep all other fields unchanged.
+
+server/index.ts
+Add before the Vite/static file middleware (so it wins over the SPA catch-all):
+
+app.get("/favicon.ico", (_req, res) => res.redirect(301, "/favicon.svg"));
+Tests
+Add tests/mcp/transport-cors.test.ts (Vitest):
+
+OPTIONS /mcp with Origin: https://claude.ai → 204 + Access-Control-Allow-Origin: https://claude.ai
+OPTIONS /mcp with Origin: https://evil.example.com → 204, no Access-Control-Allow-Origin header
+OPTIONS /mcp with no Origin header → 204, no CORS headers (CLI client path)
+POST /mcp tools/list with Origin: https://claude.ai → 200 + Access-Control-Allow-Origin: https://claude.ai
+POST /mcp tools/list with no Origin → 200, no CORS headers, body still valid
+Add to tests/mcp/transport-auth-discovery.test.ts (or wherever tools/list is tested):
+6. tools/list response includes the annotations field on every tool with the expected title.
+
+Out of scope — DO NOT TOUCH
+OAuth flow (M1, M1HF #1-#3 are correct)
+DB schema
+Any other endpoint or route
+The npm bridge package
+Acceptance checklist
+npm run check
+npx vitest run
+npm run build
+Live preview:
+
+curl -s -i -X OPTIONS https://<dev-url>/mcp -H "Origin: https://claude.ai" -H "Access-Control-Request-Method: POST" | grep -iE "^HTTP|^access-control"
+curl -s -i -X OPTIONS https://<dev-url>/mcp -H "Origin: https://evil.example.com" | grep -iE "^HTTP|^access-control"
+curl -s -i -L https://<dev-url>/favicon.ico | grep -iE "^HTTP|^location|^content-type"
+curl -s -X POST https://<dev-url>/mcp -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | python3 -m json.tool | grep -A1 annotations | head -20
+Expected: claude.ai gets ACAO echoed; evil.example.com gets none; favicon.ico → 301 → favicon.svg (image/svg+xml); tools/list shows annotations block on each tool.
+
+Final report format
+One message:
+
+Files modified (paths only).
+Test results.
+Live curl outputs from the four commands above.
+Anything you couldn't do.

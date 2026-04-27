@@ -19,6 +19,13 @@ registerTool({
   inputSchema: VoucherInfoInputSchema,
   requiresAuth: false,
   requiredScope: "mcp:read",
+  annotations: {
+    title: "Look up voucher details",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
   handler: async (input) => {
     const code = input.code.toUpperCase();
     const voucher = await storage.getVoucherByCode(code);

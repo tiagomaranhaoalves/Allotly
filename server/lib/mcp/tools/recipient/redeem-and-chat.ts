@@ -16,6 +16,13 @@ registerTool({
   inputSchema: RedeemAndChatInputSchema,
   requiresAuth: true,
   voucherOnly: true,
+  annotations: {
+    title: "Redeem a voucher and chat in one call",
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
   handler: async (input, ctx) => {
     const principal = ctx.principal!;
     const code = input.code.toUpperCase();

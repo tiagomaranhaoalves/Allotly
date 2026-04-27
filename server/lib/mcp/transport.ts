@@ -50,13 +50,31 @@ function envelope(body: JsonRpcResponse, httpStatus = 200, wwwAuthenticate?: str
   return wwwAuthenticate ? { httpStatus, wwwAuthenticate, body } : { httpStatus, body };
 }
 
-function setMcpHeaders(res: Response): void {
+const ALLOWED_ORIGINS = new Set([
+  "https://claude.ai",
+  "https://www.claude.ai",
+  "https://chatgpt.com",
+  "https://www.chatgpt.com",
+  "https://gemini.google.com",
+]);
+
+function setMcpHeaders(req: Request, res: Response): void {
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("X-Allotly-Mcp-Version", MCP_VERSION);
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, MCP-Session-Id");
-  res.setHeader("Access-Control-Expose-Headers", "MCP-Session-Id, X-Allotly-Mcp-Version, WWW-Authenticate");
+  const origin = req.headers.origin;
+  if (typeof origin === "string" && ALLOWED_ORIGINS.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    // Use res.vary so we append to any existing Vary value rather than
+    // clobbering it (helmet / future middleware may set Vary too).
+    res.vary("Origin");
+    res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, MCP-Session-Id");
+    res.setHeader("Access-Control-Expose-Headers", "MCP-Session-Id, X-Allotly-Mcp-Version, WWW-Authenticate");
+  }
+  // No-Origin requests (CLI clients like Cursor, Claude Desktop bridge,
+  // Claude Code, curl) get no CORS headers — they don't need them.
+  // Disallowed Origin gets no CORS headers — the browser will block per
+  // spec without us needing to leak that we have an opinion.
 }
 
 function jsonSchemaFor(zSchema: z.ZodTypeAny): Record<string, any> {
@@ -117,6 +135,7 @@ async function handleJsonRpc(req: JsonRpcRequest, authHeader: string | undefined
       name: t.name,
       description: t.description,
       inputSchema: jsonSchemaFor(t.inputSchema),
+      ...(t.annotations ? { annotations: t.annotations } : {}),
     }));
     return envelope(ok(id, { tools }));
   }
@@ -259,13 +278,13 @@ async function handleJsonRpc(req: JsonRpcRequest, authHeader: string | undefined
 export function mountMcp(app: Express, path: string = "/mcp"): void {
   pinDescriptionsAtStartup();
 
-  app.options(path, (_req, res) => {
-    setMcpHeaders(res);
+  app.options(path, (req, res) => {
+    setMcpHeaders(req, res);
     res.status(204).end();
   });
 
-  app.get(path, (_req, res) => {
-    setMcpHeaders(res);
+  app.get(path, (req, res) => {
+    setMcpHeaders(req, res);
     res.json({
       name: "allotly-mcp",
       version: MCP_VERSION,
@@ -278,7 +297,7 @@ export function mountMcp(app: Express, path: string = "/mcp"): void {
   });
 
   app.post(path, async (req: Request, res: Response) => {
-    setMcpHeaders(res);
+    setMcpHeaders(req, res);
 
     const authHeader = req.headers.authorization;
     const body = req.body;
