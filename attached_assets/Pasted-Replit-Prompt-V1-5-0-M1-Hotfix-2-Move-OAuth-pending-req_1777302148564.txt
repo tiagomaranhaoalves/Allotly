@@ -1,0 +1,84 @@
+Replit Prompt — V1.5.0 M1 Hotfix #2: Move OAuth pending-request store to Redis
+You are fixing a production bug encountered live on prod just now: a real OAuth flow from Claude.ai successfully reached the Allotly consent screen, the user clicked "Authorize", and the server returned auth_request expired or unknown. The cause is server/lib/oauth/authorize.ts:27 — the pending Map is in-memory, so when the consent POST lands on a different instance (or the same instance after a cold restart), the entry is missing and consent fails.
+
+Locked decisions — implement, do not ask. One end-of-task report.
+
+Locked decisions
+Storage: Redis. Reuse the existing redisSet / redisGet / redisDel helpers in server/lib/redis.ts. Do NOT introduce a new client.
+Key namespace: allotly:oauth:pending:<nonce>. Match the existing pattern (allotly:oauth:revoked:<jti> etc.).
+TTL: 300 seconds (matches PENDING_TTL_MS = 5 * 60 * 1000). Redis TTL replaces the in-process pruneExpired() call, which is no longer needed.
+Value: JSON-serialized PendingAuthRequest (the existing interface — clientId, redirectUri, scope, resource, state, codeChallenge, expiresAt, userId). Just JSON.stringify on write, JSON.parse on read.
+Single-use: consent must atomically read-and-delete the entry to prevent double-submission. Use Redis GETDEL if available in our Redis client; otherwise GET then DEL. Add a comment noting the race window if non-atomic.
+Failure mode: if Redis is down, redisSet will throw — let it. Do NOT silently fall back to in-memory. The user will see a 5xx instead of a confusing "expired" error.
+No DB changes. No db:push.
+Do NOT touch: anything outside server/lib/oauth/authorize.ts and the new tests.
+Scope — exact deliverables
+server/lib/oauth/authorize.ts
+Replace lines 27–34 (const pending = new Map<...>(); function pruneExpired(): void { ... }) and every call site (pending.set, pending.get, pending.delete, pruneExpired()) with Redis calls.
+
+Concrete changes:
+
+Delete the pending Map and pruneExpired function.
+Add a small helper module at the top of the file:
+const PENDING_KEY = (nonce: string) => `allotly:oauth:pending:${nonce}`;
+async function setPending(nonce: string, p: PendingAuthRequest): Promise<void> {
+  await redisSet(PENDING_KEY(nonce), JSON.stringify(p), 300);
+}
+async function takePending(nonce: string): Promise<PendingAuthRequest | null> {
+  // GETDEL = atomic read-and-delete to prevent consent double-submission
+  const raw = await redisGetDel(PENDING_KEY(nonce));
+  return raw ? (JSON.parse(raw) as PendingAuthRequest) : null;
+}
+If redisGetDel does not exist in server/lib/redis.ts, add it: getDel(key) using the underlying client's GETDEL command (Redis 6.2+) or fall back to a MULTI of GET + DEL.
+Update authorizeHandler to await setPending(nonce, {...}) instead of pending.set(...).
+Update consentHandler to const p = await takePending(nonce) instead of pending.get(...) + pending.delete(...).
+Remove the pruneExpired() call (Redis TTL handles it).
+The _resetPendingForTest() export at line 306 should now be: async function _resetPendingForTest() { /* no-op for in-memory; tests using Redis should flush by key prefix or use a separate test redis db */ }. Check existing tests in tests/oauth/e2e.test.ts and tests/oauth/integration.test.ts for usages — if they relied on _resetPendingForTest() clearing state, update them to await redisDel("allotly:oauth:pending:*") via SCAN, or accept that Redis TTL will clean up across test runs. Do NOT break existing tests.
+Tests
+Update existing tests in tests/oauth/integration.test.ts and tests/oauth/e2e.test.ts if they break. The OAuth flow tests should continue to pass — they call authorize then consent in the same process, so Redis round-trips are transparent. Just make sure async/await is added where the calls were sync.
+
+Add one new regression test in tests/oauth/integration.test.ts (or a new file tests/oauth/pending-redis.test.ts):
+
+"regression: pending-request survives a simulated process restart"
+
+Flow:
+
+Call authorizeHandler end-to-end up to the consent screen → grab the auth_request_id from the rendered HTML.
+Reload the authorize module (or just clear any in-memory caches) to simulate a process restart. Since state is in Redis, this should be a no-op effectively.
+Call consentHandler with the same auth_request_id → must succeed (mint authorization_code, redirect with code=...).
+If the in-memory regression returns, this test fails because step 3 returns "auth_request expired or unknown".
+
+Redis helper
+server/lib/redis.ts — add redisGetDel(key) if missing. Implementation:
+
+export async function redisGetDel(key: string): Promise<string | null> {
+  // Atomic read-and-delete. Falls back to GET+DEL on older Redis (<6.2) but that
+  // race window is acceptable here — consent double-submission is rare and the
+  // worst case is "auth_request expired or unknown" on the second click.
+  const client = await getClient();
+  if (typeof (client as any).getdel === "function") {
+    return (await (client as any).getdel(key)) ?? null;
+  }
+  const v = await client.get(key);
+  if (v !== null && v !== undefined) await client.del(key);
+  return v ?? null;
+}
+(Adjust to match the actual client surface in server/lib/redis.ts.)
+
+Out of scope — DO NOT TOUCH
+Anything other than server/lib/oauth/authorize.ts, server/lib/redis.ts, and the test files mentioned.
+The OAuth token, register, revoke, or discovery handlers.
+The MCP transport.
+Schema, dashboard, MCP tools.
+Acceptance checklist
+npm run check       # type check
+npm run test        # full suite, all green
+npm run build       # esbuild bundle
+Final report format
+One message:
+
+Files modified.
+Test results: <n> passed. Including the new regression test name.
+Anything you couldn't do and why.
+Push to GitHub via the Git pane. Do NOT push automatically. Do NOT redeploy.
+

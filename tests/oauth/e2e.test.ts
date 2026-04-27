@@ -216,7 +216,7 @@ describe("oauth e2e: discovery + DCR", () => {
 
 describe("oauth e2e: authorize + consent", () => {
   it("[3] GET /oauth/authorize without a session redirects to /login", async () => {
-    _resetPendingForTest();
+    await _resetPendingForTest();
     const req = mockReq({
       query: {
         client_id: registeredClientId,
@@ -423,7 +423,7 @@ describe("oauth e2e: authorize + consent", () => {
 // ───── token endpoint flow ──────────────────────────────────────────────
 
 async function obtainAuthorizationCode(): Promise<string> {
-  _resetPendingForTest();
+  await _resetPendingForTest();
   const sess: any = { userId: testUserId };
   const aReq = mockReq({
     query: {
@@ -738,7 +738,7 @@ describe("oauth e2e: MCP /mcp accepts oauth JWT bearers", () => {
 
 describe("oauth e2e: locked security defaults (state + CSP)", () => {
   it("[20] GET /oauth/authorize without `state` is rejected with invalid_request", async () => {
-    _resetPendingForTest();
+    await _resetPendingForTest();
     const req = mockReq({
       query: {
         client_id: registeredClientId,
@@ -759,7 +759,7 @@ describe("oauth e2e: locked security defaults (state + CSP)", () => {
   });
 
   it("[21] /oauth/authorize consent response sends the locked CSP header verbatim", async () => {
-    _resetPendingForTest();
+    await _resetPendingForTest();
     const req = mockReq({
       query: {
         client_id: registeredClientId,

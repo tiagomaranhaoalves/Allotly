@@ -125,6 +125,22 @@ export async function redisDel(key: string): Promise<void> {
   memoryStore.delete(key);
 }
 
+export async function redisGetDel(key: string): Promise<string | null> {
+  // Atomic read-and-delete. Required by callers that must guarantee
+  // single-use semantics (e.g. OAuth pending-request consumption on
+  // /oauth/consent). ioredis ^5.10 (see package.json) ships native GETDEL
+  // (Redis 6.2+), which is invoked directly here — no GET+DEL fallback,
+  // because that would leave a race window where two concurrent consents
+  // could both succeed.
+  if (!useMemory && redis) {
+    const v = await (redis as any).getdel(key);
+    return v ?? null;
+  }
+  const v = cleanExpired(key);
+  if (v !== null) memoryStore.delete(key);
+  return v;
+}
+
 export async function redisExpire(key: string, seconds: number): Promise<void> {
   if (!useMemory && redis) {
     await redis.expire(key, seconds);

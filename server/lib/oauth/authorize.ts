@@ -7,8 +7,10 @@ import { storage } from "../../storage";
 import { newAuthorizationCode } from "./pkce";
 import { MCP_AUDIENCE, SUPPORTED_SCOPES, parseScopeString } from "./scopes";
 import { renderConsent } from "./consent-template";
+import { redisSet, redisGetDel, redisKeys, redisDel } from "../redis";
 
 const PENDING_TTL_MS = 5 * 60 * 1000; // RFC-aligned: consent screens expire fast
+const PENDING_TTL_SECONDS = 300;
 const CODE_TTL_MS = 60 * 1000;
 
 interface PendingAuthRequest {
@@ -24,12 +26,25 @@ interface PendingAuthRequest {
   userId: string;
 }
 
-const pending = new Map<string, PendingAuthRequest>();
+// Pending auth-requests live in Redis (not in-process memory) so that the
+// /oauth/authorize → /oauth/consent round-trip survives a process restart
+// or hits a different replica behind the load balancer. Without this, a real
+// user clicking "Authorize" can land on a fresh instance and see "auth_request
+// expired or unknown". Redis TTL handles expiry — no in-process pruner needed.
+const PENDING_KEY = (nonce: string) => `allotly:oauth:pending:${nonce}`;
 
-function pruneExpired(): void {
-  const now = Date.now();
-  for (const [k, v] of Array.from(pending.entries())) {
-    if (v.expiresAt < now) pending.delete(k);
+async function setPending(nonce: string, p: PendingAuthRequest): Promise<void> {
+  await redisSet(PENDING_KEY(nonce), JSON.stringify(p), PENDING_TTL_SECONDS);
+}
+
+async function takePending(nonce: string): Promise<PendingAuthRequest | null> {
+  // GETDEL = atomic read-and-delete; prevents consent double-submission.
+  const raw = await redisGetDel(PENDING_KEY(nonce));
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as PendingAuthRequest;
+  } catch {
+    return null;
   }
 }
 
@@ -100,8 +115,6 @@ async function getActiveMembershipForUser(userId: string): Promise<{ id: string 
 }
 
 export async function authorizeHandler(req: Request, res: Response): Promise<void> {
-  pruneExpired();
-
   const q = req.query;
   const clientId = typeof q.client_id === "string" ? q.client_id : "";
   const redirectUri = typeof q.redirect_uri === "string" ? q.redirect_uri : "";
@@ -195,7 +208,7 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
 
   const nonce = crypto.randomBytes(16).toString("hex");
   const expiresAtMs = Date.now() + PENDING_TTL_MS;
-  pending.set(nonce, {
+  await setPending(nonce, {
     clientId,
     redirectUri,
     scope: requestedScopes.join(" "),
@@ -227,8 +240,6 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
 }
 
 export async function consentHandler(req: Request, res: Response): Promise<void> {
-  pruneExpired();
-
   const sess = req.session as any;
   if (!sess?.userId) {
     res.status(401).type("text/plain").send("unauthorized");
@@ -253,9 +264,13 @@ export async function consentHandler(req: Request, res: Response): Promise<void>
   // until after we look it up — but the nonce is in plain text in the token,
   // so we can fetch the pending entry first and use its clientId for hmac
   // verification. Doing it in this order means a tampered nonce simply misses
-  // the pending Map and is rejected the same way an expired request would be.
+  // the pending entry and is rejected the same way an expired request would be.
+  //
+  // takePending() is GETDEL-backed — the entry is consumed atomically on first
+  // read, which prevents consent double-submission. All failure paths below
+  // therefore do NOT need an explicit delete.
   const noncePart = String(authRequestId).split(".")[0];
-  const pendingReq = pending.get(noncePart);
+  const pendingReq = await takePending(noncePart);
   if (!pendingReq) {
     res.status(400).type("text/plain").send("auth_request expired or unknown");
     return;
@@ -264,18 +279,15 @@ export async function consentHandler(req: Request, res: Response): Promise<void>
   // user that initiated /oauth/authorize. If the active session has changed,
   // refuse to mint a code.
   if (pendingReq.userId !== sess.userId) {
-    pending.delete(noncePart);
     res.status(403).type("text/plain").send("session_user_mismatch");
     return;
   }
   // HMAC verification + freshness (5min) + clientId binding.
   const verified = verifyAuthRequestId(authRequestId, sess.userId, pendingReq.clientId);
   if (!verified) {
-    pending.delete(noncePart);
     res.status(400).type("text/plain").send("auth_request expired or invalid");
     return;
   }
-  pending.delete(noncePart);
 
   if (decision !== "approve") {
     res.redirect(302, safeRedirect(pendingReq.redirectUri, { error: "access_denied", state: pendingReq.state }));
@@ -303,6 +315,9 @@ export async function consentHandler(req: Request, res: Response): Promise<void>
   res.redirect(302, safeRedirect(pendingReq.redirectUri, { code, state: pendingReq.state }));
 }
 
-export function _resetPendingForTest(): void {
-  pending.clear();
+export async function _resetPendingForTest(): Promise<void> {
+  // State now lives in Redis (or the in-memory test store). Sweep all keys
+  // under the pending namespace so each test starts clean.
+  const keys = await redisKeys("allotly:oauth:pending:*");
+  for (const k of keys) await redisDel(k);
 }
