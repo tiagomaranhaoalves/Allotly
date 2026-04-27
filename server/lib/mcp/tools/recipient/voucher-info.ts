@@ -18,6 +18,7 @@ registerTool({
   description: VOUCHER_INFO_DESCRIPTION,
   inputSchema: VoucherInfoInputSchema,
   requiresAuth: false,
+  requiredScope: "mcp:read",
   handler: async (input) => {
     const code = input.code.toUpperCase();
     const voucher = await storage.getVoucherByCode(code);

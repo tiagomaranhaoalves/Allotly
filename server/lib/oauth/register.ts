@@ -56,10 +56,13 @@ function isValidRedirectUri(uri: string, allowLocalhost: boolean): boolean {
   try {
     const parsed = new URL(uri);
     if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
+    const isLocalhostHost = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
     if (parsed.protocol === "http:") {
-      if (!allowLocalhost) return false;
-      if (parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") return false;
+      if (!allowLocalhost || !isLocalhostHost) return false;
     }
+    // Block https://localhost (and 127.0.0.1) in production: only dev may use
+    // any localhost callback, regardless of scheme.
+    if (isLocalhostHost && !allowLocalhost) return false;
     if (parsed.hash) return false;
     return true;
   } catch {

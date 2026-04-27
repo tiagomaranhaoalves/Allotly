@@ -129,10 +129,7 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
     return;
   }
 
-  // OAuth 2.1 / locked decision: `state` is REQUIRED for /oauth/authorize so
-  // that the client can bind the callback to the original request and defend
-  // against CSRF on the redirect. Reject empty/missing state with
-  // invalid_request. We do NOT echo state back since none was provided.
+  // OAuth 2.1: `state` is REQUIRED. Reject without echoing back.
   if (!state || state.length === 0) {
     res.redirect(
       302,
@@ -222,16 +219,10 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
     userEmail: user.email,
     userName: user.name,
   });
-  // Locked CSP for the consent page (defense in depth): no scripts at all,
-  // styles inline (form is fully static), images and forms only from this
-  // origin, and the page may not be framed. The same policy is also embedded
-  // in a <meta http-equiv> tag inside the template so a stripped header
-  // (e.g. via misconfigured proxy) still leaves the policy in place.
   res.setHeader(
     "Content-Security-Policy",
-    "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'none'; img-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+    "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'none'; img-src 'self'; form-action 'self'",
   );
-  res.setHeader("X-Frame-Options", "DENY");
   res.type("text/html").send(html);
 }
 

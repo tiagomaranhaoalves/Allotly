@@ -28,7 +28,6 @@ import { storage } from "../../server/storage";
 import { hashPassword } from "../../server/lib/password";
 import { listConnectionsHandler, deleteConnectionHandler } from "../../server/lib/oauth/connections";
 
-// ───── mock req/res (same shape as e2e.test.ts) ─────────────────────────
 
 interface MockRes {
   statusCode: number;
@@ -61,7 +60,6 @@ function mockReq(opts: Partial<MockReq> = {}): MockReq {
   };
 }
 
-// ───── seed fixture ─────────────────────────────────────────────────────
 
 const seedTag = `conn-${Date.now()}-${crypto.randomBytes(2).toString("hex")}`;
 let testOrgId = "";
@@ -161,9 +159,6 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  // Clean tokens between tests so each describe-block starts from a known
-  // empty state. We only ever delete tokens for the two memberships the
-  // fixture owns, so parallel test files never collide.
   await db.delete(oauthTokens).where(eq(oauthTokens.membershipId, testMembershipId));
   await db.delete(oauthTokens).where(eq(oauthTokens.membershipId, otherMembershipId));
   await db.delete(mcpAuditLog).where(eq(mcpAuditLog.membershipId, testMembershipId));
@@ -184,9 +179,7 @@ afterAll(async () => {
   await db.delete(organizations).where(eq(organizations.id, testOrgId));
 });
 
-// Helper: poll mcp_audit_log for an oauth.revoke row written by recordAudit
-// (which schedules its insert via setImmediate, so we cannot just await one
-// microtask). Polls for up to ~1s in 25ms increments.
+// recordAudit writes via setImmediate; poll up to ~1s.
 async function waitForRevokeAudit(membershipId: string): Promise<typeof mcpAuditLog.$inferSelect | null> {
   for (let i = 0; i < 40; i++) {
     const rows = await db.select().from(mcpAuditLog).where(eq(mcpAuditLog.membershipId, membershipId));
@@ -196,8 +189,6 @@ async function waitForRevokeAudit(membershipId: string): Promise<typeof mcpAudit
   }
   return null;
 }
-
-// ───── 7 ACCEPTANCE ASSERTIONS ──────────────────────────────────────────
 
 describe("oauth connections: list", () => {
   it("[1] returns 401 when no session userId is present", async () => {
@@ -210,7 +201,6 @@ describe("oauth connections: list", () => {
   });
 
   it("[2] returns empty array when membership holds no active tokens", async () => {
-    // Insert only a revoked token — must not appear.
     await insertToken({
       clientId: clientAId,
       membershipId: testMembershipId,
@@ -230,13 +220,10 @@ describe("oauth connections: list", () => {
     const t1 = new Date("2026-01-15T10:00:00Z");
     const t2 = new Date("2026-02-01T10:00:00Z");
 
-    // Client A: two active tokens (different scopes), one revoked (must be excluded).
     await insertToken({ clientId: clientAId, membershipId: testMembershipId, scope: "mcp", issuedAt: t0 });
     await insertToken({ clientId: clientAId, membershipId: testMembershipId, scope: "mcp:read", issuedAt: t1 });
     await insertToken({ clientId: clientAId, membershipId: testMembershipId, scope: "mcp", issuedAt: new Date("2025-12-01"), revoked: true });
-    // Client B: one active token, more recent → should sort first.
     await insertToken({ clientId: clientBId, membershipId: testMembershipId, scope: "mcp", issuedAt: t2 });
-    // Cross-membership noise: must not leak into the response.
     await insertToken({ clientId: clientAId, membershipId: otherMembershipId, scope: "mcp", issuedAt: new Date() });
 
     const req = mockReq({ session: { userId: testUserId } });
@@ -245,8 +232,6 @@ describe("oauth connections: list", () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.body.connections).toHaveLength(2);
-
-    // Sorted by lastUsedAt DESC → Client B (Feb) first.
     expect(res.body.connections[0].clientId).toBe(clientBId);
     expect(res.body.connections[1].clientId).toBe(clientAId);
 
@@ -270,9 +255,7 @@ describe("oauth connections: delete", () => {
   it("[5] revokes every active token for that client+membership and returns the count", async () => {
     await insertToken({ clientId: clientAId, membershipId: testMembershipId, scope: "mcp", issuedAt: new Date() });
     await insertToken({ clientId: clientAId, membershipId: testMembershipId, scope: "mcp:read", issuedAt: new Date() });
-    // already revoked → must not be touched / counted
     await insertToken({ clientId: clientAId, membershipId: testMembershipId, scope: "mcp", issuedAt: new Date(), revoked: true });
-    // unrelated client → must remain intact
     await insertToken({ clientId: clientBId, membershipId: testMembershipId, scope: "mcp", issuedAt: new Date() });
 
     const req = mockReq({ session: { userId: testUserId }, params: { clientId: clientAId } });
@@ -282,14 +265,12 @@ describe("oauth connections: delete", () => {
     expect(res.statusCode).toBe(200);
     expect(res.body).toEqual({ revokedCount: 2 });
 
-    // Confirm DB state: client A → all revoked; client B → still active.
     const aRows = await db.select().from(oauthTokens).where(eq(oauthTokens.clientId, clientAId));
     const aActive = aRows.filter((r) => r.revokedAt === null && r.membershipId === testMembershipId);
     expect(aActive).toHaveLength(0);
     const bRows = await db.select().from(oauthTokens).where(eq(oauthTokens.clientId, clientBId));
     expect(bRows.filter((r) => r.revokedAt === null && r.membershipId === testMembershipId)).toHaveLength(1);
 
-    // Audit row written with tool_name="oauth.revoke".
     const auditRow = await waitForRevokeAudit(testMembershipId);
     expect(auditRow).not.toBeNull();
     expect(auditRow!.clientId).toBe(clientAId);
@@ -312,16 +293,12 @@ describe("oauth connections: delete", () => {
   });
 
   it("[7] cannot revoke another membership's tokens (cross-membership isolation)", async () => {
-    // The "other" membership holds an active token for client A.
     await insertToken({ clientId: clientAId, membershipId: otherMembershipId, scope: "mcp", issuedAt: new Date() });
-    // The caller (testMembership) has no tokens for client A.
 
     const req = mockReq({ session: { userId: testUserId }, params: { clientId: clientAId } });
     const res = mockRes();
     await deleteConnectionHandler(req as any, res as any);
 
-    // Caller sees revokedCount=0 (nothing of theirs to revoke); the other
-    // membership's token must remain active.
     expect(res.statusCode).toBe(200);
     expect(res.body.revokedCount).toBe(0);
 
@@ -334,5 +311,4 @@ describe("oauth connections: delete", () => {
   });
 });
 
-// Touch the import so unused-symbol lint stays quiet across CI configs.
 void like;
