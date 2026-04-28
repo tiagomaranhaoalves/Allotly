@@ -1883,5 +1883,384 @@
       "errorBody": "Revisa el formulario e inténtalo de nuevo.",
       "preserveNote": "Tu presupuesto, historial de uso y clave API actuales se conservan."
     }
+  },
+  "pages": {
+    "about": {
+      "eyebrow": "Sobre Allotly",
+      "heading": "Creemos que el acceso a la IA no debería venir con una hoja de cálculo.",
+      "storyHeading": "Nuestra historia",
+      "storyP1": "Cada equipo con el que hablamos tenía el mismo problema. Querían que su gente usara IA, pero no tenían forma de gestionar el costo. Algunos repartían una única clave API compartida y esperaban lo mejor. Otros bloqueaban todo detrás de flujos de aprobación que mataban el impulso. Algunos simplemente lo cargaban a una tarjeta corporativa y hacían una mueca a fin de mes.",
+      "storyP2": "Iniciamos Allotly porque creíamos que había una mejor manera. No otra plataforma o wrapper de IA, sino un plano de control que se sitúa junto a las herramientas que los equipos ya usan. Uno que da a finanzas visibilidad en tiempo real del gasto, da a los responsables presupuestos por equipo y da a los colaboradores acceso sin fricción a cualquier AI Provider que necesiten.",
+      "storyP3": "El resultado es un sistema que funciona para organizaciones de todos los tamaños, ya seas una startup de cinco personas repartiendo claves API por primera vez o una empresa que gestiona cientos de equipos a través de múltiples providers y regiones.",
+      "whatHeading": "Qué hace Allotly",
+      "whatTeamsLabel": "Teams",
+      "whatTeamsBody": " permiten a las organizaciones conectar sus propias cuentas de AI Provider, establecer presupuestos por equipo o departamento y rastrear el uso en tiempo real. Las llamadas API van directamente al provider, así que tus datos nunca pasan por nuestros servidores. Obtienes controles de gasto y analytics sin sacrificar la privacidad.",
+      "whatVouchersLabel": "Vouchers",
+      "whatVouchersBody": " dan a individuos o pequeños grupos acceso prepagado a IA sin necesidad de su propia cuenta de provider. Compra un paquete de créditos, genera un código de voucher y compártelo. El destinatario canjea el código y obtiene una clave API que funciona al instante, con un límite de gasto incorporado.",
+      "principlesHeading": "Nuestros principios",
+      "principles": {
+        "dataPath": {
+          "title": "Tu camino de datos, no el nuestro",
+          "description": "Con Teams, las llamadas API van directamente desde tu infraestructura al provider. Nunca vemos tus prompts, respuestas ni el historial de conversación. Solo rastreamos metadatos de uso para facturación y presupuestos."
+        },
+        "budgets": {
+          "title": "Presupuestos, no barreras",
+          "description": "Establece límites de gasto que protejan a tu organización sin frenar a nadie. Los equipos obtienen el acceso a IA que necesitan y finanzas obtiene la visibilidad que requiere."
+        },
+        "providerNative": {
+          "title": "Provider-nativo, sin lock-in",
+          "description": "Usa OpenAI, Anthropic, Google o cualquier combinación. Allotly funciona con tus cuentas de provider y claves API existentes. Cambia de provider en cualquier momento sin cambiar tu flujo de trabajo."
+        }
+      },
+      "ctaHeading": "¿Listo para tomar el control de tu gasto en IA?",
+      "ctaBody": "Empieza gratis. No se requiere tarjeta de crédito.",
+      "ctaButton": "Empezar gratis",
+      "legalEntityPrefix": "Allotly es una iniciativa de ",
+      "legalEntityCompany": "DivBZ Ventures Ltd",
+      "legalEntityRegistration": "Registrada en Inglaterra y Gales. Número de empresa 13691920",
+      "legalEntityOffice": "Domicilio social: 71-75 Shelton Street, Covent Garden, Londres, Reino Unido, WC2H 9JQ"
+    },
+    "careers": {
+      "eyebrow": "Empleo",
+      "heading": "Construye el plano de control para el gasto en IA.",
+      "valuesHeading": "Lo que valoramos",
+      "values": {
+        "shipFast": {
+          "title": "Entregar rápido",
+          "description": "Nos inclinamos hacia la acción. Equipos pequeños, ciclos cortos, retroalimentación real. Preferimos lanzar algo imperfecto e iterar en lugar de pasar meses planificando a ciegas."
+        },
+        "firstPrinciples": {
+          "title": "Pensar desde primeros principios",
+          "description": "Cuestionamos las suposiciones y trabajamos hacia atrás desde el problema. Si el enfoque convencional no sirve a nuestros usuarios, encontramos uno mejor."
+        },
+        "trust": {
+          "title": "Confianza por defecto",
+          "description": "Contratamos personas en las que confiamos y luego les damos el contexto y la autonomía para hacer un gran trabajo. Sin micromanagement, sin procesos innecesarios."
+        },
+        "buildForBuilders": {
+          "title": "Construir para constructores",
+          "description": "Nuestros usuarios son desarrolladores y equipos técnicos. Construimos herramientas que nos gustaría usar a nosotros mismos: APIs limpias, documentación clara y sin fricción innecesaria."
+        }
+      },
+      "openHeading": "Posiciones abiertas",
+      "openBody": "Si te apasionan las herramientas para desarrolladores, la infraestructura o el futuro del acceso a IA, nos encantaría saber de ti.",
+      "referralHeading": "¿Conoces a alguien que encajaría aquí?",
+      "referralBody": "Comparte esta página con esa persona. Los mejores equipos se construyen mediante grandes referencias."
+    },
+    "contact": {
+      "eyebrow": "CONTACTO",
+      "heading": "Nos encantaría saber de ti.",
+      "lead": "Ya sea que tengas una pregunta, quieras explorar opciones empresariales o necesites ayuda con tu cuenta, estamos aquí.",
+      "cards": {
+        "general": {
+          "title": "Consultas generales",
+          "description": "Preguntas sobre Allotly, asociaciones o cualquier otra cosa."
+        },
+        "sales": {
+          "title": "Ventas",
+          "description": "Planes empresariales, precios por volumen y despliegues personalizados."
+        },
+        "support": {
+          "title": "Soporte",
+          "description": "Ayuda técnica, reportes de errores y asistencia con la cuenta."
+        }
+      },
+      "formHeading": "Envíanos un mensaje",
+      "formSubheading": "Te responderemos lo antes posible.",
+      "nameLabel": "Nombre",
+      "namePlaceholder": "Tu nombre",
+      "emailLabel": "Correo electrónico",
+      "emailPlaceholder": "tu@ejemplo.com",
+      "messageLabel": "Mensaje",
+      "messagePlaceholder": "¿Cómo podemos ayudarte?",
+      "sendButton": "Enviar mensaje",
+      "sendingButton": "Enviando...",
+      "successTitle": "¡Mensaje enviado!",
+      "successBody": "Gracias por contactarnos. Estaremos en contacto pronto.",
+      "toastSuccessTitle": "Mensaje enviado",
+      "toastSuccessBody": "Gracias por contactarnos. Estaremos en contacto pronto.",
+      "toastErrorTitle": "Error al enviar",
+      "toastErrorBody": "Algo salió mal. Inténtalo de nuevo."
+    },
+    "privacy": {
+      "eyebrow": "POLÍTICA DE PRIVACIDAD",
+      "heading": "Tu privacidad nos importa.",
+      "lastUpdated": "Última actualización: marzo de 2026",
+      "sec1": {
+        "title": "1. Información que recopilamos",
+        "intro": "Recopilamos la información mínima necesaria para operar el servicio:",
+        "bullets": {
+          "account": {
+            "label": "Información de cuenta:",
+            "text": " nombre, dirección de correo electrónico y contraseña con hash."
+          },
+          "org": {
+            "label": "Datos de la organización:",
+            "text": " nombres de equipos, roles de miembros y configuraciones de provider."
+          },
+          "usage": {
+            "label": "Metadatos de uso:",
+            "text": " conteos de tokens, identificadores de modelo, marcas de tiempo y estimaciones de costo por llamada API."
+          },
+          "billing": {
+            "label": "Información de facturación:",
+            "text": " gestionada de forma segura a través de Stripe. No almacenamos números de tarjeta de crédito."
+          }
+        },
+        "notCollectedLabel": "NO recopilamos ni almacenamos:",
+        "notCollectedText": " prompts, respuestas, historial de conversación ni ningún contenido enviado a los AI Providers."
+      },
+      "sec2": {
+        "title": "2. Cómo usamos la información",
+        "bullets": [
+          "Autenticar usuarios y gestionar membresías de equipos.",
+          "Rastrear y aplicar presupuestos de uso para equipos y vouchers.",
+          "Generar dashboards de analytics para administradores de la organización.",
+          "Procesar facturación y pagos a través de Stripe.",
+          "Enviar correos transaccionales (alertas de presupuesto, notificaciones de cuenta).",
+          "Mejorar la confiabilidad y el rendimiento del servicio."
+        ]
+      },
+      "sec3": {
+        "title": "3. Almacenamiento y seguridad de datos",
+        "body": "Todos los datos se almacenan en PostgreSQL con cifrado en reposo. Las claves API almacenadas en nombre de las organizaciones se cifran usando AES-256-GCM antes de escribirse en la base de datos. Las contraseñas de usuario se hashean usando bcrypt. Todas las conexiones se aseguran con HTTPS/TLS en tránsito."
+      },
+      "sec4": {
+        "title": "4. Servicios de terceros",
+        "bullets": {
+          "stripe": {
+            "label": "Stripe:",
+            "text": " procesamiento de pagos y gestión de suscripciones."
+          },
+          "providers": {
+            "label": "AI Providers (OpenAI, Anthropic, Google):",
+            "text": " las llamadas API se realizan directamente desde el cliente (modo Teams) o se proxean sin almacenamiento (modo Vouchers). No compartimos tus datos con estos providers más allá de las llamadas API que tú inicias."
+          }
+        }
+      },
+      "sec5": {
+        "title": "5. Retención de datos",
+        "intro": "La retención de datos de uso varía por plan:",
+        "bullets": {
+          "free": {
+            "label": "Plan Free:",
+            "text": " 7 días de historial de uso."
+          },
+          "team": {
+            "label": "Plan Team:",
+            "text": " 90 días de historial de uso."
+          },
+          "enterprise": {
+            "label": "Plan Enterprise:",
+            "text": " 1 año de historial de uso."
+          }
+        },
+        "account": "Los datos de la cuenta se conservan durante toda la duración de tu cuenta. Tras la eliminación, todos los datos asociados se eliminan permanentemente en un plazo de 30 días."
+      },
+      "sec6": {
+        "title": "6. Tus derechos",
+        "intro": "Tienes derecho a:",
+        "bullets": {
+          "access": {
+            "label": "Acceso:",
+            "text": " solicitar una copia de los datos que tenemos sobre ti."
+          },
+          "correction": {
+            "label": "Corrección:",
+            "text": " actualizar o corregir información inexacta."
+          },
+          "deletion": {
+            "label": "Eliminación:",
+            "text": " solicitar la eliminación permanente de tu cuenta y datos."
+          },
+          "export": {
+            "label": "Exportación:",
+            "text": " descargar tus datos de uso en un formato legible por máquina."
+          }
+        },
+        "contactPrefix": "Para ejercer cualquiera de estos derechos, contáctanos en ",
+        "contactSuffix": "."
+      },
+      "sec7": {
+        "title": "7. Cookies",
+        "body": "Solo usamos cookies esenciales: una cookie de sesión para mantenerte conectado y una cookie de preferencia para la selección de tema. No usamos cookies publicitarias ni de seguimiento. No se cargan scripts de analytics de terceros."
+      },
+      "sec8": {
+        "title": "8. Contacto",
+        "bodyPrefix": "Para consultas relacionadas con la privacidad, contáctanos en ",
+        "bodySuffix": "."
+      }
+    },
+    "terms": {
+      "eyebrow": "TÉRMINOS DEL SERVICIO",
+      "heading": "Términos del servicio",
+      "lastUpdated": "Última actualización: marzo de 2026",
+      "sec1": {
+        "title": "1. Aceptación de los términos",
+        "body": "Al acceder o utilizar Allotly (\"el Servicio\"), aceptas estar sujeto a estos Términos del Servicio. Si no estás de acuerdo con estos términos, no uses el Servicio. Estos términos se aplican a todos los usuarios, incluidos los administradores de la organización, miembros de equipos y receptores de vouchers."
+      },
+      "sec2": {
+        "title": "2. Registro de cuenta",
+        "body": "Debes proporcionar información precisa y completa al crear una cuenta. Eres responsable de mantener la seguridad de las credenciales de tu cuenta y de toda la actividad que ocurra bajo tu cuenta. Debes notificarnos inmediatamente cualquier uso no autorizado."
+      },
+      "sec3": {
+        "title": "3. Descripción del servicio",
+        "intro": "Allotly proporciona una plataforma de gestión de gasto en IA con dos modelos principales de acceso:",
+        "bullets": {
+          "teams": {
+            "label": "Teams:",
+            "text": " las organizaciones conectan sus propias claves API de AI Provider. Allotly gestiona el acceso, rastrea el uso y aplica presupuestos. Las llamadas API van directamente de los clientes a los providers — Allotly nunca toca los datos de prompt o respuesta."
+          },
+          "vouchers": {
+            "label": "Vouchers:",
+            "text": " códigos de acceso a IA prepagados y con alcance. Las llamadas se proxean a través de Allotly solo para medición — los prompts y respuestas nunca se almacenan."
+          }
+        }
+      },
+      "sec4": {
+        "title": "4. Facturación y pagos",
+        "intro": "Allotly ofrece tres niveles de suscripción:",
+        "bullets": {
+          "free": {
+            "label": "Free:",
+            "text": " limitado a 1 equipo, 3 miembros y 2 conexiones de provider."
+          },
+          "team": {
+            "label": "Team ($49/mes):",
+            "text": " hasta 5 equipos, 25 miembros y 10 conexiones de provider con analytics avanzados."
+          },
+          "enterprise": {
+            "label": "Enterprise (a medida):",
+            "text": " equipos, miembros y providers ilimitados con soporte dedicado."
+          }
+        },
+        "outro": "Los Voucher Bundles son compras únicas con cantidades de crédito y fechas de vencimiento definidas. Todos los pagos se procesan a través de Stripe. Los precios están en USD a menos que se especifique lo contrario."
+      },
+      "sec5": {
+        "title": "5. Uso aceptable",
+        "intro": "Aceptas no:",
+        "bullets": [
+          "Usar el Servicio para cualquier propósito ilegal o en violación de cualquier ley aplicable.",
+          "Intentar obtener acceso no autorizado a cualquier parte del Servicio o su infraestructura.",
+          "Interferir o interrumpir la integridad o el rendimiento del Servicio.",
+          "Revender o redistribuir el Servicio sin consentimiento previo por escrito.",
+          "Usar el Servicio para eludir los términos del servicio de los AI Providers."
+        ]
+      },
+      "sec6": {
+        "title": "6. Uso de API y límites de velocidad",
+        "body": "El uso de la API está sujeto a límites de velocidad según tu plan de suscripción. Exceder estos límites puede resultar en throttling temporal. El abuso sostenido puede llevar a la suspensión de la cuenta. Nos reservamos el derecho a modificar los límites de velocidad con aviso razonable."
+      },
+      "sec7": {
+        "title": "7. Propiedad intelectual",
+        "body": "El Servicio, incluido su diseño, características y documentación, es propiedad intelectual de Allotly. Conservas todos los derechos sobre tus datos y contenido. No reclamamos propiedad sobre prompts, respuestas ni cualquier contenido procesado a través de los AI Providers vía el Servicio."
+      },
+      "sec8": {
+        "title": "8. Limitación de responsabilidad",
+        "body": "En la máxima medida permitida por la ley, Allotly no será responsable de ningún daño indirecto, incidental, especial, consecuente o punitivo, incluida la pérdida de ganancias, datos u oportunidades de negocio. Nuestra responsabilidad total no excederá la cantidad pagada por ti en los doce meses anteriores a la reclamación."
+      },
+      "sec9": {
+        "title": "9. Terminación",
+        "body": "Puedes cancelar tu suscripción en cualquier momento. Tras la cancelación, tu cuenta permanecerá activa durante un período de gracia de 30 días, después del cual el acceso se degradará al plan Free. Nos reservamos el derecho a suspender o terminar cuentas que violen estos términos, con aviso cuando sea posible."
+      },
+      "sec10": {
+        "title": "10. Cambios en los términos",
+        "body": "Podemos actualizar estos términos de vez en cuando. Los cambios materiales se comunicarán por correo electrónico o notificación en la app al menos 30 días antes de entrar en vigor. El uso continuado del Servicio después de los cambios constituye aceptación de los términos actualizados."
+      },
+      "sec11": {
+        "title": "11. Ley aplicable",
+        "body": "Estos términos se regirán e interpretarán de conformidad con las leyes del Estado de Delaware, Estados Unidos, sin tener en cuenta sus disposiciones sobre conflictos de leyes."
+      },
+      "sec12": {
+        "title": "12. Contacto",
+        "bodyPrefix": "Para preguntas sobre estos términos, contáctanos en ",
+        "bodySuffix": "."
+      }
+    },
+    "security": {
+      "eyebrow": "SEGURIDAD",
+      "heading": "La seguridad es fundamental, no algo secundario.",
+      "lead": "Hemos diseñado Allotly para que tus datos sensibles permanezcan donde corresponden — contigo y con tus providers.",
+      "archHeading": "Resumen de la arquitectura",
+      "architecture": {
+        "teamsZero": {
+          "title": "Teams: cero camino de datos",
+          "description": "Cuando las organizaciones conectan sus propias claves API, las llamadas van directamente del cliente al provider. Allotly nunca ve, almacena ni proxea datos de prompt o respuesta.",
+          "badge1": "Conexión directa",
+          "badge2": "Sin proxy"
+        },
+        "vouchersProxy": {
+          "title": "Vouchers: proxy solo de proceso",
+          "description": "Las llamadas basadas en voucher se proxean a través de Allotly únicamente para medición. Los prompts y respuestas pasan a través, pero nunca se registran, cachean ni almacenan.",
+          "badge1": "Solo medición",
+          "badge2": "Sin almacenamiento"
+        }
+      },
+      "encryptionHeading": "Cifrado",
+      "encryption": {
+        "apiKeys": {
+          "label": "Claves API",
+          "detail": "Cifrado AES-256-GCM en reposo"
+        },
+        "passwords": {
+          "label": "Contraseñas",
+          "detail": "Hashing bcrypt con salting"
+        },
+        "transit": {
+          "label": "En tránsito",
+          "detail": "HTTPS/TLS para todas las conexiones"
+        },
+        "database": {
+          "label": "Base de datos",
+          "detail": "Cifrada en reposo (PostgreSQL)"
+        }
+      },
+      "dataPracticesHeading": "Prácticas de datos",
+      "whatStoreTitle": "Qué almacenamos",
+      "dataStored": [
+        "Información de cuenta (nombre, correo)",
+        "Metadatos de organización y equipos",
+        "Métricas de uso (conteos de tokens, costos, marcas de tiempo)",
+        "Configuraciones de provider (claves cifradas)"
+      ],
+      "whatNotStoreTitle": "Qué no almacenamos",
+      "dataNotStored": [
+        "Prompts o contenido de entrada",
+        "Respuestas o contenido de salida",
+        "Historial de conversación",
+        "Archivos o adjuntos enviados a modelos de IA"
+      ],
+      "complianceHeading": "Cumplimiento",
+      "compliance": {
+        "gdpr": {
+          "label": "GDPR",
+          "description": "Arquitectura y manejo de datos conformes con GDPR"
+        },
+        "audit": {
+          "label": "Audit Logging",
+          "description": "Rastro de auditoría exhaustivo para todas las acciones administrativas"
+        }
+      },
+      "statusCompliant": "Conforme",
+      "statusActive": "Activo",
+      "infrastructureHeading": "Infraestructura",
+      "infrastructure": {
+        "postgres": {
+          "label": "PostgreSQL",
+          "detail": "Almacén de datos primario, cifrado en reposo"
+        },
+        "redis": {
+          "label": "Redis",
+          "detail": "Limitación de velocidad, caché, gestión de sesiones"
+        },
+        "audit": {
+          "label": "Audit Logging",
+          "detail": "Rastro completo de acciones administrativas"
+        }
+      },
+      "disclosureHeading": "Divulgación responsable",
+      "disclosureTitle": "¿Encontraste una vulnerabilidad?",
+      "disclosureBody": "Nos tomamos la seguridad en serio. Si descubres un problema de seguridad, repórtalo de manera responsable. No lo divulgues públicamente hasta que hayamos tenido la oportunidad de abordarlo."
+    }
   }
 }

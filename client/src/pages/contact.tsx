@@ -9,29 +9,16 @@ import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useTranslation } from "react-i18next";
 
 const contacts = [
-  {
-    icon: Mail,
-    title: "General Inquiries",
-    email: "hello@allotly.ai",
-    description: "Questions about Allotly, partnerships, or anything else.",
-  },
-  {
-    icon: Building2,
-    title: "Sales",
-    email: "sales@allotly.ai",
-    description: "Enterprise plans, volume pricing, and custom deployments.",
-  },
-  {
-    icon: Headphones,
-    title: "Support",
-    email: "support@allotly.ai",
-    description: "Technical help, bug reports, and account assistance.",
-  },
-];
+  { id: "general", testSlug: "general-inquiries", icon: Mail, email: "hello@allotly.ai" },
+  { id: "sales", testSlug: "sales", icon: Building2, email: "sales@allotly.ai" },
+  { id: "support", testSlug: "support", icon: Headphones, email: "support@allotly.ai" },
+] as const;
 
 export default function ContactPage() {
+  const { t } = useTranslation();
   const [submitted, setSubmitted] = useState(false);
   const { toast } = useToast();
 
@@ -42,10 +29,10 @@ export default function ContactPage() {
     },
     onSuccess: () => {
       setSubmitted(true);
-      toast({ title: "Message sent", description: "Thanks for reaching out. We'll be in touch soon." });
+      toast({ title: t("pages.contact.toastSuccessTitle"), description: t("pages.contact.toastSuccessBody") });
     },
     onError: () => {
-      toast({ title: "Failed to send", description: "Something went wrong. Please try again.", variant: "destructive" });
+      toast({ title: t("pages.contact.toastErrorTitle"), description: t("pages.contact.toastErrorBody"), variant: "destructive" });
     },
   });
 
@@ -63,25 +50,25 @@ export default function ContactPage() {
       <section className="py-20 sm:py-28">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-2xl mx-auto mb-16">
-            <p className="text-xs uppercase tracking-widest text-indigo-500 font-semibold mb-4">CONTACT</p>
+            <p className="text-xs uppercase tracking-widest text-indigo-500 font-semibold mb-4">{t("pages.contact.eyebrow")}</p>
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight" data-testid="heading-contact">
-              We'd love to hear from you.
+              {t("pages.contact.heading")}
             </h1>
             <p className="mt-4 text-lg text-muted-foreground">
-              Whether you have a question, want to explore enterprise options, or need help with your account, we're here.
+              {t("pages.contact.lead")}
             </p>
           </div>
 
           <div className="grid md:grid-cols-3 gap-6 mb-16">
             {contacts.map((c) => (
-              <Card key={c.title} className="p-6" data-testid={`card-contact-${c.title.toLowerCase().replace(/\s+/g, "-")}`}>
+              <Card key={c.id} className="p-6" data-testid={`card-contact-${c.testSlug}`}>
                 <CardContent className="p-0 flex flex-col items-start gap-4">
                   <div className="w-10 h-10 rounded-md bg-indigo-500/10 flex items-center justify-center">
                     <c.icon className="w-5 h-5 text-indigo-500" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-lg mb-1">{c.title}</h3>
-                    <p className="text-sm text-muted-foreground mb-3">{c.description}</p>
+                    <h3 className="font-semibold text-lg mb-1">{t(`pages.contact.cards.${c.id}.title`)}</h3>
+                    <p className="text-sm text-muted-foreground mb-3">{t(`pages.contact.cards.${c.id}.description`)}</p>
                     <a
                       href={`mailto:${c.email}`}
                       className="text-sm font-medium text-indigo-500 hover:text-indigo-400 transition-colors"
@@ -98,36 +85,36 @@ export default function ContactPage() {
           <div className="max-w-xl mx-auto">
             <Card className="p-6 sm:p-8">
               <CardContent className="p-0">
-                <h2 className="text-xl font-semibold mb-1">Send us a message</h2>
-                <p className="text-sm text-muted-foreground mb-6">We'll get back to you as soon as we can.</p>
+                <h2 className="text-xl font-semibold mb-1">{t("pages.contact.formHeading")}</h2>
+                <p className="text-sm text-muted-foreground mb-6">{t("pages.contact.formSubheading")}</p>
 
                 {submitted ? (
                   <div className="flex flex-col items-center justify-center py-12 text-center gap-4" data-testid="text-form-success">
                     <CheckCircle2 className="w-12 h-12 text-emerald-500" />
                     <div>
-                      <p className="font-semibold text-lg">Message sent!</p>
-                      <p className="text-sm text-muted-foreground mt-1">Thanks for reaching out. We'll be in touch soon.</p>
+                      <p className="font-semibold text-lg">{t("pages.contact.successTitle")}</p>
+                      <p className="text-sm text-muted-foreground mt-1">{t("pages.contact.successBody")}</p>
                     </div>
                   </div>
                 ) : (
                   <form onSubmit={handleSubmit} className="space-y-4" data-testid="form-contact">
                     <div className="grid sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="name">Name</Label>
-                        <Input id="name" placeholder="Your name" required data-testid="input-name" />
+                        <Label htmlFor="name">{t("pages.contact.nameLabel")}</Label>
+                        <Input id="name" placeholder={t("pages.contact.namePlaceholder")} required data-testid="input-name" />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="email">Email</Label>
-                        <Input id="email" type="email" placeholder="you@example.com" required data-testid="input-email" />
+                        <Label htmlFor="email">{t("pages.contact.emailLabel")}</Label>
+                        <Input id="email" type="email" placeholder={t("pages.contact.emailPlaceholder")} required data-testid="input-email" />
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="message">Message</Label>
-                      <Textarea id="message" placeholder="How can we help?" className="resize-none min-h-[120px]" required data-testid="input-message" />
+                      <Label htmlFor="message">{t("pages.contact.messageLabel")}</Label>
+                      <Textarea id="message" placeholder={t("pages.contact.messagePlaceholder")} className="resize-none min-h-[120px]" required data-testid="input-message" />
                     </div>
                     <Button type="submit" className="w-full gap-2 bg-indigo-600 border-indigo-700 text-white" data-testid="button-send-message" disabled={contactMutation.isPending}>
                       <Send className="w-4 h-4" />
-                      {contactMutation.isPending ? "Sending..." : "Send Message"}
+                      {contactMutation.isPending ? t("pages.contact.sendingButton") : t("pages.contact.sendButton")}
                     </Button>
                   </form>
                 )}

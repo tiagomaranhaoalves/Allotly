@@ -1,107 +1,124 @@
 import PublicLayout from "@/components/public-layout";
+import { useTranslation } from "react-i18next";
 
 export default function PrivacyPage() {
+  const { t } = useTranslation();
+  const sec1Bullets = ["account", "org", "usage", "billing"] as const;
+  const sec2Raw = t("pages.privacy.sec2.bullets", { returnObjects: true });
+  const sec2Bullets: string[] = Array.isArray(sec2Raw) ? sec2Raw : [];
+  const sec4Bullets = ["stripe", "providers"] as const;
+  const sec5Bullets = ["free", "team", "enterprise"] as const;
+  const sec6Bullets = ["access", "correction", "deletion", "export"] as const;
+
   return (
     <PublicLayout>
       <section className="py-20 sm:py-28">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <p className="text-xs uppercase tracking-widest text-indigo-500 font-semibold mb-4">PRIVACY POLICY</p>
+            <p className="text-xs uppercase tracking-widest text-indigo-500 font-semibold mb-4">{t("pages.privacy.eyebrow")}</p>
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight" data-testid="heading-privacy">
-              Your privacy matters to us.
+              {t("pages.privacy.heading")}
             </h1>
-            <p className="mt-4 text-sm text-muted-foreground">Last updated: March 2026</p>
+            <p className="mt-4 text-sm text-muted-foreground">{t("pages.privacy.lastUpdated")}</p>
           </div>
 
           <div className="prose prose-neutral dark:prose-invert max-w-none space-y-10">
             <section>
-              <h2 className="text-xl font-semibold mb-3" data-testid="section-information-we-collect">1. Information We Collect</h2>
+              <h2 className="text-xl font-semibold mb-3" data-testid="section-information-we-collect">{t("pages.privacy.sec1.title")}</h2>
               <p className="text-muted-foreground leading-relaxed mb-3">
-                We collect the minimum information necessary to operate the service:
+                {t("pages.privacy.sec1.intro")}
               </p>
               <ul className="list-disc pl-6 space-y-1.5 text-muted-foreground">
-                <li><strong className="text-foreground">Account information:</strong> name, email address, and hashed password.</li>
-                <li><strong className="text-foreground">Organization data:</strong> team names, member roles, and provider configurations.</li>
-                <li><strong className="text-foreground">Usage metadata:</strong> token counts, model identifiers, timestamps, and cost estimates per API call.</li>
-                <li><strong className="text-foreground">Billing information:</strong> managed securely through Stripe. We do not store credit card numbers.</li>
+                {sec1Bullets.map((id) => (
+                  <li key={id}>
+                    <strong className="text-foreground">{t(`pages.privacy.sec1.bullets.${id}.label`)}</strong>
+                    {t(`pages.privacy.sec1.bullets.${id}.text`)}
+                  </li>
+                ))}
               </ul>
               <p className="text-muted-foreground leading-relaxed mt-3">
-                <strong className="text-foreground">We do NOT collect or store:</strong> prompts, completions, conversation history, or any content sent to AI providers.
+                <strong className="text-foreground">{t("pages.privacy.sec1.notCollectedLabel")}</strong>
+                {t("pages.privacy.sec1.notCollectedText")}
               </p>
             </section>
 
             <section>
-              <h2 className="text-xl font-semibold mb-3" data-testid="section-how-we-use">2. How We Use Information</h2>
+              <h2 className="text-xl font-semibold mb-3" data-testid="section-how-we-use">{t("pages.privacy.sec2.title")}</h2>
               <ul className="list-disc pl-6 space-y-1.5 text-muted-foreground">
-                <li>Authenticate users and manage team memberships.</li>
-                <li>Track and enforce usage budgets for teams and vouchers.</li>
-                <li>Generate analytics dashboards for organization admins.</li>
-                <li>Process billing and payments via Stripe.</li>
-                <li>Send transactional emails (budget alerts, account notifications).</li>
-                <li>Improve service reliability and performance.</li>
+                {sec2Bullets.map((b, i) => (
+                  <li key={i}>{b}</li>
+                ))}
               </ul>
             </section>
 
             <section>
-              <h2 className="text-xl font-semibold mb-3" data-testid="section-data-storage">3. Data Storage &amp; Security</h2>
+              <h2 className="text-xl font-semibold mb-3" data-testid="section-data-storage">{t("pages.privacy.sec3.title")}</h2>
               <p className="text-muted-foreground leading-relaxed">
-                All data is stored in PostgreSQL with encryption at rest. API keys stored on behalf of organizations are encrypted
-                using AES-256-GCM before being written to the database. User passwords are hashed using bcrypt. All connections
-                are secured with HTTPS/TLS in transit.
+                {t("pages.privacy.sec3.body")}
               </p>
             </section>
 
             <section>
-              <h2 className="text-xl font-semibold mb-3" data-testid="section-third-party">4. Third-Party Services</h2>
+              <h2 className="text-xl font-semibold mb-3" data-testid="section-third-party">{t("pages.privacy.sec4.title")}</h2>
               <ul className="list-disc pl-6 space-y-1.5 text-muted-foreground">
-                <li><strong className="text-foreground">Stripe:</strong> payment processing and subscription management.</li>
-                <li><strong className="text-foreground">AI providers (OpenAI, Anthropic, Google):</strong> API calls are made directly from the client (Teams) or proxied without storage (Vouchers). We do not share your data with these providers beyond the API calls you initiate.</li>
+                {sec4Bullets.map((id) => (
+                  <li key={id}>
+                    <strong className="text-foreground">{t(`pages.privacy.sec4.bullets.${id}.label`)}</strong>
+                    {t(`pages.privacy.sec4.bullets.${id}.text`)}
+                  </li>
+                ))}
               </ul>
             </section>
 
             <section>
-              <h2 className="text-xl font-semibold mb-3" data-testid="section-data-retention">5. Data Retention</h2>
+              <h2 className="text-xl font-semibold mb-3" data-testid="section-data-retention">{t("pages.privacy.sec5.title")}</h2>
               <p className="text-muted-foreground leading-relaxed">
-                Usage data retention varies by plan:
+                {t("pages.privacy.sec5.intro")}
               </p>
               <ul className="list-disc pl-6 space-y-1.5 text-muted-foreground">
-                <li><strong className="text-foreground">Free plan:</strong> 7 days of usage history.</li>
-                <li><strong className="text-foreground">Team plan:</strong> 90 days of usage history.</li>
-                <li><strong className="text-foreground">Enterprise plan:</strong> 1 year of usage history.</li>
-              </ul>
-              <p className="text-muted-foreground leading-relaxed mt-3">
-                Account data is retained for the duration of your account. Upon deletion, all associated data is permanently removed within 30 days.
-              </p>
-            </section>
-
-            <section>
-              <h2 className="text-xl font-semibold mb-3" data-testid="section-your-rights">6. Your Rights</h2>
-              <p className="text-muted-foreground leading-relaxed mb-3">You have the right to:</p>
-              <ul className="list-disc pl-6 space-y-1.5 text-muted-foreground">
-                <li><strong className="text-foreground">Access:</strong> request a copy of the data we hold about you.</li>
-                <li><strong className="text-foreground">Correction:</strong> update or correct inaccurate information.</li>
-                <li><strong className="text-foreground">Deletion:</strong> request permanent deletion of your account and data.</li>
-                <li><strong className="text-foreground">Export:</strong> download your usage data in a machine-readable format.</li>
+                {sec5Bullets.map((id) => (
+                  <li key={id}>
+                    <strong className="text-foreground">{t(`pages.privacy.sec5.bullets.${id}.label`)}</strong>
+                    {t(`pages.privacy.sec5.bullets.${id}.text`)}
+                  </li>
+                ))}
               </ul>
               <p className="text-muted-foreground leading-relaxed mt-3">
-                To exercise any of these rights, contact us at{" "}
-                <a href="mailto:privacy@allotly.ai" className="text-indigo-500 hover:text-indigo-400 transition-colors">privacy@allotly.ai</a>.
+                {t("pages.privacy.sec5.account")}
               </p>
             </section>
 
             <section>
-              <h2 className="text-xl font-semibold mb-3" data-testid="section-cookies">7. Cookies</h2>
-              <p className="text-muted-foreground leading-relaxed">
-                We use essential cookies only: a session cookie to keep you logged in and a preference cookie for theme selection.
-                We do not use advertising or tracking cookies. No third-party analytics scripts are loaded.
+              <h2 className="text-xl font-semibold mb-3" data-testid="section-your-rights">{t("pages.privacy.sec6.title")}</h2>
+              <p className="text-muted-foreground leading-relaxed mb-3">{t("pages.privacy.sec6.intro")}</p>
+              <ul className="list-disc pl-6 space-y-1.5 text-muted-foreground">
+                {sec6Bullets.map((id) => (
+                  <li key={id}>
+                    <strong className="text-foreground">{t(`pages.privacy.sec6.bullets.${id}.label`)}</strong>
+                    {t(`pages.privacy.sec6.bullets.${id}.text`)}
+                  </li>
+                ))}
+              </ul>
+              <p className="text-muted-foreground leading-relaxed mt-3">
+                {t("pages.privacy.sec6.contactPrefix")}
+                <a href="mailto:privacy@allotly.ai" className="text-indigo-500 hover:text-indigo-400 transition-colors">privacy@allotly.ai</a>
+                {t("pages.privacy.sec6.contactSuffix")}
               </p>
             </section>
 
             <section>
-              <h2 className="text-xl font-semibold mb-3" data-testid="section-contact-privacy">8. Contact</h2>
+              <h2 className="text-xl font-semibold mb-3" data-testid="section-cookies">{t("pages.privacy.sec7.title")}</h2>
               <p className="text-muted-foreground leading-relaxed">
-                For privacy-related inquiries, reach us at{" "}
-                <a href="mailto:privacy@allotly.ai" className="text-indigo-500 hover:text-indigo-400 transition-colors">privacy@allotly.ai</a>.
+                {t("pages.privacy.sec7.body")}
+              </p>
+            </section>
+
+            <section>
+              <h2 className="text-xl font-semibold mb-3" data-testid="section-contact-privacy">{t("pages.privacy.sec8.title")}</h2>
+              <p className="text-muted-foreground leading-relaxed">
+                {t("pages.privacy.sec8.bodyPrefix")}
+                <a href="mailto:privacy@allotly.ai" className="text-indigo-500 hover:text-indigo-400 transition-colors">privacy@allotly.ai</a>
+                {t("pages.privacy.sec8.bodySuffix")}
               </p>
             </section>
           </div>
