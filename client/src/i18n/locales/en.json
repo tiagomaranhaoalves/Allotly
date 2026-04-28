@@ -9,10 +9,10 @@
     "home": "Home"
   },
   "hero": {
-    "title1": "Great teams use many models.",
-    "title2": "Smart teams",
-    "title3": "run one budget.",
-    "subtitle": "Allotly connects to your OpenAI, Anthropic, Gemini, and Azure accounts and puts you in control — per person, per model, per project. One Allotly key, all models, at once.",
+    "title1": "One key.",
+    "title2": "Every model.",
+    "title3": "One budget.",
+    "subtitle": "Allotly gives you a single API key that talks to OpenAI, Anthropic, Gemini, and Azure — at the same time. Set spend limits per person, per model, per project, and we enforce them on every request.",
     "ctaStart": "Start Free",
     "ctaHow": "See How It Works",
     "preview": {
@@ -29,8 +29,8 @@
   },
   "solution": {
     "label": "THE SOLUTION",
-    "title": "One control plane. Every AI provider. Total spend visibility.",
-    "subtitle": "Whether your team uses OpenAI for code generation, Anthropic for analysis, Gemini for research, or Azure for enterprise deployments — Allotly gives you a single pane of glass to manage budgets, distribute access, and track every dollar."
+    "title": "One key. Every provider. Every budget enforced in real time.",
+    "subtitle": "Issue one Allotly key per person — it works with OpenAI, Anthropic, Gemini, and Azure simultaneously. We sit between your team and every provider, enforcing budgets on every request and showing you every dollar in one dashboard."
   },
   "features": {
     "label": "TWO ACCESS MODELS",

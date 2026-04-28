@@ -9,10 +9,10 @@
     "home": "Início"
   },
   "hero": {
-    "title1": "Boas equipes usam vários modelos.",
-    "title2": "Equipes inteligentes",
-    "title3": "operam com um só orçamento.",
-    "subtitle": "A Allotly se conecta às suas contas da OpenAI, Anthropic, Gemini e Azure e coloca você no controle — por pessoa, por modelo, por projeto. Uma chave Allotly, todos os modelos, de uma vez.",
+    "title1": "Uma chave.",
+    "title2": "Todos os modelos.",
+    "title3": "Um só orçamento.",
+    "subtitle": "A Allotly te dá uma única chave de API que conversa com OpenAI, Anthropic, Gemini e Azure — ao mesmo tempo. Defina limites de gasto por pessoa, por modelo, por projeto, e aplicamos em cada requisição.",
     "ctaStart": "Começar Grátis",
     "ctaHow": "Veja Como Funciona",
     "preview": {
@@ -29,8 +29,8 @@
   },
   "solution": {
     "label": "A SOLUÇÃO",
-    "title": "Um painel de controle. Todos os provedores de IA. Visibilidade total do gasto.",
-    "subtitle": "Seja sua equipe usando OpenAI para gerar código, Anthropic para análises, Gemini para pesquisa ou Azure para implantações corporativas — a Allotly oferece um único painel para gerenciar orçamentos, distribuir acessos e acompanhar cada centavo."
+    "title": "Uma chave. Todos os provedores. Cada orçamento aplicado em tempo real.",
+    "subtitle": "Emita uma chave Allotly por pessoa — funciona com OpenAI, Anthropic, Gemini e Azure simultaneamente. Ficamos entre sua equipe e cada provedor, aplicando orçamentos em cada requisição e mostrando cada centavo em um único painel."
   },
   "features": {
     "label": "DOIS MODELOS DE ACESSO",
