@@ -1077,6 +1077,14 @@
       "emptyTitle": "Connect your first AI provider",
       "emptyDescription": "Connect your OpenAI, Anthropic, Google, or Azure account to start provisioning API keys for your team.",
       "emptyAction": "Connect Provider",
+      "apiKeyHelp": {
+        "trigger": "Don't have an API key?",
+        "body": "You'll need an API key — here's where to get one. API access is billed separately by your provider and you only pay for what you use.",
+        "openai": "Get OpenAI API key",
+        "anthropic": "Get Anthropic API key",
+        "google": "Get Google AI Studio key",
+        "azure": "Get Azure OpenAI key"
+      },
       "healthIndicatorTitle": "Health indicator",
       "titleValidate": "Validate Now",
       "titleTest": "Test Connection",

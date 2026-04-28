@@ -15,10 +15,62 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Plug, Plus, Trash2, Shield, RefreshCw, ChevronDown, ChevronRight, RotateCw, Zap, Activity, Cloud, AlertTriangle, Pencil } from "lucide-react";
+import { Plug, Plus, Trash2, Shield, RefreshCw, ChevronDown, ChevronRight, RotateCw, Zap, Activity, Cloud, AlertTriangle, Pencil, HelpCircle, ExternalLink } from "lucide-react";
 import { useState } from "react";
+
+const PROVIDER_KEY_LINKS: Record<string, { url: string; i18nKey: string }> = {
+  OPENAI: { url: "https://platform.openai.com/api-keys", i18nKey: "openai" },
+  ANTHROPIC: { url: "https://console.anthropic.com/settings/keys", i18nKey: "anthropic" },
+  GOOGLE: { url: "https://aistudio.google.com/apikey", i18nKey: "google" },
+  AZURE_OPENAI: { url: "https://oai.azure.com/", i18nKey: "azure" },
+};
+
+function ApiKeyHelp({ provider, testIdSuffix }: { provider?: string; testIdSuffix: string }) {
+  const { t } = useTranslation();
+  const entries = provider && PROVIDER_KEY_LINKS[provider]
+    ? [[provider, PROVIDER_KEY_LINKS[provider]] as const]
+    : (Object.entries(PROVIDER_KEY_LINKS) as Array<[string, typeof PROVIDER_KEY_LINKS[string]]>);
+  return (
+    <Collapsible className="rounded-lg border bg-muted/30">
+      <CollapsibleTrigger
+        className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left hover-elevate active-elevate-2 rounded-lg group"
+        data-testid={`button-toggle-apikey-help-${testIdSuffix}`}
+      >
+        <span className="flex items-center gap-2 text-sm font-medium">
+          <HelpCircle className="w-4 h-4 text-muted-foreground" />
+          {t("dashboard.providers.apiKeyHelp.trigger")}
+        </span>
+        <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="px-4 pb-4 pt-1 space-y-3" data-testid={`apikey-help-content-${testIdSuffix}`}>
+          <p className="text-sm text-muted-foreground">
+            {t("dashboard.providers.apiKeyHelp.body")}
+          </p>
+          <ul className="flex flex-col gap-1.5">
+            {entries.map(([providerKey, info]) => (
+              <li key={providerKey}>
+                <a
+                  href={info.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm text-primary hover-elevate active-elevate-2 rounded px-1.5 py-0.5"
+                  data-testid={`link-get-apikey-${providerKey.toLowerCase()}-${testIdSuffix}`}
+                >
+                  {t(`dashboard.providers.apiKeyHelp.${info.i18nKey}`)}
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
 
 interface AzureDeployment {
   deploymentName: string;
@@ -224,6 +276,7 @@ export default function ProvidersPage() {
                   </div>
                   <div className="space-y-2">
                     <Label>{t("dashboard.providers.apiKeyLabel")}</Label>
+                    <ApiKeyHelp provider="AZURE_OPENAI" testIdSuffix="dialog-azure" />
                     <Input
                       type="password"
                       placeholder={t("dashboard.providers.apiKeyPlaceholderAzure")}
@@ -290,6 +343,7 @@ export default function ProvidersPage() {
                 <>
                   <div className="space-y-2">
                     <Label>{t("dashboard.providers.adminApiKeyLabel")}</Label>
+                    <ApiKeyHelp provider={provider || undefined} testIdSuffix="dialog-generic" />
                     <Input
                       type="password"
                       placeholder={t("dashboard.providers.apiKeyPlaceholderGeneric")}
@@ -347,12 +401,15 @@ export default function ProvidersPage() {
           )}
         </div>
       ) : (
-        <EmptyState
-          icon={<Plug className="w-10 h-10 text-muted-foreground" />}
-          title={t("dashboard.providers.emptyTitle")}
-          description={t("dashboard.providers.emptyDescription")}
-          action={{ label: t("dashboard.providers.emptyAction"), onClick: () => setOpen(true) }}
-        />
+        <div className="space-y-4 max-w-2xl mx-auto">
+          <EmptyState
+            icon={<Plug className="w-10 h-10 text-muted-foreground" />}
+            title={t("dashboard.providers.emptyTitle")}
+            description={t("dashboard.providers.emptyDescription")}
+            action={{ label: t("dashboard.providers.emptyAction"), onClick: () => setOpen(true) }}
+          />
+          <ApiKeyHelp testIdSuffix="empty" />
+        </div>
       )}
     </div>
   );

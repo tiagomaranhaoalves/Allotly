@@ -1077,6 +1077,14 @@
       "emptyTitle": "Conecta tu primer AI Provider",
       "emptyDescription": "Conecta tu cuenta de OpenAI, Anthropic, Google o Azure para comenzar a aprovisionar API keys para tu Teams.",
       "emptyAction": "Conectar Provider",
+      "apiKeyHelp": {
+        "trigger": "¿No tienes una API key?",
+        "body": "Necesitarás una API key — aquí te decimos dónde conseguirla. El acceso a la API lo factura tu provider por separado y solo pagas por lo que usas.",
+        "openai": "Obtener API key de OpenAI",
+        "anthropic": "Obtener API key de Anthropic",
+        "google": "Obtener key de Google AI Studio",
+        "azure": "Obtener key de Azure OpenAI"
+      },
       "healthIndicatorTitle": "Indicador de salud",
       "titleValidate": "Validar ahora",
       "titleTest": "Probar conexión",
