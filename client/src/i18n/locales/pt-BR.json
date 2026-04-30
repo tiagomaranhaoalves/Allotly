@@ -27,11 +27,6 @@
     "stat2Desc": "das empresas não têm controles de IA responsivos",
     "stat3Desc": "dos executivos dizem que mais de um quarto do gasto não entrega valor"
   },
-  "solution": {
-    "label": "A SOLUÇÃO",
-    "title": "Uma chave. Todos os provedores. Cada orçamento aplicado em tempo real.",
-    "subtitle": "Emita uma chave Allotly por pessoa — funciona com OpenAI, Anthropic, Gemini e Azure simultaneamente. Ficamos entre sua equipe e cada provedor, aplicando orçamentos em cada requisição e mostrando cada centavo em um único painel."
-  },
   "features": {
     "label": "DOIS MODELOS DE ACESSO",
     "title": "Equipes Internas. Usuários Externos. Um Painel.",

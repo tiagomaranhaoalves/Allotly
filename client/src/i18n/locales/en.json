@@ -27,11 +27,6 @@
     "stat2Desc": "of companies have no responsive AI controls in place",
     "stat3Desc": "of executives say over a quarter of their spend delivers no value"
   },
-  "solution": {
-    "label": "THE SOLUTION",
-    "title": "One key. Every provider. Every budget enforced in real time.",
-    "subtitle": "Issue one Allotly key per person — it works with OpenAI, Anthropic, Gemini, and Azure simultaneously. We sit between your team and every provider, enforcing budgets on every request and showing you every dollar in one dashboard."
-  },
   "features": {
     "label": "TWO ACCESS MODELS",
     "title": "Internal Teams. External Users. One Dashboard.",

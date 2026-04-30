@@ -308,25 +308,6 @@ function ProblemStrip() {
   );
 }
 
-function SolutionIntro() {
-  const { t } = useTranslation();
-  return (
-    <section className="py-24 lg:py-32">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        <FadeIn>
-          <p className="text-xs uppercase tracking-widest text-indigo-500 font-semibold mb-4" data-testid="text-solution-label">{t("solution.label")}</p>
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight max-w-3xl mx-auto">
-            {t("solution.title")}
-          </h2>
-          <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-            {t("solution.subtitle")}
-          </p>
-        </FadeIn>
-      </div>
-    </section>
-  );
-}
-
 function TwoFeaturesSection() {
   const { t } = useTranslation();
   const teamBullets = [
@@ -1031,7 +1012,6 @@ export default function LandingPage() {
       <Header />
       <Hero />
       <ProblemStrip />
-      <SolutionIntro />
       <TwoFeaturesSection />
       <VoucherCallout />
       <HowItWorks />
