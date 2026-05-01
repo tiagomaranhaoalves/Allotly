@@ -16,6 +16,7 @@ import OauthClaimAccountPage from "@/pages/oauth-claim-account";
 import ForgotPasswordPage from "@/pages/forgot-password";
 import ResetPasswordPage from "@/pages/reset-password";
 import DocsPage from "@/pages/docs";
+import McpDocsPage from "@/pages/mcp-docs";
 import AboutPage from "@/pages/about";
 import CareersPage from "@/pages/careers";
 import ContactPage from "@/pages/contact";
@@ -65,6 +66,8 @@ function Router() {
       <Route path="/reset-password" component={ResetPasswordPage} />
       <Route path="/invite/:token" component={InvitePage} />
       <Route path="/docs" component={DocsPage} />
+      <Route path="/mcp/docs" component={McpDocsPage} />
+      <Route path="/docs/mcp" component={McpDocsPage} />
       <Route path="/about" component={AboutPage} />
       <Route path="/careers" component={CareersPage} />
       <Route path="/contact" component={ContactPage} />

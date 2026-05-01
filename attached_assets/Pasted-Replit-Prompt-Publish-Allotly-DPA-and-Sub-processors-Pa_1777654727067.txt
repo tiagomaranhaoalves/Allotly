@@ -1,0 +1,41 @@
+Replit Prompt — Publish Allotly DPA and Sub-processors Pages
+Use the prompt below in Replit Agent (or any AI coding agent connected to your Allotly repo) to add two new public pages: /dpa and /subprocessors. They mirror the structure and styling of the existing /privacy page.
+
+Prompt
+Add two new public pages to the Allotly site: a Data Processing Agreement at /dpa and a Sub-processors list at /subprocessors. Use the content from DPA.md and SUBPROCESSORS.md (attached / in the repo root).
+Tasks:
+1. Locate the existing /privacy page in the repo. The new pages should mirror its file location, route definition, layout components, and typographic styling. Search for the privacy policy file used in the previous task (likely app/privacy/page.tsx, pages/privacy.tsx, src/pages/Privacy.tsx, or app/legal/privacy.mdx).
+2. Create the DPA page at the equivalent path for the /dpa route (e.g., app/dpa/page.tsx or pages/dpa.tsx). Use the content of DPA.md as the page body. Match the privacy page's heading hierarchy, table styling, list styling, and link styling — do not introduce new components or Tailwind classes.
+3. Create the Sub-processors page at the equivalent path for the /subprocessors route. Use the content of SUBPROCESSORS.md as the page body. Same styling rules as step 2.
+4. The DPA includes one HTML table (under §3 "Subject matter, duration, nature, and purpose of processing"). Render it using the same table styling already used elsewhere on the site, or <table> with sensible Tailwind utility classes (w-full border-collapse, padded cells, header row contrast). Tables must be responsive on mobile (horizontal scroll wrapper if needed).
+5. Both new pages contain bracketed placeholders that must be visibly flagged so they fail loudly if not filled in. Wrap each in a <mark> tag, or insert a TODO: comment in the source adjacent to each. The placeholders are: In DPA.md:
+    * [Legal Entity Name] — must match the privacy policy entity name
+    * [Jurisdiction] (appears twice in §15) — governing law and forum, e.g., "England and Wales"
+6. In SUBPROCESSORS.md:
+    * [Cloud hosting provider] and its [Region]
+    * [Database provider] and its [Region]
+    * [Email provider] and its [Region]
+    * [Error monitoring provider] and its [Region]
+7. Do not invent values. The Sub-processor table in particular must reflect Allotly's actual infrastructure — incorrect entries would breach the DPA. Leave them as visible placeholders.
+8. Update the site footer to include links to "DPA" and "Sub-processors" alongside the existing "Privacy" link. Use identical styling to adjacent footer links. If the footer organises links into columns (e.g., "Legal" or "Compliance"), add the new links to the same column as Privacy.
+9. Verify all internal cross-links work. The pages reference each other and the privacy policy:
+    * https://allotly.ai/privacy (referenced from DPA §2)
+    * https://allotly.ai/dpa (referenced from Sub-processors)
+    * https://allotly.ai/subprocessors (referenced from DPA §6)
+    * mailto:security@allotly.ai (multiple references in both pages)
+10. During local development, these absolute URLs may not resolve — that is expected. They will work once deployed. Do not change them to relative paths.
+11. Run the project's existing lint/format/typecheck commands (npm run lint, npm run typecheck, or equivalent) and fix any issues introduced. Do not modify unrelated files.
+12. Output a short summary at the end:
+    * Files created and changed
+    * The full list of placeholders that still need to be filled in (grouped by file)
+    * Confirmation that both pages build and render without errors
+    * Confirmation that footer links are visible
+Do not push, deploy, or open a PR — stage the changes and stop. I will review before merging.
+
+Notes for you (not part of the prompt)
+* The DPA is opinionated, not generic. I drafted it to reflect how Allotly actually works — that prompts and completions are not processed by Allotly, that AI providers are not Sub-processors of Allotly (the end-user picks them at runtime), and that customer-supplied API keys are encrypted with AES-256-GCM. These are protective positions for Allotly. A standard SaaS template would have lumped AI providers into the Sub-processor list, which would create obligations you don't actually have.
+* Why a separate Sub-processors page. The DPA references allotly.ai/subprocessors rather than listing Sub-processors inline. This is the standard pattern (Stripe, Vercel, OpenAI, Anthropic all do it this way) and it lets you update the Sub-processor list without re-issuing the DPA. Make sure both pages ship together — a DPA pointing to a 404 looks worse than no DPA.
+* The four infrastructure placeholders. Be honest about what you actually use. If your stack is Vercel + Neon + Stripe + Resend + Sentry (a common Next.js startup combo), say so. Reviewers and procurement teams cross-check this against your security posture; vague entries like "various cloud providers" raise more questions than specific ones.
+* Governing law in §15. If you're UK-incorporated, "England and Wales" is the standard choice. Avoid choosing a jurisdiction Allotly has no real connection to — it's unenforceable and looks like template-filling.
+* What this gets you with Anthropic. Once /dpa is live, paste the URL into the "Data Processing Agreement URL" field in the submission form. That single field flips your submission from "small startup, work in progress" to "B2B-ready, has done the homework" — meaningful signal at the review margin.
+* What it does not get you. This is a v1 DPA — defensible for a small SaaS at your stage. It is not a substitute for legal review once you start signing six- or seven-figure Enterprise contracts. The first time a Fortune-500 procurement team red-lines it, get a lawyer to review their changes against this baseline.

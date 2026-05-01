@@ -1,0 +1,102 @@
+Data Processing Agreement
+Last updated: May 2026
+This Data Processing Agreement ("DPA") forms part of the agreement between [Legal Entity Name] ("Allotly", "we", "us", the "Processor") and the customer entity that has subscribed to Allotly's services (the "Customer", "you", the "Controller") for the use of Allotly's AI access governance platform (the "Service").
+This DPA applies whenever Allotly processes Personal Data on behalf of the Customer in the course of providing the Service, and is intended to satisfy the requirements of Article 28 of the UK GDPR and the EU GDPR (together, "GDPR").
+By subscribing to a Team or Enterprise plan, the Customer is deemed to have entered into this DPA. A countersigned copy is available on request at security@allotly.ai.
+
+1. Definitions
+Terms not defined here have the meanings given to them in the GDPR.
+* Personal Data: any information relating to an identified or identifiable natural person processed by Allotly on behalf of the Customer through the Service.
+* Data Subject: an identified or identifiable natural person to whom Personal Data relates (typically, the Customer's end-users — employees, students, contractors, or other individuals issued access by the Customer).
+* Sub-processor: a third party engaged by Allotly to process Personal Data on behalf of the Customer.
+* Restricted Transfer: a transfer of Personal Data from the UK or EEA to a country not benefiting from an adequacy decision.
+
+2. Roles and scope
+The Customer is the Controller of the Personal Data. Allotly is the Processor, acting only on the Customer's documented instructions, which are deemed to be the instructions set out in this DPA, the Allotly Terms of Service, and the configuration choices the Customer makes within the Service.
+This DPA does not apply to:
+* Personal Data of which Allotly is itself the Controller (e.g., the Customer's billing contact details, account administrator credentials, or marketing preferences), which are governed by the Allotly Privacy Policy.
+* The content of prompts or completions exchanged with third-party AI providers, which Allotly does not store. Such content is processed by the AI provider selected by the Customer's end-user under that provider's own terms.
+
+3. Subject matter, duration, nature, and purpose of processing
+Item	Details
+Subject matter	Provision of the Allotly AI access governance platform.
+Duration	The term of the Customer's subscription, plus any retention period specified in §10.
+Nature of processing	Authentication, authorization, budget enforcement, usage metering, audit logging, and admin reporting.
+Purpose	To allow the Customer to provision, govern, and monitor scoped AI access for its end-users.
+Categories of Data Subjects	The Customer's end-users (e.g., employees, students, contractors) issued access by the Customer.
+Categories of Personal Data	Name, email, role/team membership, voucher and access scope, usage metadata (token counts, model identifiers, timestamps, cost estimates).
+Special category data	None expected. The Customer must not configure the Service to process special category data.
+4. Allotly's obligations
+Allotly will:
+1. Process Personal Data only on the Customer's documented instructions, including with regard to Restricted Transfers, unless required by law (in which case Allotly will inform the Customer unless legally prohibited).
+2. Ensure that personnel authorised to process Personal Data are bound by appropriate confidentiality obligations.
+3. Implement appropriate technical and organisational measures as set out in §7.
+4. Assist the Customer, taking into account the nature of the processing, in fulfilling its obligations to respond to Data Subject requests under §8.
+5. Assist the Customer in ensuring compliance with its obligations under Articles 32–36 GDPR (security, breach notification, data protection impact assessments, prior consultation), to the extent reasonably required.
+6. At the Customer's choice, delete or return all Personal Data after the end of the provision of services, as set out in §10.
+7. Make available to the Customer all information necessary to demonstrate compliance with Article 28 GDPR, and allow for and contribute to audits as set out in §9.
+
+5. Customer's obligations
+The Customer warrants that:
+1. It has a lawful basis for the processing it instructs Allotly to perform, and has provided all necessary notices and obtained all necessary consents from Data Subjects.
+2. Its instructions to Allotly comply with applicable law.
+3. It will not configure the Service to process Personal Data outside the categories listed in §3, including special category data.
+
+6. Sub-processors
+The Customer provides a general authorisation for Allotly to engage Sub-processors to provide the Service. The current list of Sub-processors is published at allotly.ai/subprocessors and includes, at minimum, the cloud hosting, database, payment, and email infrastructure providers necessary to operate the Service.
+Allotly will:
+1. Enter into a written contract with each Sub-processor imposing data protection obligations no less protective than those in this DPA.
+2. Remain liable for the acts and omissions of its Sub-processors as if they were its own.
+3. Notify the Customer of any intended additions or replacements of Sub-processors with at least 30 days' notice (via the Sub-processors page or email to the account administrator). The Customer may object on reasonable data-protection grounds within that period; if the parties cannot resolve the objection, the Customer may terminate the affected portion of the Service.
+
+7. Security measures
+Allotly implements and maintains the following technical and organisational measures:
+* Encryption in transit: all connections secured with HTTPS/TLS.
+* Encryption at rest: PostgreSQL with encryption at rest. Customer-supplied API keys encrypted using AES-256-GCM before storage.
+* Authentication: user passwords hashed with bcrypt; administrative access protected by multi-factor authentication.
+* Access control: role-based access controls; principle of least privilege for personnel.
+* Logging and monitoring: audit logs for administrative and access-relevant actions.
+* Backups: encrypted backups with defined retention and purge schedules (see §10).
+* Vendor management: Sub-processors subject to written data protection commitments.
+* Incident response: documented procedures for detecting, investigating, and notifying personal data breaches.
+Allotly will review and update these measures periodically to reflect evolving best practice and the risk profile of the processing.
+
+8. Data subject rights and assistance
+Allotly will, taking into account the nature of the processing, provide reasonable assistance to the Customer (by appropriate technical and organisational measures, insofar as possible) in responding to requests from Data Subjects exercising their rights under Articles 15–22 GDPR.
+Where Allotly receives a request directly from a Data Subject relating to Personal Data processed on behalf of the Customer, Allotly will, unless otherwise required by law, redirect the Data Subject to the Customer.
+The Customer can self-serve most rights requests through the Service's account administration tools (data export, deletion of end-user records, correction of metadata).
+
+9. Audits
+Allotly will, on the Customer's reasonable written request and no more than once per twelve-month period (except following a personal data breach affecting the Customer's data), make available information reasonably necessary to demonstrate compliance with this DPA. This may take the form of:
+* Up-to-date third-party certifications or audit reports (e.g., SOC 2, ISO 27001) where available; or
+* Written responses to a reasonable security questionnaire.
+On-site audits are available to Enterprise-plan Customers, subject to reasonable notice, scope, and confidentiality terms, and at the Customer's cost (except where the audit reveals material non-compliance by Allotly).
+
+10. Breach notification
+Allotly will notify the Customer without undue delay, and in any event within 72 hours, after becoming aware of a personal data breach affecting the Customer's Personal Data. The notification will include, to the extent then known, the information required under Article 33(3) GDPR. Allotly will provide updates as further information becomes available and will cooperate reasonably with the Customer in investigating and remediating the breach.
+
+11. International transfers
+Where the provision of the Service involves a Restricted Transfer of Personal Data, the parties agree that:
+1. Such transfers are made under appropriate safeguards, including the European Commission's Standard Contractual Clauses (SCCs) and the UK International Data Transfer Addendum, which are deemed to be incorporated by reference into this DPA.
+2. The Customer is the data exporter and Allotly is the data importer for transfers from the Customer to Allotly. For onward transfers to Sub-processors located outside the UK/EEA, Allotly will ensure equivalent safeguards are in place.
+3. Where applicable, Module Two (controller to processor) of the SCCs applies.
+A copy of the executed SCCs and UK Addendum is available on request.
+
+12. Return and deletion of data
+On termination or expiry of the Customer's subscription, Allotly will, at the Customer's choice:
+1. Return all Personal Data processed on behalf of the Customer in a structured, commonly used, machine-readable format; or
+2. Delete all such Personal Data,
+within 30 days, except where retention is required by law (e.g., billing records held for statutory accounting periods). Encrypted backups are purged within a further 30 days.
+If the Customer makes no election, Allotly will delete the Personal Data after the periods set out above.
+
+13. Liability
+Each party's liability under or in connection with this DPA is subject to the limitations and exclusions of liability set out in the Allotly Terms of Service. Nothing in this DPA limits or excludes liability that cannot be limited or excluded under applicable law.
+
+14. Conflict and order of precedence
+In the event of a conflict between this DPA and the Allotly Terms of Service in respect of the processing of Personal Data, this DPA prevails. In the event of a conflict between this DPA and the SCCs incorporated by reference under §11, the SCCs prevail.
+
+15. Governing law
+This DPA is governed by the laws of [Jurisdiction], and disputes are subject to the exclusive jurisdiction of the courts of [Jurisdiction], save that the SCCs and UK Addendum are governed by the laws and supervised by the authorities specified within them.
+
+16. Contact
+For all matters relating to this DPA, including requests for a countersigned copy, audit information, or breach notifications: security@allotly.ai.

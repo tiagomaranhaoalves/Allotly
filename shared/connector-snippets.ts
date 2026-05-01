@@ -137,7 +137,7 @@ export const OAUTH_CONNECTORS: OAuthConnectorSpec[] = [
       "Paste the MCP URL above.",
       "Authorize Allotly when prompted.",
     ],
-    learnMoreUrl: "/docs#oauth-claude-ai",
+    learnMoreUrl: "/mcp/docs#oauth-claudeAi",
     mcpUrl: ALLOTLY_MCP_URL,
   },
   {
@@ -150,7 +150,7 @@ export const OAUTH_CONNECTORS: OAuthConnectorSpec[] = [
       "Add server with the URL above.",
       "Sign in via Allotly when prompted.",
     ],
-    learnMoreUrl: "/docs#oauth-chatgpt",
+    learnMoreUrl: "/mcp/docs#oauth-chatgpt",
     mcpUrl: ALLOTLY_MCP_URL,
   },
   {
@@ -163,7 +163,7 @@ export const OAUTH_CONNECTORS: OAuthConnectorSpec[] = [
       "Use the URL above.",
       "Authorize via Allotly.",
     ],
-    learnMoreUrl: "/docs#oauth-gemini",
+    learnMoreUrl: "/mcp/docs#oauth-gemini",
     mcpUrl: ALLOTLY_MCP_URL,
   },
 ];

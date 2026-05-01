@@ -331,6 +331,27 @@ export default function DocsPage() {
 
         <main ref={mainRef} className="flex-1 min-w-0 max-w-3xl px-6 lg:px-12 py-8 leading-relaxed">
 
+          <Link
+            href="/mcp/docs"
+            className="not-prose flex items-center justify-between gap-4 mb-8 p-4 rounded-lg border border-indigo-500/30 bg-indigo-500/5 hover:bg-indigo-500/10 hover:border-indigo-500/50 transition-colors"
+            data-testid="link-mcp-docs-callout"
+          >
+            <div className="flex-1">
+              <p className="text-xs uppercase tracking-widest text-indigo-500 font-semibold mb-1">
+                Connector reference
+              </p>
+              <p className="text-sm font-medium text-foreground">
+                Connecting an MCP host (Claude, Cursor, ChatGPT, Gemini)?
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                See the dedicated MCP server documentation for setup snippets, tool reference, and troubleshooting.
+              </p>
+            </div>
+            <span className="text-indigo-500 text-sm font-medium whitespace-nowrap">
+              Open →
+            </span>
+          </Link>
+
           <SectionHeading id="what-is-allotly" title="What is Allotly" />
           <p className="text-muted-foreground leading-relaxed mb-4">
             Allotly is the AI Spend Control Plane. It sits between your organization and AI providers like OpenAI,
