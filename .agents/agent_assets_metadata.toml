@@ -36,3 +36,9 @@ id = "yKrm-Aa9UmT93m9Mh3FEj"
 uri = "file://.local/audit-report.md"
 type = "text"
 title = "Allotly Security & Performance Audit Report"
+
+[[outputs]]
+id = "5OgGhol5BmRXco_mGP9UI"
+uri = "file://client/public/allotly-logo-icon.svg"
+type = "image"
+title = "Allotly square logo (1:1, SVG)"
