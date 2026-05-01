@@ -220,6 +220,8 @@
     "privacy": "Privacy Policy",
     "terms": "Terms of Service",
     "security": "Security",
+    "dpa": "DPA",
+    "subprocessors": "Sub-processors",
     "copyright": "© 2026 Allotly. All rights reserved."
   },
   "arenaHeader": {
@@ -2018,7 +2020,7 @@
       },
       "sec3": {
         "title": "3. Data Storage & Security",
-        "body": "All data is stored in PostgreSQL with encryption at rest. API keys stored on behalf of organizations are encrypted using AES-256-GCM before being written to the database. User passwords are hashed using bcrypt. All connections are secured with HTTPS/TLS in transit."
+        "body": "All data is stored in PostgreSQL with encryption at rest. API keys stored on behalf of organizations are encrypted using AES-256-GCM before being written to the database. User passwords are hashed using scrypt. All connections are secured with HTTPS/TLS in transit."
       },
       "sec4": {
         "title": "4. Third-Party Services",
@@ -2199,7 +2201,7 @@
         },
         "passwords": {
           "label": "Passwords",
-          "detail": "bcrypt hashing with salting"
+          "detail": "scrypt hashing with salting"
         },
         "transit": {
           "label": "In Transit",

@@ -21,6 +21,8 @@ import AboutPage from "@/pages/about";
 import CareersPage from "@/pages/careers";
 import ContactPage from "@/pages/contact";
 import PrivacyPage from "@/pages/privacy";
+import DpaPage from "@/pages/dpa";
+import SubprocessorsPage from "@/pages/subprocessors";
 import TermsPage from "@/pages/terms";
 import SecurityPage from "@/pages/security";
 import ComponentsShowcase from "@/pages/components-showcase";
@@ -74,6 +76,8 @@ function Router() {
       <Route path="/privacy" component={PrivacyPage} />
       <Route path="/terms" component={TermsPage} />
       <Route path="/security" component={SecurityPage} />
+      <Route path="/dpa" component={DpaPage} />
+      <Route path="/subprocessors" component={SubprocessorsPage} />
       <Route path="/components" component={ComponentsShowcase} />
       <Route path="/arena" component={ArenaPage} />
       <Route path="/admin/login" component={AdminLoginPage} />

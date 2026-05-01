@@ -122,6 +122,8 @@ function PublicFooter() {
               <li><Link href="/privacy" className="text-sm hover:text-white transition-colors">{t("footer.privacy")}</Link></li>
               <li><Link href="/terms" className="text-sm hover:text-white transition-colors">{t("footer.terms")}</Link></li>
               <li><Link href="/security" className="text-sm hover:text-white transition-colors">{t("footer.security")}</Link></li>
+              <li><Link href="/dpa" data-testid="link-footer-dpa" className="text-sm hover:text-white transition-colors">{t("footer.dpa")}</Link></li>
+              <li><Link href="/subprocessors" data-testid="link-footer-subprocessors" className="text-sm hover:text-white transition-colors">{t("footer.subprocessors")}</Link></li>
             </ul>
           </div>
         </div>

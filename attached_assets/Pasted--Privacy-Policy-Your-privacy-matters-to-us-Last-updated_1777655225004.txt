@@ -1,0 +1,102 @@
+# Privacy Policy
+
+Your privacy matters to us.
+
+**Last updated:** May 2026
+
+---
+
+## Who we are
+
+Allotly is operated by **[Legal Entity Name]**, registered in **[Country]** at **[Registered Address]**. We are the data controller for personal data processed through this service.
+
+For any privacy-related question, contact us at **[privacy@allotly.ai](mailto:privacy@allotly.ai)**.
+
+---
+
+## 1. Information we collect
+
+We collect the minimum information necessary to operate the service:
+
+- **Account information:** name, email address, and hashed password.
+- **Organization data:** team names, member roles, and provider configurations.
+- **Usage metadata:** token counts, model identifiers, timestamps, and cost estimates per API call.
+- **Billing information:** managed securely through Stripe. We do not store credit card numbers.
+
+We do **not** collect or store: prompts, completions, conversation history, or any content sent to AI providers.
+
+---
+
+## 2. How we use information
+
+We use the information above to:
+
+- Authenticate users and manage team memberships.
+- Track and enforce usage budgets for teams and vouchers.
+- Generate analytics dashboards for organization admins.
+- Process billing and payments via Stripe.
+- Send transactional emails (budget alerts, account notifications).
+- Improve service reliability and performance.
+
+**Legal basis (UK/EU GDPR).** We process your data on the following legal bases: **contract** (to provide the service you signed up for), **legitimate interests** (service reliability, security, fraud prevention), and **consent** where required (e.g., for any future marketing communications — none are currently sent).
+
+---
+
+## 3. Data storage and security
+
+All data is stored in PostgreSQL with encryption at rest. API keys stored on behalf of organizations are encrypted using AES-256-GCM before being written to the database. User passwords are hashed using bcrypt. All connections are secured with HTTPS/TLS in transit.
+
+---
+
+## 4. Third-party services
+
+- **Stripe:** payment processing and subscription management.
+- **AI providers (OpenAI, Anthropic, Google, and others enabled by the user):** When you send a prompt through Allotly, it is forwarded to the provider you select and is subject to that provider's privacy policy and data retention practices. Allotly does not store the content of prompts or responses. For Team accounts using their own API keys, calls are made directly from the client. For Voucher-based access, calls are proxied through Allotly without content storage.
+
+**International transfers.** Some of our third-party processors (Stripe, OpenAI, Anthropic, Google) are based in the United States. Where personal data is transferred outside the UK/EEA, transfers are made under appropriate safeguards including Standard Contractual Clauses or equivalent mechanisms.
+
+---
+
+## 5. Data retention
+
+Usage data retention varies by plan:
+
+- **Free plan:** 7 days of usage history.
+- **Team plan:** 90 days of usage history.
+- **Enterprise plan:** 1 year of usage history.
+
+Account data is retained for the duration of your account. Upon deletion, all associated data is permanently removed within 30 days, except where retention is required for legal, tax, or fraud-prevention purposes (e.g., billing records held for statutory accounting periods). Encrypted backups are purged within a further 30 days.
+
+---
+
+## 6. Your rights
+
+You have the right to:
+
+- **Access:** request a copy of the data we hold about you.
+- **Correction:** update or correct inaccurate information.
+- **Deletion:** request permanent deletion of your account and data.
+- **Export:** download your usage data in a machine-readable format.
+- **Object or restrict processing:** in the limited circumstances permitted by law.
+
+To exercise any of these rights, contact us at **[privacy@allotly.ai](mailto:privacy@allotly.ai)**.
+
+You also have the right to lodge a complaint with a supervisory authority. In the UK, this is the Information Commissioner's Office ([ico.org.uk](https://ico.org.uk)). EU residents can complain to their local data protection authority.
+
+---
+
+## 7. Cookies
+
+We use essential cookies only: a session cookie to keep you logged in and a preference cookie for theme selection. We do not use advertising or tracking cookies. No third-party analytics scripts are loaded.
+
+---
+
+## 8. Changes to this policy
+
+We may update this policy from time to time. Material changes will be notified by email or in-app at least 14 days before taking effect.
+
+---
+
+## 9. Contact
+
+For privacy-related inquiries, reach us at **[privacy@allotly.ai](mailto:privacy@allotly.ai)**.

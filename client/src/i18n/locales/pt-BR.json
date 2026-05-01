@@ -220,6 +220,8 @@
     "privacy": "Política de Privacidade",
     "terms": "Termos de Serviço",
     "security": "Segurança",
+    "dpa": "DPA",
+    "subprocessors": "Subprocessadores",
     "copyright": "© 2026 Allotly. Todos os direitos reservados."
   },
   "arenaHeader": {
@@ -2018,7 +2020,7 @@
       },
       "sec3": {
         "title": "3. Armazenamento e segurança de dados",
-        "body": "Todos os dados são armazenados em PostgreSQL com criptografia em repouso. As chaves API armazenadas em nome das organizações são criptografadas usando AES-256-GCM antes de serem gravadas no banco. As senhas de usuário são hasheadas usando bcrypt. Todas as conexões são protegidas com HTTPS/TLS em trânsito."
+        "body": "Todos os dados são armazenados em PostgreSQL com criptografia em repouso. As chaves API armazenadas em nome das organizações são criptografadas usando AES-256-GCM antes de serem gravadas no banco. As senhas de usuário são hasheadas usando scrypt. Todas as conexões são protegidas com HTTPS/TLS em trânsito."
       },
       "sec4": {
         "title": "4. Serviços de terceiros",
@@ -2199,7 +2201,7 @@
         },
         "passwords": {
           "label": "Senhas",
-          "detail": "Hashing bcrypt com salting"
+          "detail": "Hashing scrypt com salting"
         },
         "transit": {
           "label": "Em trânsito",

@@ -1,0 +1,50 @@
+# Replit Prompt — Update Allotly Privacy Policy
+
+Use the prompt below in Replit Agent (or any AI coding agent connected to your Allotly repo). It assumes the existing site already has a `/privacy` route or page; adjust paths to your stack as noted at the end.
+
+---
+
+## Prompt
+
+> Update the Allotly privacy policy page with the new content provided in `PRIVACY_POLICY.md` (attached / in the repo root). The new policy adds GDPR-required sections that are currently missing: data controller identity, legal basis for processing, international transfers, the right to lodge a complaint with a supervisory authority, and clarified language around AI provider data flow.
+>
+> **Tasks:**
+>
+> 1. Locate the existing privacy policy in the repo. It is most likely at one of: `app/privacy/page.tsx`, `pages/privacy.tsx`, `src/pages/Privacy.tsx`, `app/legal/privacy.mdx`, or `public/privacy.html`. Search the repo for the string "Last updated: March 2026" or the heading "Information We Collect" to find it.
+>
+> 2. Replace the existing privacy policy content with the content of `PRIVACY_POLICY.md`. Preserve the surrounding page chrome (header, footer, navigation, layout components) — only the policy body changes.
+>
+> 3. If the project uses MDX or a Markdown renderer, drop the `.md` content in directly. If the project uses JSX/TSX with hardcoded copy, convert the Markdown to the equivalent JSX structure using the same heading/paragraph/list components already used elsewhere on the page. Match the existing typographic style (do not introduce new components or Tailwind classes that aren't already used in the rest of the site).
+>
+> 4. Three placeholders in the new policy must be replaced before deploy. Surface them clearly in your output so I can fill them in:
+>    - `[Legal Entity Name]` — the registered company name
+>    - `[Country]` — the country of registration
+>    - `[Registered Address]` — the full registered office address
+>
+>    Do not invent values for these. Leave them as visible placeholders (e.g., wrap them in a `<mark>` tag or a `TODO:` comment in the source) so they fail loudly if not replaced.
+>
+> 5. Update the "Last updated" date to today's date.
+>
+> 6. Verify all internal and external links work:
+>    - `mailto:privacy@allotly.ai` (used three times)
+>    - `https://ico.org.uk`
+>
+> 7. Ensure the `/privacy` route is reachable from the site footer. If a footer link to "Privacy" or "Privacy Policy" already exists, leave it. If not, add one to the footer component using the same styling as adjacent footer links.
+>
+> 8. Run the project's existing lint/format/typecheck commands (`npm run lint`, `npm run typecheck`, or equivalent) and fix any issues introduced by your changes. Do not modify unrelated files.
+>
+> 9. Output a short summary at the end:
+>    - File(s) changed
+>    - The three placeholders that still need to be filled in
+>    - Confirmation that the page builds and renders without errors
+>
+> Do not push, deploy, or open a PR — just stage the changes and stop. I will review before merging.
+
+---
+
+## Notes for you (not part of the prompt)
+
+- **Stack assumptions.** The prompt is written to be agnostic across Next.js (App Router or Pages Router), Vite + React, and static MDX setups. If your Allotly site uses something more specific (e.g., Astro, Remix, plain HTML), tighten step 1 to name the file path directly — the agent will be more reliable with less guessing.
+- **The three placeholders are deliberate.** I left `[Legal Entity Name]`, `[Country]`, and `[Registered Address]` as fill-in fields rather than guessing at "Allotly Ltd, United Kingdom" because (a) you may have incorporated under a different name and (b) GDPR controller identity is the kind of thing reviewers will check against Companies House. Use your actual registered details.
+- **Why "do not deploy".** Step 8 (do not push) is intentional — privacy policy changes are the kind of thing you want to eyeball once in a real browser before they go live, especially given the placeholders.
+- **After deploy.** Once live, grab the public URL (e.g., `https://allotly.ai/privacy`) and paste it into the Anthropic submission form's "Privacy Policy URL" field. That's the link reviewers will click.
