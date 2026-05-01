@@ -1,6 +1,10 @@
 import PublicLayout from "@/components/public-layout";
 import { useTranslation } from "react-i18next";
 
+const LEGAL_ENTITY = "DivBZ Ventures Ltd";
+const JURISDICTION = "England and Wales";
+const REGISTERED_ADDRESS = "71-75 Shelton Street, Covent Garden, London, WC2H 9JQ";
+
 export default function PrivacyPage() {
   const { t } = useTranslation();
   const sec1Bullets = ["account", "org", "usage", "billing"] as const;
@@ -8,7 +12,7 @@ export default function PrivacyPage() {
   const sec2Bullets: string[] = Array.isArray(sec2Raw) ? sec2Raw : [];
   const sec4Bullets = ["stripe", "providers"] as const;
   const sec5Bullets = ["free", "team", "enterprise"] as const;
-  const sec6Bullets = ["access", "correction", "deletion", "export"] as const;
+  const sec6Bullets = ["access", "correction", "deletion", "export", "objectRestrict"] as const;
 
   return (
     <PublicLayout>
@@ -23,6 +27,24 @@ export default function PrivacyPage() {
           </div>
 
           <div className="prose prose-neutral dark:prose-invert max-w-none space-y-10">
+            <section>
+              <h2 className="text-xl font-semibold mb-3" data-testid="section-who-we-are">{t("pages.privacy.controller.title")}</h2>
+              <p className="text-muted-foreground leading-relaxed mb-3">
+                {t("pages.privacy.controller.body1")}
+                <strong className="text-foreground" data-testid="text-legal-entity">{LEGAL_ENTITY}</strong>
+                {t("pages.privacy.controller.body2")}
+                <strong className="text-foreground" data-testid="text-jurisdiction">{JURISDICTION}</strong>
+                {t("pages.privacy.controller.body3")}
+                <strong className="text-foreground" data-testid="text-registered-address">{REGISTERED_ADDRESS}</strong>
+                {t("pages.privacy.controller.body4")}
+              </p>
+              <p className="text-muted-foreground leading-relaxed">
+                {t("pages.privacy.controller.contactPrefix")}
+                <a href="mailto:privacy@allotly.ai" className="text-indigo-500 hover:text-indigo-400 transition-colors" data-testid="link-controller-email">privacy@allotly.ai</a>
+                {t("pages.privacy.controller.contactSuffix")}
+              </p>
+            </section>
+
             <section>
               <h2 className="text-xl font-semibold mb-3" data-testid="section-information-we-collect">{t("pages.privacy.sec1.title")}</h2>
               <p className="text-muted-foreground leading-relaxed mb-3">
@@ -49,6 +71,10 @@ export default function PrivacyPage() {
                   <li key={i}>{b}</li>
                 ))}
               </ul>
+              <p className="text-muted-foreground leading-relaxed mt-3" data-testid="text-legal-basis">
+                <strong className="text-foreground">{t("pages.privacy.sec2.legalBasisLabel")}</strong>
+                {t("pages.privacy.sec2.legalBasisText")}
+              </p>
             </section>
 
             <section>
@@ -68,6 +94,10 @@ export default function PrivacyPage() {
                   </li>
                 ))}
               </ul>
+              <p className="text-muted-foreground leading-relaxed mt-3" data-testid="text-international-transfers">
+                <strong className="text-foreground">{t("pages.privacy.sec4.internationalTransfersLabel")}</strong>
+                {t("pages.privacy.sec4.internationalTransfersText")}
+              </p>
             </section>
 
             <section>
@@ -101,8 +131,13 @@ export default function PrivacyPage() {
               </ul>
               <p className="text-muted-foreground leading-relaxed mt-3">
                 {t("pages.privacy.sec6.contactPrefix")}
-                <a href="mailto:privacy@allotly.ai" className="text-indigo-500 hover:text-indigo-400 transition-colors">privacy@allotly.ai</a>
+                <a href="mailto:privacy@allotly.ai" className="text-indigo-500 hover:text-indigo-400 transition-colors" data-testid="link-rights-email">privacy@allotly.ai</a>
                 {t("pages.privacy.sec6.contactSuffix")}
+              </p>
+              <p className="text-muted-foreground leading-relaxed mt-3" data-testid="text-supervisory-authority">
+                {t("pages.privacy.sec6.supervisoryPrefix")}
+                <a href="https://ico.org.uk" target="_blank" rel="noopener noreferrer" className="text-indigo-500 hover:text-indigo-400 transition-colors" data-testid="link-ico">ico.org.uk</a>
+                {t("pages.privacy.sec6.supervisorySuffix")}
               </p>
             </section>
 
@@ -114,11 +149,18 @@ export default function PrivacyPage() {
             </section>
 
             <section>
-              <h2 className="text-xl font-semibold mb-3" data-testid="section-contact-privacy">{t("pages.privacy.sec8.title")}</h2>
+              <h2 className="text-xl font-semibold mb-3" data-testid="section-changes">{t("pages.privacy.sec8.title")}</h2>
               <p className="text-muted-foreground leading-relaxed">
-                {t("pages.privacy.sec8.bodyPrefix")}
-                <a href="mailto:privacy@allotly.ai" className="text-indigo-500 hover:text-indigo-400 transition-colors">privacy@allotly.ai</a>
-                {t("pages.privacy.sec8.bodySuffix")}
+                {t("pages.privacy.sec8.body")}
+              </p>
+            </section>
+
+            <section>
+              <h2 className="text-xl font-semibold mb-3" data-testid="section-contact-privacy">{t("pages.privacy.sec9.title")}</h2>
+              <p className="text-muted-foreground leading-relaxed">
+                {t("pages.privacy.sec9.bodyPrefix")}
+                <a href="mailto:privacy@allotly.ai" className="text-indigo-500 hover:text-indigo-400 transition-colors" data-testid="link-contact-email">privacy@allotly.ai</a>
+                {t("pages.privacy.sec9.bodySuffix")}
               </p>
             </section>
           </div>

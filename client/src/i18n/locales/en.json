@@ -1982,7 +1982,16 @@
     "privacy": {
       "eyebrow": "PRIVACY POLICY",
       "heading": "Your privacy matters to us.",
-      "lastUpdated": "Last updated: March 2026",
+      "lastUpdated": "Last updated: May 2026",
+      "controller": {
+        "title": "Who we are",
+        "body1": "Allotly is operated by ",
+        "body2": ", registered in ",
+        "body3": " (Company No. 13691920) at ",
+        "body4": ". We are the data controller for personal data processed through this service.",
+        "contactPrefix": "For any privacy-related question, contact us at ",
+        "contactSuffix": "."
+      },
       "sec1": {
         "title": "1. Information We Collect",
         "intro": "We collect the minimum information necessary to operate the service:",
@@ -2016,7 +2025,9 @@
           "Process billing and payments via Stripe.",
           "Send transactional emails (budget alerts, account notifications).",
           "Improve service reliability and performance."
-        ]
+        ],
+        "legalBasisLabel": "Legal basis (UK/EU GDPR). ",
+        "legalBasisText": "We process your data on the following legal bases: contract (to provide the service you signed up for), legitimate interests (service reliability, security, fraud prevention), and consent where required (e.g., for any future marketing communications — none are currently sent)."
       },
       "sec3": {
         "title": "3. Data Storage & Security",
@@ -2030,10 +2041,12 @@
             "text": " payment processing and subscription management."
           },
           "providers": {
-            "label": "AI providers (OpenAI, Anthropic, Google):",
-            "text": " API calls are made directly from the client (Teams) or proxied without storage (Vouchers). We do not share your data with these providers beyond the API calls you initiate."
+            "label": "AI providers (OpenAI, Anthropic, Google, and others enabled by the user):",
+            "text": " When you send a prompt through Allotly, it is forwarded to the provider you select and is subject to that provider's privacy policy and data retention practices. Allotly does not store the content of prompts or responses. For Team accounts using their own API keys, calls are made directly from the client. For Voucher-based access, calls are proxied through Allotly without content storage."
           }
-        }
+        },
+        "internationalTransfersLabel": "International transfers. ",
+        "internationalTransfersText": "Some of our third-party processors (Stripe, OpenAI, Anthropic, Google) are based in the United States. Where personal data is transferred outside the UK/EEA, transfers are made under appropriate safeguards including Standard Contractual Clauses or equivalent mechanisms."
       },
       "sec5": {
         "title": "5. Data Retention",
@@ -2052,7 +2065,7 @@
             "text": " 1 year of usage history."
           }
         },
-        "account": "Account data is retained for the duration of your account. Upon deletion, all associated data is permanently removed within 30 days."
+        "account": "Account data is retained for the duration of your account. Upon deletion, all associated data is permanently removed within 30 days, except where retention is required for legal, tax, or fraud-prevention purposes (e.g., billing records held for statutory accounting periods). Encrypted backups are purged within a further 30 days."
       },
       "sec6": {
         "title": "6. Your Rights",
@@ -2073,17 +2086,27 @@
           "export": {
             "label": "Export:",
             "text": " download your usage data in a machine-readable format."
+          },
+          "objectRestrict": {
+            "label": "Object or restrict processing:",
+            "text": " in the limited circumstances permitted by law."
           }
         },
         "contactPrefix": "To exercise any of these rights, contact us at ",
-        "contactSuffix": "."
+        "contactSuffix": ".",
+        "supervisoryPrefix": "You also have the right to lodge a complaint with a supervisory authority. In the UK, this is the Information Commissioner's Office (",
+        "supervisorySuffix": "). EU residents can complain to their local data protection authority."
       },
       "sec7": {
         "title": "7. Cookies",
         "body": "We use essential cookies only: a session cookie to keep you logged in and a preference cookie for theme selection. We do not use advertising or tracking cookies. No third-party analytics scripts are loaded."
       },
       "sec8": {
-        "title": "8. Contact",
+        "title": "8. Changes to This Policy",
+        "body": "We may update this policy from time to time. Material changes will be notified by email or in-app at least 14 days before taking effect."
+      },
+      "sec9": {
+        "title": "9. Contact",
         "bodyPrefix": "For privacy-related inquiries, reach us at ",
         "bodySuffix": "."
       }
@@ -2231,12 +2254,10 @@
       "compliance": {
         "gdpr": {
           "label": "GDPR",
-          "status": "Compliant",
           "description": "GDPR-compliant architecture and data handling"
         },
         "audit": {
           "label": "Audit Logging",
-          "status": "Active",
           "description": "Comprehensive audit trail for all administrative actions"
         }
       },

@@ -1982,7 +1982,16 @@
     "privacy": {
       "eyebrow": "POLÍTICA DE PRIVACIDADE",
       "heading": "Sua privacidade importa para nós.",
-      "lastUpdated": "Última atualização: março de 2026",
+      "lastUpdated": "Última atualização: maio de 2026",
+      "controller": {
+        "title": "Quem somos",
+        "body1": "A Allotly é operada pela ",
+        "body2": ", registrada na ",
+        "body3": " (Número da empresa 13691920) em ",
+        "body4": ". Somos o controlador dos dados pessoais processados por meio deste serviço.",
+        "contactPrefix": "Para qualquer questão relacionada à privacidade, entre em contato em ",
+        "contactSuffix": "."
+      },
       "sec1": {
         "title": "1. Informações que coletamos",
         "intro": "Coletamos as informações mínimas necessárias para operar o serviço:",
@@ -2016,7 +2025,9 @@
           "Processar faturamento e pagamentos via Stripe.",
           "Enviar emails transacionais (alertas de orçamento, notificações de conta).",
           "Melhorar a confiabilidade e o desempenho do serviço."
-        ]
+        ],
+        "legalBasisLabel": "Base legal (GDPR do Reino Unido / UE). ",
+        "legalBasisText": "Processamos seus dados com base nas seguintes hipóteses legais: contrato (para prestar o serviço que você contratou), interesses legítimos (confiabilidade do serviço, segurança, prevenção de fraude) e consentimento quando exigido (por exemplo, para futuras comunicações de marketing — nenhuma é enviada atualmente)."
       },
       "sec3": {
         "title": "3. Armazenamento e segurança de dados",
@@ -2030,10 +2041,12 @@
             "text": " processamento de pagamentos e gestão de assinaturas."
           },
           "providers": {
-            "label": "AI Providers (OpenAI, Anthropic, Google):",
-            "text": " as chamadas de API são feitas diretamente do cliente (modo Teams) ou proxy sem armazenamento (modo Vouchers). Não compartilhamos seus dados com esses providers além das chamadas de API que você inicia."
+            "label": "AI Providers (OpenAI, Anthropic, Google e outros habilitados pelo usuário):",
+            "text": " Quando você envia um prompt através da Allotly, ele é encaminhado ao provider que você selecionar e fica sujeito à política de privacidade e às práticas de retenção de dados desse provider. A Allotly não armazena o conteúdo dos prompts nem das respostas. Para contas Team que usam suas próprias chaves de API, as chamadas são feitas diretamente do cliente. Para acesso via Voucher, as chamadas são proxiadas pela Allotly sem armazenamento de conteúdo."
           }
-        }
+        },
+        "internationalTransfersLabel": "Transferências internacionais. ",
+        "internationalTransfersText": "Alguns dos nossos processadores externos (Stripe, OpenAI, Anthropic, Google) estão sediados nos Estados Unidos. Quando dados pessoais são transferidos para fora do Reino Unido ou do EEE, as transferências são realizadas sob salvaguardas adequadas, incluindo Cláusulas Contratuais Padrão ou mecanismos equivalentes."
       },
       "sec5": {
         "title": "5. Retenção de dados",
@@ -2052,7 +2065,7 @@
             "text": " 1 ano de histórico de uso."
           }
         },
-        "account": "Os dados da conta são mantidos durante toda a duração da sua conta. Após a exclusão, todos os dados associados são permanentemente removidos em até 30 dias."
+        "account": "Os dados da conta são mantidos durante toda a duração da sua conta. Após a exclusão, todos os dados associados são permanentemente removidos em até 30 dias, exceto quando a retenção for exigida por motivos legais, fiscais ou de prevenção de fraude (por exemplo, registros de faturamento mantidos pelos prazos contábeis obrigatórios). Os backups criptografados são purgados em até 30 dias adicionais."
       },
       "sec6": {
         "title": "6. Seus direitos",
@@ -2073,17 +2086,27 @@
           "export": {
             "label": "Exportação:",
             "text": " baixar seus dados de uso em um formato legível por máquina."
+          },
+          "objectRestrict": {
+            "label": "Opor-se ou restringir o tratamento:",
+            "text": " nas circunstâncias limitadas permitidas por lei."
           }
         },
         "contactPrefix": "Para exercer qualquer um desses direitos, entre em contato em ",
-        "contactSuffix": "."
+        "contactSuffix": ".",
+        "supervisoryPrefix": "Você também tem o direito de apresentar uma reclamação a uma autoridade de supervisão. No Reino Unido, esta é a Information Commissioner's Office (",
+        "supervisorySuffix": "). Os residentes na UE podem reclamar à sua autoridade local de proteção de dados."
       },
       "sec7": {
         "title": "7. Cookies",
         "body": "Usamos apenas cookies essenciais: um cookie de sessão para mantê-lo conectado e um cookie de preferência para a seleção de tema. Não usamos cookies de publicidade ou rastreamento. Nenhum script de analytics de terceiros é carregado."
       },
       "sec8": {
-        "title": "8. Contato",
+        "title": "8. Alterações a esta política",
+        "body": "Podemos atualizar esta política de tempos em tempos. Alterações relevantes serão notificadas por email ou no aplicativo com pelo menos 14 dias de antecedência da entrada em vigor."
+      },
+      "sec9": {
+        "title": "9. Contato",
         "bodyPrefix": "Para consultas relacionadas à privacidade, entre em contato em ",
         "bodySuffix": "."
       }
