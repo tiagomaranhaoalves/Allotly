@@ -19,9 +19,19 @@ interface BudgetBarProps {
   currency?: SupportedCurrency;
   /** FX rate (USD→currency). When omitted alongside `currency`, falls back to a self-resolving query. */
   fxRate?: number;
+  /**
+   * Server-pre-formatted strings (e.g. from MCP `display.formatted.{spent,total}`)
+   * used as the last-resort label when the client's Intl pipeline fails.
+   * The client-side `formatMoney` already cascades through browser locale →
+   * canonical locale → fallback symbol, so these are only consumed in the rare
+   * edge case where every Intl candidate throws (extreme locale-data stripping
+   * in a custom build, etc.). When the server has authoritatively formatted
+   * the value, we prefer that string over a synthetic "$NN.NN" symbol fallback.
+   */
+  serverFormatted?: { spent?: string; total?: string };
 }
 
-export function BudgetBar({ spent, budget, className = "", showLabel = true, currency, fxRate }: BudgetBarProps) {
+export function BudgetBar({ spent, budget, className = "", showLabel = true, currency, fxRate, serverFormatted }: BudgetBarProps) {
   const { t } = useTranslation();
   // Skip the org/fx queries entirely when the caller has supplied currency
   // explicitly — this prevents per-row query observer fan-out in team / member
@@ -47,9 +57,9 @@ export function BudgetBar({ spent, budget, className = "", showLabel = true, cur
   const textColor = percent >= 90 ? "text-red-600 dark:text-red-400" : percent >= 60 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400";
 
   const { spentFmt, budgetFmt } = useMemo(() => ({
-    spentFmt: formatUsdCents(spent, ccy, rate),
-    budgetFmt: formatUsdCents(budget, ccy, rate),
-  }), [spent, budget, ccy, rate]);
+    spentFmt: formatUsdCents(spent, ccy, rate, undefined, serverFormatted?.spent),
+    budgetFmt: formatUsdCents(budget, ccy, rate, undefined, serverFormatted?.total),
+  }), [spent, budget, ccy, rate, serverFormatted?.spent, serverFormatted?.total]);
 
   return (
     <div className={`w-full ${className}`} data-testid="budget-bar" aria-label={t("dashboard.components.budgetBar.ariaLabel")}>
