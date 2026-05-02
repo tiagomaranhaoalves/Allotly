@@ -732,6 +732,135 @@ describe("streamProviderResponseAsAnthropic — tool-only stream", () => {
   });
 });
 
+// =============================================================================
+// Budget-accounting safeguard — when an upstream stream emits content but
+// never reports token usage, the helper MUST return `usage: null` so the
+// handler falls back to estimating output tokens from `fullContent`. Returning
+// a zeroed usage object would silently undercharge budget (an economic abuse
+// vector). When upstream DOES report usage, we MUST surface those numbers.
+// =============================================================================
+
+function makeOpenAIStreamWithoutUsage(): Response {
+  const chunks = [
+    `data: {"id":"x","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello, "}}]}\n\n`,
+    `data: {"id":"x","choices":[{"index":0,"delta":{"content":"world!"}}]}\n\n`,
+    `data: {"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n`,
+    `data: [DONE]\n\n`,
+  ];
+  const enc = new TextEncoder();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const c of chunks) controller.enqueue(enc.encode(c));
+      controller.close();
+    },
+  });
+  return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
+}
+
+function makeOpenAIStreamWithUsage(): Response {
+  const chunks = [
+    `data: {"id":"x","choices":[{"index":0,"delta":{"role":"assistant","content":"hi"}}]}\n\n`,
+    `data: {"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":7,"completion_tokens":3,"total_tokens":10}}\n\n`,
+    `data: [DONE]\n\n`,
+  ];
+  const enc = new TextEncoder();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const c of chunks) controller.enqueue(enc.encode(c));
+      controller.close();
+    },
+  });
+  return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
+}
+
+function makeAnthropicStreamWithoutUsage(): Response {
+  const chunks = [
+    `event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"model":"claude-3","stop_reason":null,"usage":{}}}\n\n`,
+    `event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n`,
+    `event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"abcdefghij"}}\n\n`,
+    `event: content_block_stop\ndata: {"type":"content_block_stop","index":0}\n\n`,
+    `event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null}}\n\n`,
+    `event: message_stop\ndata: {"type":"message_stop"}\n\n`,
+  ];
+  const enc = new TextEncoder();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const c of chunks) controller.enqueue(enc.encode(c));
+      controller.close();
+    },
+  });
+  return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
+}
+
+function makeGoogleStreamWithoutUsage(): Response {
+  const chunks = [
+    `data: {"candidates":[{"content":{"parts":[{"text":"hello world"}],"role":"model"}}]}\n\n`,
+    `data: {"candidates":[{"content":{"parts":[{"text":""}],"role":"model"},"finishReason":"STOP"}]}\n\n`,
+  ];
+  const enc = new TextEncoder();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const c of chunks) controller.enqueue(enc.encode(c));
+      controller.close();
+    },
+  });
+  return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
+}
+
+describe("streamProviderResponseAsAnthropic — usage observability (budget safeguard)", () => {
+  it("OpenAI stream WITHOUT usage metadata returns usage:null so handler estimates from fullContent", async () => {
+    const res = makeFakeRes();
+    const result = await streamProviderResponseAsAnthropic(
+      makeOpenAIStreamWithoutUsage(),
+      "OPENAI" as any,
+      "gpt-4o-mini",
+      res,
+    );
+    expect(result.usage).toBeNull();
+    expect(result.fullContent).toBe("Hello, world!");
+    // Mirror handler-messages.ts fallback: ceil(len/4)
+    const estimated = Math.ceil(result.fullContent.length / 4);
+    expect(estimated).toBeGreaterThan(0);
+  });
+
+  it("OpenAI stream WITH usage metadata returns the upstream numbers verbatim", async () => {
+    const res = makeFakeRes();
+    const result = await streamProviderResponseAsAnthropic(
+      makeOpenAIStreamWithUsage(),
+      "OPENAI" as any,
+      "gpt-4o-mini",
+      res,
+    );
+    expect(result.usage).not.toBeNull();
+    expect(result.usage!.input_tokens).toBe(7);
+    expect(result.usage!.output_tokens).toBe(3);
+  });
+
+  it("Anthropic stream WITHOUT usage tokens returns usage:null (no zero-charge risk)", async () => {
+    const res = makeFakeRes();
+    const result = await streamProviderResponseAsAnthropic(
+      makeAnthropicStreamWithoutUsage(),
+      "ANTHROPIC" as any,
+      "claude-3-5-sonnet",
+      res,
+    );
+    expect(result.usage).toBeNull();
+    expect(result.messageStartSent).toBe(true);
+  });
+
+  it("Google stream WITHOUT usageMetadata returns usage:null so handler can estimate", async () => {
+    const res = makeFakeRes();
+    const result = await streamProviderResponseAsAnthropic(
+      makeGoogleStreamWithoutUsage(),
+      "GOOGLE" as any,
+      "gemini-2.0-flash",
+      res,
+    );
+    expect(result.usage).toBeNull();
+    expect(result.fullContent).toContain("hello world");
+  });
+});
+
 describe("/api/v1/messages — live route smoke", () => {
   const base = process.env.ALLOTLY_TEST_BASE_URL || "http://localhost:5000";
 

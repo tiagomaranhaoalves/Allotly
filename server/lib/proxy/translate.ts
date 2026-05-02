@@ -1083,6 +1083,8 @@ export interface AnthropicStreamState {
   model: string;
   inputTokens: number;
   outputTokens: number;
+  /** True iff upstream actually reported usage tokens (input or output). */
+  usageObserved: boolean;
   textBlockOpen: boolean;
   textBlockIndex: number;
   // Tracks open tool_use blocks keyed by their content-block index.
@@ -1100,6 +1102,7 @@ export function createAnthropicStreamState(model: string): AnthropicStreamState 
     model,
     inputTokens: 0,
     outputTokens: 0,
+    usageObserved: false,
     textBlockOpen: false,
     textBlockIndex: -1,
     toolBlocks: new Map(),
@@ -1185,11 +1188,15 @@ export function translateStreamChunkToAnthropic(
     if (parsed.type === "message_start") {
       state.messageStartSent = true;
       const usage = parsed.message?.usage;
-      if (usage?.input_tokens) state.inputTokens = usage.input_tokens;
+      if (usage?.input_tokens) {
+        state.inputTokens = usage.input_tokens;
+        state.usageObserved = true;
+      }
       if (parsed.message?.id) state.messageId = parsed.message.id;
     }
     if (parsed.type === "message_delta" && parsed.usage?.output_tokens != null) {
       state.outputTokens = parsed.usage.output_tokens;
+      state.usageObserved = true;
       if (parsed.delta?.stop_reason) state.stopReason = parsed.delta.stop_reason;
       if (parsed.delta?.stop_sequence) state.stopSequence = parsed.delta.stop_sequence;
     }
@@ -1204,9 +1211,11 @@ export function translateStreamChunkToAnthropic(
 
     if (parsed.usage?.prompt_tokens != null && state.inputTokens === 0) {
       state.inputTokens = parsed.usage.prompt_tokens;
+      state.usageObserved = true;
     }
     if (parsed.usage?.completion_tokens != null) {
       state.outputTokens = parsed.usage.completion_tokens;
+      state.usageObserved = true;
     }
 
     events.push(...emitMessageStart(state));
@@ -1282,9 +1291,11 @@ export function translateStreamChunkToAnthropic(
 
     if (parsed.usageMetadata?.promptTokenCount != null && state.inputTokens === 0) {
       state.inputTokens = parsed.usageMetadata.promptTokenCount;
+      state.usageObserved = true;
     }
     if (parsed.usageMetadata?.candidatesTokenCount != null) {
       state.outputTokens = parsed.usageMetadata.candidatesTokenCount;
+      state.usageObserved = true;
     }
 
     events.push(...emitMessageStart(state));
