@@ -1,0 +1,78 @@
+Yes — conceptually Allotly could support this, but only for providers that explicitly allow subscription/OAuth-based access from third-party tools. It is not a universal replacement for API keys.
+
+OpenAI Codex is a special case: OpenAI’s Codex docs say Codex supports “Sign in with ChatGPT for subscription access” as well as API key usage-based access, and the Codex CLI/IDE extension support both methods.  OpenClaw then exposes that as a provider login flow, so your ChatGPT subscription can power Codex-style usage through OpenClaw where supported. OpenAI also notes that Codex usage has plan limits and extra credits may be needed if limits are reached. 
+
+For Allotly, the right product framing would be:
+
+“Connect your AI account” rather than “paste your API key.”
+
+That could include three modes:
+
+Mode	How it works	Best for Allotly?
+
+API key mode	User/admin pastes OpenAI, Anthropic, Gemini, etc. API key	Stable, best for teams/admins
+OAuth/subscription mode	User signs in with provider; usage draws from their subscription/limits	Excellent for everyday users, but only where officially supported
+Local CLI / harness mode	Allotly delegates to a logged-in local CLI such as Codex/Claude CLI	Useful for power users, fragile for hosted SaaS
+
+
+The key limitation is that not every AI subscription can be converted into third-party API access. OpenAI Codex currently supports ChatGPT sign-in for Codex. OpenClaw’s docs describe “subscription auth” via OAuth for providers that offer it, notably OpenAI Codex / ChatGPT OAuth, and provider plugins may ship their own OAuth or API-key flows.  But other providers may block or restrict this. Anthropic, for example, has had controversy around whether Claude subscriptions can be used by third-party harnesses; The Register reported Anthropic saying third-party tools would draw from extra usage instead of subscription limits and that using Claude subscriptions with third-party tools was not permitted under its terms. 
+
+So the answer for Allotly is:
+
+Yes, build this — but as a provider-by-provider “connected accounts” layer, not as a generic bypass of API keys.
+
+The safest architecture would be:
+
+1. Admin creates a workspace/voucher/team key in Allotly.
+
+
+2. User chooses a provider connection type:
+
+“Use organisation API budget”
+
+“Connect my ChatGPT/Codex account”
+
+“Connect my Claude account” only where allowed
+
+“Use my own API key”
+
+
+
+3. Allotly stores provider credentials securely per user, ideally encrypted, scoped, revocable, and never exposed to other users.
+
+
+4. Allotly routes requests according to policy:
+
+user subscription first,
+
+organisation API fallback,
+
+model caps,
+
+spend caps,
+
+allowed tools,
+
+audit logs.
+
+
+
+5. Allotly clearly labels commercial responsibility:
+
+“This usage counts against your ChatGPT/Codex limits”
+
+or “This usage bills the organisation’s API account”
+
+or “This requires extra provider usage credits.”
+
+
+
+
+Strategically, this is very aligned with your earlier thinking: everyday voucher/key users should not have to understand API keys. A beginner-friendly Allotly flow would be:
+
+> “Choose how you want to power your AI access:
+Use my ChatGPT/Codex subscription, use my company’s Allotly allowance, or add my own API key.”
+
+
+
+That would make Allotly more of an AI access wallet / entitlement router, not just a key vault. The big caution is legal/commercial: Allotly should only enable subscription-based access where the provider’s terms and technical interface support it. For production, API-key billing remains the most predictable path; OAuth/subscription access is a powerful convenience layer, but more fragile.
