@@ -1866,6 +1866,12 @@
       "descriptionSuffix": "."
     }
   },
+  "redeem": {
+    "connectors": {
+      "quickConnect": "Conexión rápida (recomendado)",
+      "cliIde": "Conectar a tu CLI / IDE"
+    }
+  },
   "auth": {
     "claim": {
       "badge": "Paso 2 de 2 — Reclama tu cuenta",

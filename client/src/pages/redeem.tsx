@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "react-i18next";
 import { Link } from "wouter";
 import { useState, useEffect, useRef } from "react";
 import { apiRequest } from "@/lib/queryClient";
@@ -17,7 +18,7 @@ import { useAuth } from "@/lib/auth";
 import {
   Ticket, ArrowRight, Check, AlertTriangle, Copy, Clock, Shield,
   Zap, Code, Terminal, ExternalLink, Monitor, Wrench, GraduationCap, Blocks,
-  PlugZap,
+  PlugZap, Link2,
 } from "lucide-react";
 
 type RedeemState = "input" | "preview" | "choose" | "redeeming" | "success";
@@ -53,6 +54,7 @@ function formatCode(raw: string): string {
 
 export default function RedeemPage() {
   const { toast } = useToast();
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [state, setState] = useState<RedeemState>("input");
   const [codeInput, setCodeInput] = useState("");
@@ -375,7 +377,7 @@ export default function RedeemPage() {
 
             <KeyRevealCard keyValue={redeemResult.apiKey} masked={false} />
 
-            <div className="space-y-4" data-testid="section-post-redeem-connectors">
+            <div className="space-y-6" data-testid="section-post-redeem-connectors">
               <div>
                 <h2 className="text-lg font-semibold flex items-center gap-2">
                   <PlugZap className="w-5 h-5 text-primary" />
@@ -385,16 +387,50 @@ export default function RedeemPage() {
                   Pick the tool you use, copy the snippet, paste it in. Your key is already filled in below.
                 </p>
               </div>
-              <ConnectorGrid
-                mode="compact"
-                keyContext={{
-                  kind: "fixed",
-                  value: redeemResult.apiKey,
-                  prefix: redeemResult.keyPrefix,
-                }}
-                defaultMasked={false}
-                showExamples={false}
-              />
+
+              {/* Section A — OAuth quick-connect (recommended). The hosted-AI
+                  hosts (Claude.ai, ChatGPT, Gemini) cannot accept a pasted
+                  bearer, so the user just pastes our MCP URL and authorizes.
+                  Easier than editing a config file, so we surface it first. */}
+              <section
+                className="space-y-3"
+                data-testid="section-post-redeem-oauth-connectors"
+              >
+                <h3
+                  className="text-base font-semibold flex items-center gap-2"
+                  data-testid="text-redeem-quick-connect-heading"
+                >
+                  <Link2 className="w-4 h-4 text-primary" />
+                  {t("redeem.connectors.quickConnect")}
+                </h3>
+                <ConnectorGrid mode="compact" variant="oauth-only" />
+              </section>
+
+              {/* Section B — stdio bridges (CLI / IDE). 5 cards, key already
+                  pre-filled from the just-minted API key. */}
+              <section
+                className="space-y-3"
+                data-testid="section-post-redeem-stdio-connectors"
+              >
+                <h3
+                  className="text-base font-semibold flex items-center gap-2"
+                  data-testid="text-redeem-cli-ide-heading"
+                >
+                  <Terminal className="w-4 h-4 text-primary" />
+                  {t("redeem.connectors.cliIde")}
+                </h3>
+                <ConnectorGrid
+                  mode="compact"
+                  variant="stdio-only"
+                  keyContext={{
+                    kind: "fixed",
+                    value: redeemResult.apiKey,
+                    prefix: redeemResult.keyPrefix,
+                  }}
+                  defaultMasked={false}
+                  showExamples={false}
+                />
+              </section>
             </div>
 
             {/* Synthetic-voucher upsell: only show for users currently signed in

@@ -29,8 +29,10 @@ import {
   isValidFullKey,
   maskKey,
 } from "@/pages/dashboard/connect-helpers";
+import { OAUTH_CONNECTORS } from "@shared/connector-snippets";
 import { ConnectorCard } from "./connector-card";
 import { ConnectorTestPanel } from "./connector-test-panel";
+import { OAuthConnectorCard } from "./oauth-connector-card";
 
 export interface SelectableKey {
   id: string;
@@ -52,9 +54,25 @@ export type KeyContext =
       prefix: string;
     };
 
+/**
+ * Which subset of the 8 connectors to render.
+ *  - "stdio-only" (default): the 5 CLI / IDE bridges (Cursor, VS Code,
+ *    Claude Code, Codex, Claude Desktop). Uses ConnectorCard with the
+ *    paste-the-key flow + the Test Connection panel.
+ *  - "oauth-only": the 3 hosted-AI OAuth cards (Claude.ai, ChatGPT,
+ *    Gemini). Uses OAuthConnectorCard. No key context, mask toggle,
+ *    Test Connection, or examples are rendered (OAuth doesn't use a
+ *    pasted bearer).
+ *  - "all": both subsets, OAuth section first.
+ */
+export type ConnectorGridVariant = "stdio-only" | "oauth-only" | "all";
+
 export interface ConnectorGridProps {
   mode: "full" | "compact";
-  keyContext: KeyContext;
+  /** Subset of connectors to render. Default: "stdio-only" (legacy behavior). */
+  variant?: ConnectorGridVariant;
+  /** Required when the rendered variant includes stdio cards. Ignored for "oauth-only". */
+  keyContext?: KeyContext;
   /** Default mask state. Defaults to true in "full" mode, false in "compact" mode. */
   defaultMasked?: boolean;
   /** Whether to render the Test Connection panel below the grid. Default: true. */
@@ -67,12 +85,21 @@ const SNIPPET_PLACEHOLDER_TOKEN = "<paste-your-allotly-key>";
 
 export function ConnectorGrid({
   mode,
+  variant = "stdio-only",
   keyContext,
   defaultMasked,
   showTestConnection = true,
   showExamples,
 }: ConnectorGridProps) {
   const { t } = useTranslation();
+  const renderOAuth = variant === "oauth-only" || variant === "all";
+  const renderStdio = variant === "stdio-only" || variant === "all";
+
+  if (renderStdio && !keyContext) {
+    throw new Error(
+      'ConnectorGrid: keyContext is required when variant includes stdio cards. Pass keyContext or use variant="oauth-only".',
+    );
+  }
 
   // Default mask state. Both modes default to UNMASKED (matches the prior
   // /dashboard/connect behavior where the placeholder/prefix is shown until
@@ -83,7 +110,10 @@ export function ConnectorGrid({
   const [fullKeyInput, setFullKeyInput] = useState("");
 
   // Resolve the prefix and full key based on the context kind.
+  // For "oauth-only" variant keyContext may be undefined; the values below
+  // are unused in that case (the stdio-card branch is gated by renderStdio).
   const selectedPrefix = useMemo(() => {
+    if (!keyContext) return "";
     if (keyContext.kind === "selectable") {
       const k = keyContext.keys.find((k) => k.id === keyContext.selectedId);
       return k?.keyPrefix ?? "";
@@ -91,10 +121,10 @@ export function ConnectorGrid({
     return keyContext.prefix;
   }, [keyContext]);
 
-  const fullKey = keyContext.kind === "fixed" ? keyContext.value : fullKeyInput;
+  const fullKey = keyContext?.kind === "fixed" ? keyContext.value : fullKeyInput;
 
   const fullKeyMatches =
-    keyContext.kind === "fixed"
+    keyContext?.kind === "fixed"
       ? true // we trust the fixed key
       : fullKeyInput.length > 0 && selectedPrefix.length > 0
         ? isValidFullKey(fullKeyInput, selectedPrefix)
@@ -116,9 +146,31 @@ export function ConnectorGrid({
 
   const showExamplesResolved = showExamples ?? (mode === "full");
 
+  // OAuth cards are rendered identically in "oauth-only" and "all" — kept
+  // in one place so adding a card / changing the grid layout only touches
+  // a single spot. The OAuth flow doesn't need a pasted bearer, so the
+  // entire stdio chrome (key selector / mask toggle / Test Connection /
+  // examples) is skipped for "oauth-only".
+  const oauthGrid = renderOAuth ? (
+    <div
+      className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+      data-testid="grid-oauth-connectors"
+    >
+      {OAUTH_CONNECTORS.map((spec) => (
+        <OAuthConnectorCard key={spec.id} spec={spec} />
+      ))}
+    </div>
+  ) : null;
+
+  if (variant === "oauth-only") {
+    return oauthGrid;
+  }
+
   return (
     <div className="space-y-6">
-      {keyContext.kind === "selectable" && (
+      {oauthGrid}
+
+      {keyContext?.kind === "selectable" && (
         <Card className="p-5" data-testid="card-key-selector">
           <div className="grid md:grid-cols-[minmax(0,18rem)_1fr] gap-5 items-start">
             <div className="space-y-2">
@@ -239,7 +291,7 @@ export function ConnectorGrid({
         <ConnectorTestPanel
           testKey={testKey}
           missingKeyMessage={
-            keyContext.kind === "selectable" ? t("connect.fullKey.missingForTest") : undefined
+            keyContext?.kind === "selectable" ? t("connect.fullKey.missingForTest") : undefined
           }
         />
       )}
