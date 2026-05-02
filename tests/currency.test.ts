@@ -93,8 +93,6 @@ describe("buildDisplayBlock", () => {
   });
 
   it("short-circuits USD to source='live' regardless of snapshot source", () => {
-    // Even when the rate snapshot is fallback, USD itself never involves FX
-    // so MCP clients should see "live" + rate=1 to avoid a misleading badge.
     const block = buildDisplayBlock(2500, 10000, "USD", FALLBACK_SNAPSHOT);
     expect(block.fx_source).toBe("live");
     expect(block.fx_rate).toBe(1);
@@ -113,18 +111,11 @@ describe("buildDisplayBlock", () => {
   });
 
   it("MCP BudgetDisplaySchema rejects fx_source values outside the enum", async () => {
-    // Importing here (not at top) keeps the test self-contained — if any
-    // future contributor swaps z.enum back to z.string this assertion fails.
     const { BudgetDisplaySchema } = await import("../server/lib/mcp/schemas");
     const block = buildDisplayBlock(1000, 1000, "GBP", FALLBACK_SNAPSHOT);
-    // Real block validates fine.
     expect(BudgetDisplaySchema.safeParse(block).success).toBe(true);
-    // Tampered block with a richer provider tag must be rejected.
-    const tampered = { ...block, fx_source: "exchangerate.host" };
-    expect(BudgetDisplaySchema.safeParse(tampered).success).toBe(false);
-    // Random string also rejected.
-    const tampered2 = { ...block, fx_source: "stale" };
-    expect(BudgetDisplaySchema.safeParse(tampered2).success).toBe(false);
+    expect(BudgetDisplaySchema.safeParse({ ...block, fx_source: "exchangerate.host" }).success).toBe(false);
+    expect(BudgetDisplaySchema.safeParse({ ...block, fx_source: "stale" }).success).toBe(false);
   });
 
   it("clamps negative remaining to zero", () => {

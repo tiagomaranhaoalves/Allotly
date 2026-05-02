@@ -39,14 +39,7 @@ export function clearRateCache() {
   cachedAt = 0;
 }
 
-/**
- * fx_source is normalized to one of two values everywhere downstream callers
- * (MCP display block, /api/fx-rates) see it:
- *   - "live"     — from a real upstream FX provider (e.g. exchangerate.host)
- *   - "fallback" — hard-coded constants because no live row exists yet
- * The DB column may carry richer provider tags (e.g. "exchangerate.host") for
- * audit, but we collapse them to "live" for the wire contract.
- */
+/** Normalized fx_source values exposed on the wire (MCP, /api/fx-rates). */
 export type FxSource = "live" | "fallback";
 
 export function normalizeFxSource(raw: string | null | undefined): FxSource {
@@ -143,9 +136,7 @@ export function buildDisplayBlock(
   snapshot: RatesSnapshot,
 ): DisplayBlock {
   const locale = CURRENCY_LOCALES[currency];
-  // USD short-circuit: rate=1, source="live" (USD itself is always trivially
-  // "live" — there's no FX involved). This keeps MCP clients from rendering
-  // a misleading "fallback" badge for orgs that never opted out of USD.
+  // USD short-circuit: no FX is involved, so always rate=1, source="live".
   const isUsd = currency === "USD";
   const rate = isUsd ? 1 : (snapshot.rates[currency] ?? 1);
   const source: FxSource = isUsd ? "live" : snapshot.source;

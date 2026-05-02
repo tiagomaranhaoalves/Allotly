@@ -1,30 +1,13 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 
-/**
- * Tests for the FX refresh job.
- *
- * The job has three meaningful execution paths and we cover each:
- *   1. Upstream API succeeds → upsert GBP/EUR/BRL with source="live".
- *   2. Upstream API fails AND fx_rates is empty → seed fallback rows.
- *   3. Upstream API fails AND fx_rates already has rows → leave them alone
- *      (do NOT overwrite live rates with stale fallback values).
- *
- * We mock the db layer with an in-memory store so we can assert the upsert
- * shape without standing up a real Postgres. We also stub global fetch.
- */
-
 type Row = { currency: string; rateFromUsd: string; source: string; asOf: Date; updatedAt?: Date };
 
 const store: { rows: Row[] } = { rows: [] };
 
 vi.mock("../server/db", () => {
-  // Drizzle-shaped mock: db.select(...).from(table) returns rows; the
-  // optional `select({c: col})` projection still resolves to rows because we
-  // only ever read `.length` or iterate.
   const selectImpl = (_proj?: any) => ({
     from: (_t: any) => {
       const chain: any = {
-        // limit(n) is used by ensureFxRatesSeeded; both shapes need to be thenable.
         limit: (_n: number) => Promise.resolve(store.rows.slice(0, _n)),
         then: (resolve: any) => resolve(store.rows),
       };
@@ -99,7 +82,6 @@ describe("runFxRefresh", () => {
       expect(row.source).toBe("live");
       expect(["GBP", "EUR", "BRL"]).toContain(row.currency);
     }
-    // Verify rates were stored as strings (Drizzle numeric columns).
     const gbp = store.rows.find(r => r.currency === "GBP")!;
     expect(parseFloat(gbp.rateFromUsd)).toBeCloseTo(0.81);
   });
@@ -116,7 +98,6 @@ describe("runFxRefresh", () => {
     for (const row of store.rows) {
       expect(row.source).toBe("fallback");
     }
-    // Sanity: the seeded values match FALLBACK_RATES.
     const gbp = store.rows.find(r => r.currency === "GBP")!;
     expect(parseFloat(gbp.rateFromUsd)).toBeCloseTo(0.79);
     const eur = store.rows.find(r => r.currency === "EUR")!;
@@ -126,7 +107,6 @@ describe("runFxRefresh", () => {
   });
 
   it("does NOT overwrite existing live rates when API fails", async () => {
-    // Pre-seed the store with live rows that we want to preserve.
     const liveAsOf = new Date("2026-04-30T00:00:00Z");
     store.rows = [
       { currency: "GBP", rateFromUsd: "0.80", source: "live", asOf: liveAsOf },
@@ -140,7 +120,6 @@ describe("runFxRefresh", () => {
 
     expect(result.source).toBe("no-update");
     expect(result.updated).toBe(0);
-    // All rows preserved untouched.
     expect(store.rows).toHaveLength(3);
     for (const row of store.rows) {
       expect(row.source).toBe("live");
@@ -156,7 +135,6 @@ describe("runFxRefresh", () => {
     const { runFxRefresh } = await import("../server/lib/jobs/fx-refresh");
     const result = await runFxRefresh();
 
-    // Empty store + API failure = fallback seed.
     expect(result.source).toBe("fallback");
     expect(store.rows).toHaveLength(3);
   });

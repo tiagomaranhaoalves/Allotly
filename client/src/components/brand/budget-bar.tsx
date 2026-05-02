@@ -10,32 +10,16 @@ interface BudgetBarProps {
   budget: number;
   className?: string;
   showLabel?: boolean;
-  /**
-   * Override currency. If omitted, falls back to a self-resolving query against
-   * /api/org/settings. Prefer passing `currency` + `fxRate` from a parent that
-   * already calls `useDisplayCurrency()` when rendering many bars in a list,
-   * so each row doesn't subscribe to its own query observer.
-   */
+  /** Override currency; falls back to /api/org/settings query when omitted. */
   currency?: SupportedCurrency;
-  /** FX rate (USD→currency). When omitted alongside `currency`, falls back to a self-resolving query. */
+  /** FX rate (USD→currency); falls back to /api/fx-rates query when omitted. */
   fxRate?: number;
-  /**
-   * Server-pre-formatted strings (e.g. from MCP `display.formatted.{spent,total}`)
-   * used as the last-resort label when the client's Intl pipeline fails.
-   * The client-side `formatMoney` already cascades through browser locale →
-   * canonical locale → fallback symbol, so these are only consumed in the rare
-   * edge case where every Intl candidate throws (extreme locale-data stripping
-   * in a custom build, etc.). When the server has authoritatively formatted
-   * the value, we prefer that string over a synthetic "$NN.NN" symbol fallback.
-   */
+  /** Server-formatted strings used when client Intl formatting fails. */
   serverFormatted?: { spent?: string; total?: string };
 }
 
 export function BudgetBar({ spent, budget, className = "", showLabel = true, currency, fxRate, serverFormatted }: BudgetBarProps) {
   const { t } = useTranslation();
-  // Skip the org/fx queries entirely when the caller has supplied currency
-  // explicitly — this prevents per-row query observer fan-out in team / member
-  // lists where every row renders a BudgetBar.
   const callerProvided = currency !== undefined;
   const { data: org } = useQuery<any>({
     queryKey: ["/api/org/settings"],

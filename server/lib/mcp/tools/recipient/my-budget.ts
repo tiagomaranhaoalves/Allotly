@@ -28,8 +28,8 @@ registerTool({
     return withBudgetMeta(principal.membership, {
       ...snap,
       formatted: {
-        remaining: `$${(snap.remaining_cents / 100).toFixed(2)}`,
-        total: `$${(snap.total_cents / 100).toFixed(2)}`,
+        remaining: snap.display.formatted.remaining,
+        total: snap.display.formatted.total,
         used_pct: usedPct,
         expires_in: expiresIn,
       },

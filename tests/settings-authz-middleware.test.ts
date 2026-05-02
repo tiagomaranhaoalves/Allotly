@@ -1,22 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-/**
- * Behavioral authz test for the `requireRole` middleware that protects
- * PATCH /api/org/settings { currency }.
- *
- * The structural test in `settings-authz.test.ts` confirms the route is
- * wired with `requireRole("ROOT_ADMIN")`. This file exercises the actual
- * middleware behavior end-to-end at the unit level:
- *   - ROOT_ADMIN session → next() is called (request proceeds, would 200).
- *   - TEAM_ADMIN / MEMBER session → 403 Forbidden.
- *   - No session → 401 Unauthorized.
- *
- * We mock the storage layer so we don't need a real DB, and assert the
- * status code that the middleware writes. This catches regressions like
- * "someone widened requireRole to also accept TEAM_ADMIN" that the
- * structural regex test would miss.
- */
-
 type MockUser = { id: string; orgRole: "ROOT_ADMIN" | "TEAM_ADMIN" | "MEMBER" };
 const userStore: Record<string, MockUser> = {};
 
@@ -91,7 +74,6 @@ describe("requireRole('ROOT_ADMIN') — actual middleware behavior", () => {
   });
 
   it("returns 403 when the userId resolves to no user (stale session)", async () => {
-    // Session present but the user has been deleted/revoked.
     const { requireRole } = await import("../server/auth");
     const mw = requireRole("ROOT_ADMIN");
     const req: any = { session: { userId: "u-missing" } };

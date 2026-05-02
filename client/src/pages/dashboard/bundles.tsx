@@ -19,9 +19,6 @@ export default function BundlesPage() {
   const { t } = useTranslation();
 
   const { data: bundles, isLoading } = useQuery<any[]>({ queryKey: ["/api/bundles"] });
-  // Org's display currency for the bundle's price/maxBudget labels. Bundles
-  // are USD-priced upstream (Stripe), but we render the equivalent in the
-  // org's chosen currency so multi-currency orgs see consistent figures.
   const { data: org } = useQuery<any>({ queryKey: ["/api/org/settings"], staleTime: 60_000 });
   const { data: fx } = useQuery<any>({ queryKey: ["/api/fx-rates"], staleTime: 60 * 60_000 });
   const ccy: SupportedCurrency = normalizeCurrency(org?.currency);

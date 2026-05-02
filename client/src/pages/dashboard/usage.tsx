@@ -98,6 +98,7 @@ export default function UsagePage() {
                 showLabel
                 currency={ccy}
                 fxRate={rate}
+                serverFormatted={overview?.display?.formatted ? { spent: overview.display.formatted.spent, total: overview.display.formatted.total } : undefined}
               />
             </div>
             {membership.periodEnd && (

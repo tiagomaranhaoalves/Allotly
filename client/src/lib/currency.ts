@@ -40,12 +40,6 @@ export function convertFromUsdCents(usdCents: number, target: SupportedCurrency,
   return Math.round(usdCents * r);
 }
 
-/**
- * Browser locale, sniffed once. Falls back to the currency's canonical locale
- * if `navigator` isn't available (SSR / tests). Callers can still override
- * with `locale` to force a specific format (e.g. for parity with a server
- * pre-formatted string).
- */
 function getBrowserLocale(): string | undefined {
   if (typeof navigator === "undefined") return undefined;
   const n: any = navigator;
@@ -57,10 +51,7 @@ export function formatMoney(
   currency: SupportedCurrency,
   locale?: string,
 ): string {
-  // Locale precedence: explicit override → server-provided format hint →
-  // browser locale → currency-canonical locale. Browser locale lets a UK user
-  // see "£19.75" with British grouping even when our org chose GBP, while a
-  // German user viewing the same EUR org sees "23,00 €" automatically.
+  // Locale order: explicit → browser → currency-canonical → symbol fallback.
   const candidates = [locale, getBrowserLocale(), CURRENCY_LOCALES[currency]].filter(Boolean) as string[];
   for (const loc of candidates) {
     try {
@@ -71,18 +62,13 @@ export function formatMoney(
         maximumFractionDigits: 2,
       }).format(minorUnits / 100);
     } catch {
-      // try next locale
+      // try next
     }
   }
   return `${CURRENCY_SYMBOLS[currency]}${(minorUnits / 100).toFixed(2)}`;
 }
 
-/**
- * Format USD-cents (canonical) directly in the target currency. If the caller
- * already has a server-formatted string (e.g. from a MCP `display.formatted.*`
- * field), pass it via `serverFallback` so we use it as the last-resort label
- * when both Intl and fallback symbols fail.
- */
+/** Format USD-cents in the target currency; uses `serverFallback` if Intl throws. */
 export function formatUsdCents(
   usdCents: number,
   currency: SupportedCurrency,

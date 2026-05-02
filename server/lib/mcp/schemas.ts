@@ -12,9 +12,6 @@ export const BudgetDisplaySchema = z.object({
   locale: z.string(),
   fx_rate: z.number().positive(),
   fx_as_of: z.string().nullable(),
-  // Normalized to exactly two values for the wire contract — see
-  // server/lib/currency.ts#normalizeFxSource. Richer provider tags (e.g.
-  // "exchangerate.host") are collapsed to "live" before reaching MCP clients.
   fx_source: z.enum(["live", "fallback"]),
   formatted: z.object({
     remaining: z.string(),

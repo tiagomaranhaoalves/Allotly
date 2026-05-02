@@ -432,9 +432,6 @@ export default function SettingsPage() {
                     </SelectContent>
                   </Select>
                 ) : (
-                  // Non-admin read-only view: show the org's chosen currency
-                  // so members understand why amounts render the way they do,
-                  // without exposing the (admin-only) ability to change it.
                   <div
                     className="flex items-center gap-2 px-3 py-2 rounded-md border border-border bg-muted/30 text-sm"
                     data-testid="text-currency-readonly"

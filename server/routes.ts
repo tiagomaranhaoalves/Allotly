@@ -31,6 +31,7 @@ import {
   SUPPORTED_CURRENCIES,
   getOrgCurrency,
   getActiveRates,
+  buildDisplayBlock,
   formatMoney,
   convertFromUsdCents,
   CURRENCY_LOCALES,
@@ -4370,11 +4371,18 @@ export async function registerRoutes(
       res.json(stats);
     } else {
       const membership = await storage.getMembershipByUser(user.id);
+      const budgetCents = membership?.monthlyBudgetCents || 0;
+      const spendCents = membership?.currentPeriodSpendCents || 0;
+      const org = await storage.getOrganization(user.orgId);
+      const orgCurrency = getOrgCurrency(org);
+      const rates = await getActiveRates();
+      const display = buildDisplayBlock(Math.max(0, budgetCents - spendCents), budgetCents, orgCurrency, rates);
       res.json({
         membership: membership || null,
-        budgetCents: membership?.monthlyBudgetCents || 0,
-        spendCents: membership?.currentPeriodSpendCents || 0,
+        budgetCents,
+        spendCents,
         accessType: membership?.accessType || "TEAM",
+        display,
       });
     }
   });
@@ -4384,7 +4392,13 @@ export async function registerRoutes(
     if (!user) return res.status(401).json({ message: "Unauthorized" });
     const data = await storage.getMemberDashboardData(user.id);
     if (!data) return res.json({ membership: null });
-    res.json(data);
+    const org = await storage.getOrganization(user.orgId);
+    const orgCurrency = getOrgCurrency(org);
+    const rates = await getActiveRates();
+    const budgetCents = data.budgetCents || 0;
+    const spendCents = data.spendCents || 0;
+    const display = buildDisplayBlock(Math.max(0, budgetCents - spendCents), budgetCents, orgCurrency, rates);
+    res.json({ ...data, display });
   });
 
   app.get("/api/dashboard/team-overview", requireAuth, async (req, res) => {
