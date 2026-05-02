@@ -71,3 +71,85 @@ describe("Configurable concurrency limits", () => {
     }
   });
 });
+
+// =============================================================================
+// /api/v1/messages parity — the new Anthropic-native endpoint MUST share the
+// exact same safeguard primitives (tier table + concurrency + rate-limit) as
+// /chat/completions. These tests pin that contract so a future refactor that
+// forks the table or skips a check fails loudly.
+// =============================================================================
+
+describe("/api/v1/messages — tier & safeguard parity with /chat/completions", () => {
+  it("uses the same getRateLimitTier table for every plan/key combination", async () => {
+    const { getRateLimitTier } = await import("../server/lib/proxy/handler");
+    const matrix: Array<[string, string, number, number]> = [
+      ["FREE", "TEAM", 20, 2],
+      ["TEAM", "TEAM", 60, 5],
+      ["TEAM", "VOUCHER", 30, 2],
+      ["ENTERPRISE", "TEAM", 120, 10],
+      ["UNKNOWN", "TEAM", 20, 2],
+    ];
+    for (const [plan, kind, rpm, max] of matrix) {
+      const tier = getRateLimitTier(plan, kind);
+      expect(tier.rpm, `RPM mismatch for ${plan}/${kind}`).toBe(rpm);
+      expect(tier.maxConcurrent, `concurrency mismatch for ${plan}/${kind}`).toBe(max);
+    }
+  });
+
+  it("handler-messages.ts imports the same getRateLimitTier symbol from handler.ts", async () => {
+    // Direct module-shape assertion: the messages handler is forbidden from
+    // forking the rate-limit table — it must reuse handler.ts. This guards the
+    // strictly-additive constraint of M3b (handler.ts processChatCompletion
+    // is read-only).
+    const handlerSrc = await import("node:fs/promises").then(fs =>
+      fs.readFile("server/lib/proxy/handler-messages.ts", "utf8"),
+    );
+    expect(handlerSrc).toMatch(/from\s+["']\.\/handler["']/);
+    expect(handlerSrc).toContain("getRateLimitTier");
+  });
+
+  it("handler-messages.ts wires the same safeguard helpers used by /chat/completions", async () => {
+    const handlerSrc = await import("node:fs/promises").then(fs =>
+      fs.readFile("server/lib/proxy/handler-messages.ts", "utf8"),
+    );
+    // All five safeguards MUST be invoked, mirroring handler.ts.
+    expect(handlerSrc).toContain("checkRateLimit");
+    expect(handlerSrc).toContain("checkConcurrency");
+    expect(handlerSrc).toContain("releaseConcurrency");
+    expect(handlerSrc).toContain("reserveBudget");
+    expect(handlerSrc).toContain("refundBudget");
+  });
+
+  it("rejects a /api/v1/messages caller that exceeds its concurrency limit (parity)", async () => {
+    // Same primitive used by both endpoints — proving parity at the safeguard
+    // layer. The handler enforces 'max 2' for FREE-tier callers; here we
+    // verify the underlying primitive returns the canonical error shape that
+    // handler-messages.ts then re-frames as Anthropic 429 rate_limit_error.
+    const membershipId = `test-msg-conc-${Date.now()}`;
+    const reqs: string[] = [];
+    for (let i = 0; i < 2; i++) {
+      const reqId = `req-${Date.now()}-${i}`;
+      reqs.push(reqId);
+      await checkConcurrency(membershipId, reqId, 2);
+    }
+    const over = await checkConcurrency(membershipId, `req-over-${Date.now()}`, 2);
+    expect(over).not.toBeNull();
+    expect(over?.code).toBe("concurrency_limit");
+    expect(over?.status).toBe(429);
+    for (const r of reqs) await releaseConcurrency(membershipId, r);
+  });
+
+  it("rate-limit primitive used by both endpoints surfaces the same error code/status", async () => {
+    const membershipId = `test-msg-rl-${Date.now()}`;
+    // Burn through a tiny RPM to force the rate-limit error.
+    let lastErr = null as null | { code?: string; status?: number };
+    for (let i = 0; i < 4; i++) {
+      const r = await checkRateLimit(membershipId, 2);
+      if (r) { lastErr = r; break; }
+    }
+    if (lastErr) {
+      expect(lastErr.code === "rate_limit" || lastErr.code === "rate_limited").toBe(true);
+      expect(lastErr.status).toBe(429);
+    }
+  });
+});

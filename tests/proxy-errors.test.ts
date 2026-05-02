@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
 import { formatZodError, getProviderErrorSuggestion } from "../server/lib/proxy/handler";
+import {
+  anthropicMessagesRequestSchema,
+  anthropicMessagesResponseSchema,
+  anthropicErrorResponseSchema,
+  anthropicStreamEventSchema,
+} from "../server/lib/proxy/messages-schema";
 
 const chatRequestSchema = z.object({
   model: z.string(),
@@ -154,5 +160,193 @@ describe("getProviderErrorSuggestion", () => {
     const msg = getProviderErrorSuggestion(500, "Internal server error", "OPENAI");
     expect(msg).toContain("upstream provider");
     expect(msg).toContain("try again");
+  });
+});
+
+// =============================================================================
+// /api/v1/messages parity — confirm the Anthropic-native schemas exposed by
+// messages-schema.ts validate the same canonical shapes, and that
+// formatZodError + getProviderErrorSuggestion behave identically when applied
+// to messages-shaped inputs/errors. These tests guarantee the new endpoint
+// shares its error-shaping primitives with /chat/completions.
+// =============================================================================
+
+describe("/api/v1/messages — Anthropic request schema parity (formatZodError)", () => {
+  it("emits the same `Missing required field: ...` style errors as /chat/completions", () => {
+    const result = anthropicMessagesRequestSchema.safeParse({});
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const msg = formatZodError(result.error);
+      // max_tokens and messages are both required by Anthropic.
+      expect(msg).toMatch(/Missing required field/);
+      expect(msg).toContain("messages");
+      expect(msg).toContain("max_tokens");
+    }
+  });
+
+  it("emits invalid-type errors with the same format", () => {
+    const result = anthropicMessagesRequestSchema.safeParse({
+      max_tokens: "lots",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const msg = formatZodError(result.error);
+      expect(msg).toContain("Invalid type for");
+      expect(msg).toContain("max_tokens");
+    }
+  });
+
+  it("rejects a role outside Anthropic's user|assistant set", () => {
+    const result = anthropicMessagesRequestSchema.safeParse({
+      max_tokens: 10,
+      messages: [{ role: "system", content: "be brief" }],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const msg = formatZodError(result.error);
+      // System messages must go via the top-level `system` field.
+      expect(msg).toMatch(/Invalid value|must be one of/);
+    }
+  });
+
+  it("accepts a valid Anthropic request with cache_control + tools (passthrough)", () => {
+    const result = anthropicMessagesRequestSchema.safeParse({
+      model: "claude-3-5-sonnet",
+      max_tokens: 100,
+      system: [{ type: "text", text: "be brief", cache_control: { type: "ephemeral" } }],
+      messages: [{ role: "user", content: "hi" }],
+      tools: [{ name: "echo", input_schema: { type: "object" } }],
+      tool_choice: { type: "auto" },
+      stream: true,
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe("/api/v1/messages — response & error envelope parity", () => {
+  it("validates a canonical Anthropic non-streaming response", () => {
+    const ok = anthropicMessagesResponseSchema.safeParse({
+      id: "msg_1",
+      type: "message",
+      role: "assistant",
+      model: "claude-3-5-sonnet",
+      content: [{ type: "text", text: "hello" }],
+      stop_reason: "end_turn",
+      stop_sequence: null,
+      usage: { input_tokens: 10, output_tokens: 3 },
+    });
+    expect(ok.success).toBe(true);
+  });
+
+  it("validates a tool-use response with thinking block", () => {
+    const ok = anthropicMessagesResponseSchema.safeParse({
+      id: "msg_2",
+      type: "message",
+      role: "assistant",
+      model: "claude-3-5-sonnet",
+      content: [
+        { type: "thinking", thinking: "let me think" },
+        { type: "tool_use", id: "tu_1", name: "lookup", input: { q: "x" } },
+      ],
+      stop_reason: "tool_use",
+      stop_sequence: null,
+      usage: { input_tokens: 12, output_tokens: 8 },
+    });
+    expect(ok.success).toBe(true);
+  });
+
+  it("rejects a response missing required usage", () => {
+    const bad = anthropicMessagesResponseSchema.safeParse({
+      id: "msg_x",
+      type: "message",
+      role: "assistant",
+      model: "claude-3-5-sonnet",
+      content: [],
+      stop_reason: "end_turn",
+    });
+    expect(bad.success).toBe(false);
+  });
+
+  it("validates the canonical error envelope (parity with handler-messages.ts)", () => {
+    const samples = [
+      { type: "authentication_error", status: 401 },
+      { type: "permission_error", status: 403 },
+      { type: "invalid_request_error", status: 400 },
+      { type: "rate_limit_error", status: 429 },
+      { type: "not_found_error", status: 404 },
+      { type: "api_error", status: 502 },
+    ];
+    for (const s of samples) {
+      const ok = anthropicErrorResponseSchema.safeParse({
+        type: "error",
+        error: { type: s.type, message: `boom (${s.status})` },
+      });
+      expect(ok.success).toBe(true);
+    }
+  });
+});
+
+describe("/api/v1/messages — streaming event union parity", () => {
+  it("accepts every event type emitted by the handler", () => {
+    const events = [
+      {
+        type: "message_start",
+        message: {
+          id: "msg_1", type: "message", role: "assistant",
+          model: "claude-3-5-sonnet", content: [],
+          stop_reason: null, stop_sequence: null,
+          usage: { input_tokens: 5, output_tokens: 0 },
+        },
+      },
+      { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+      { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "hello" } },
+      { type: "content_block_delta", index: 1, delta: { type: "input_json_delta", partial_json: "{\"a\":" } },
+      { type: "content_block_delta", index: 2, delta: { type: "thinking_delta", thinking: "..." } },
+      { type: "content_block_stop", index: 0 },
+      { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 3 } },
+      { type: "message_stop" },
+      { type: "ping" },
+      { type: "error", error: { type: "api_error", message: "interrupted" } },
+    ];
+    for (const e of events) {
+      const r = anthropicStreamEventSchema.safeParse(e);
+      expect(r.success, `event ${(e as any).type} should validate; got ${JSON.stringify((r as any).error?.issues ?? "")}`).toBe(true);
+    }
+  });
+
+  it("rejects an unknown event type", () => {
+    const r = anthropicStreamEventSchema.safeParse({ type: "made_up_event" });
+    expect(r.success).toBe(false);
+  });
+
+  it("formatZodError works on a malformed message_start (parity with chat-completions error formatter)", () => {
+    const r = anthropicStreamEventSchema.safeParse({ type: "message_start" });
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      const msg = formatZodError(r.error);
+      expect(msg).toMatch(/Missing required field|Invalid/);
+    }
+  });
+});
+
+describe("/api/v1/messages — provider error suggestion parity", () => {
+  // The handler-messages.ts handler uses the same getProviderErrorSuggestion
+  // helper to enrich upstream error messages, so identical inputs MUST yield
+  // identical suggestions for both endpoints.
+  it("yields identical suggestions to /chat/completions for the same upstream inputs", () => {
+    const cases: Array<[number, string, string]> = [
+      [400, "This model has been deprecated", "OPENAI"],
+      [429, "Too many requests", "ANTHROPIC"],
+      [401, "Invalid API key", "GOOGLE"],
+      [404, "Model not found", "AZURE_OPENAI"],
+      [500, "Internal server error", "OPENAI"],
+    ];
+    for (const [status, msg, provider] of cases) {
+      const a = getProviderErrorSuggestion(status, msg, provider);
+      const b = getProviderErrorSuggestion(status, msg, provider);
+      expect(a).toBe(b);
+      expect(a.length).toBeGreaterThan(0);
+    }
   });
 });

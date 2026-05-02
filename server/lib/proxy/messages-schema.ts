@@ -126,3 +126,183 @@ export const ANTHROPIC_STREAM_EVENTS = [
 ] as const;
 
 export type AnthropicStreamEvent = typeof ANTHROPIC_STREAM_EVENTS[number];
+
+// =============================================================================
+// Response schema (non-streaming POST /v1/messages reply)
+// =============================================================================
+
+const usageSchema = z.object({
+  input_tokens: z.number().int().nonnegative(),
+  output_tokens: z.number().int().nonnegative(),
+  cache_creation_input_tokens: z.number().int().nonnegative().optional(),
+  cache_read_input_tokens: z.number().int().nonnegative().optional(),
+}).passthrough();
+
+const stopReasonSchema = z.enum([
+  "end_turn",
+  "max_tokens",
+  "stop_sequence",
+  "tool_use",
+  "pause_turn",
+  "refusal",
+]).nullable();
+
+const responseTextBlockSchema = z.object({
+  type: z.literal("text"),
+  text: z.string(),
+  citations: z.array(z.any()).optional(),
+}).passthrough();
+
+const responseToolUseBlockSchema = z.object({
+  type: z.literal("tool_use"),
+  id: z.string(),
+  name: z.string(),
+  input: z.any(),
+}).passthrough();
+
+const responseThinkingBlockSchema = z.object({
+  type: z.literal("thinking"),
+  thinking: z.string(),
+  signature: z.string().optional(),
+}).passthrough();
+
+const responseContentBlockSchema = z.union([
+  responseTextBlockSchema,
+  responseToolUseBlockSchema,
+  responseThinkingBlockSchema,
+  z.object({ type: z.string() }).passthrough(),
+]);
+
+export const anthropicMessagesResponseSchema = z.object({
+  id: z.string(),
+  type: z.literal("message"),
+  role: z.literal("assistant"),
+  model: z.string(),
+  content: z.array(responseContentBlockSchema),
+  stop_reason: stopReasonSchema,
+  stop_sequence: z.string().nullable().optional(),
+  usage: usageSchema,
+}).passthrough();
+
+export type AnthropicMessagesResponse = z.infer<typeof anthropicMessagesResponseSchema>;
+
+export const anthropicErrorResponseSchema = z.object({
+  type: z.literal("error"),
+  error: z.object({
+    type: z.string(),
+    message: z.string(),
+  }).passthrough(),
+}).passthrough();
+
+export type AnthropicErrorResponse = z.infer<typeof anthropicErrorResponseSchema>;
+
+// =============================================================================
+// Streaming event union schemas — one schema per SSE event type, plus a
+// discriminated union over `type`.
+// =============================================================================
+
+export const messageStartEventSchema = z.object({
+  type: z.literal("message_start"),
+  message: z.object({
+    id: z.string(),
+    type: z.literal("message"),
+    role: z.literal("assistant"),
+    model: z.string(),
+    content: z.array(responseContentBlockSchema),
+    stop_reason: stopReasonSchema,
+    stop_sequence: z.string().nullable().optional(),
+    usage: usageSchema,
+  }).passthrough(),
+}).passthrough();
+
+export const contentBlockStartEventSchema = z.object({
+  type: z.literal("content_block_start"),
+  index: z.number().int().nonnegative(),
+  content_block: responseContentBlockSchema,
+}).passthrough();
+
+const textDeltaSchema = z.object({
+  type: z.literal("text_delta"),
+  text: z.string(),
+}).passthrough();
+
+const inputJsonDeltaSchema = z.object({
+  type: z.literal("input_json_delta"),
+  partial_json: z.string(),
+}).passthrough();
+
+const thinkingDeltaSchema = z.object({
+  type: z.literal("thinking_delta"),
+  thinking: z.string(),
+}).passthrough();
+
+const signatureDeltaSchema = z.object({
+  type: z.literal("signature_delta"),
+  signature: z.string(),
+}).passthrough();
+
+const citationsDeltaSchema = z.object({
+  type: z.literal("citations_delta"),
+  citation: z.any(),
+}).passthrough();
+
+export const contentBlockDeltaEventSchema = z.object({
+  type: z.literal("content_block_delta"),
+  index: z.number().int().nonnegative(),
+  delta: z.union([
+    textDeltaSchema,
+    inputJsonDeltaSchema,
+    thinkingDeltaSchema,
+    signatureDeltaSchema,
+    citationsDeltaSchema,
+    z.object({ type: z.string() }).passthrough(),
+  ]),
+}).passthrough();
+
+export const contentBlockStopEventSchema = z.object({
+  type: z.literal("content_block_stop"),
+  index: z.number().int().nonnegative(),
+}).passthrough();
+
+export const messageDeltaEventSchema = z.object({
+  type: z.literal("message_delta"),
+  delta: z.object({
+    stop_reason: stopReasonSchema.optional(),
+    stop_sequence: z.string().nullable().optional(),
+  }).passthrough(),
+  usage: usageSchema.partial().passthrough().optional(),
+}).passthrough();
+
+export const messageStopEventSchema = z.object({
+  type: z.literal("message_stop"),
+}).passthrough();
+
+export const pingEventSchema = z.object({
+  type: z.literal("ping"),
+}).passthrough();
+
+export const errorEventSchema = z.object({
+  type: z.literal("error"),
+  error: z.object({
+    type: z.string(),
+    message: z.string(),
+  }).passthrough(),
+}).passthrough();
+
+/**
+ * Discriminated union over all Anthropic SSE event payloads. The wire format
+ * frames each as `event: <name>\ndata: <json>\n\n`; this schema validates the
+ * `data` JSON only, since that is where the `type` discriminator lives.
+ */
+export const anthropicStreamEventSchema = z.discriminatedUnion("type", [
+  messageStartEventSchema,
+  contentBlockStartEventSchema,
+  contentBlockDeltaEventSchema,
+  contentBlockStopEventSchema,
+  messageDeltaEventSchema,
+  messageStopEventSchema,
+  pingEventSchema,
+  errorEventSchema,
+]);
+
+export type AnthropicStreamEventData = z.infer<typeof anthropicStreamEventSchema>;
