@@ -382,6 +382,7 @@ export default function RedeemPage() {
               testKey={redeemResult.apiKey}
               heading={t("testKey.redeemHeading")}
               subtitle={t("testKey.subtitle")}
+              autoRun
             />
 
             <div className="space-y-6" data-testid="section-post-redeem-connectors">

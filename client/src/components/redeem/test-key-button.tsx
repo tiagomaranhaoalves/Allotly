@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation, Trans } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -60,6 +60,13 @@ export interface TestKeyButtonProps {
   subtitle?: string;
   /** Optional banner shown when testKey is empty. */
   missingKeyMessage?: string;
+  /**
+   * When true, automatically run the test once as soon as a non-empty
+   * `testKey` becomes available. Used by the post-redeem flow on /redeem
+   * to prove the key works end-to-end without requiring a manual click.
+   * The "Try again" buttons remain available for manual retries.
+   */
+  autoRun?: boolean;
 }
 
 const BRANCHED_CODES: TestErrorCode[] = ["no_providers_active", "no_models_in_tier", "budget_exhausted"];
@@ -79,6 +86,7 @@ export function TestKeyButton({
   heading,
   subtitle,
   missingKeyMessage,
+  autoRun = false,
 }: TestKeyButtonProps) {
   const { t } = useTranslation();
   const [result, setResult] = useState<TestResponse | null>(null);
@@ -86,6 +94,7 @@ export function TestKeyButton({
   const [networkError, setNetworkError] = useState<string | null>(null);
 
   const canTest = !!testKey && testKey.length > 0;
+  const autoRanRef = useRef(false);
 
   async function runTest() {
     if (!testKey) return;
@@ -118,6 +127,18 @@ export function TestKeyButton({
       setTesting(false);
     }
   }
+
+  // Auto-fire once when the key first becomes available (post-redeem flow).
+  // Guarded by a ref so we don't re-run on re-renders or after the user
+  // clicks "Try again". /dashboard/connect leaves autoRun=false (default).
+  useEffect(() => {
+    if (!autoRun) return;
+    if (autoRanRef.current) return;
+    if (!canTest) return;
+    autoRanRef.current = true;
+    runTest();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRun, canTest, testKey]);
 
   return (
     <Card className="p-5 space-y-4" data-testid="card-test-key">
