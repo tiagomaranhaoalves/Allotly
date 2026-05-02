@@ -33,6 +33,7 @@ import { storage } from "../../server/storage";
 import { hashPassword } from "../../server/lib/password";
 import { generateAllotlyKey } from "../../server/lib/keys";
 import { authorizeHandler, consentHandler, _resetPendingForTest } from "../../server/lib/oauth/authorize";
+import { CONSENT_SCRIPT_CSP_SOURCE } from "../../server/lib/oauth/consent-template";
 import { tokenHandler } from "../../server/lib/oauth/token";
 import { registerHandler } from "../../server/lib/oauth/register";
 import { discoveryHandler } from "../../server/lib/oauth/discovery";
@@ -781,8 +782,14 @@ describe("oauth e2e: locked security defaults (state + CSP)", () => {
     // block the post-consent 302 redirect and users see "nothing happens"
     // when they click Authorize. The other directives stay strict.
     const expectedRedirectOrigin = new URL(TEST_REDIRECT_URI).origin;
+    // The consent page ships a tiny inline submit-handler so users get
+    // immediate feedback when they click Authorize/Deny — without it the
+    // 1–2s redirect round-trip looked unresponsive and users double-clicked.
+    // The script is hash-pinned in script-src rather than allowing
+    // 'unsafe-inline'.
     expect(res.headers["content-security-policy"]).toBe(
-      `default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'none'; img-src 'self'; form-action 'self' ${expectedRedirectOrigin}`,
+      `default-src 'self'; style-src 'self' 'unsafe-inline'; script-src ${CONSENT_SCRIPT_CSP_SOURCE}; img-src 'self'; form-action 'self' ${expectedRedirectOrigin}`,
     );
+    expect(CONSENT_SCRIPT_CSP_SOURCE).toMatch(/^'sha256-[A-Za-z0-9+/=]+'$/);
   });
 });

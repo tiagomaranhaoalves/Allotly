@@ -6,7 +6,7 @@ import { eq, and, gt } from "drizzle-orm";
 import { storage } from "../../storage";
 import { newAuthorizationCode } from "./pkce";
 import { MCP_AUDIENCE, SUPPORTED_SCOPES, parseScopeString } from "./scopes";
-import { renderConsent } from "./consent-template";
+import { renderConsent, CONSENT_SCRIPT_CSP_SOURCE } from "./consent-template";
 import { redisSet, redisGetDel, redisKeys, redisDel } from "../redis";
 
 // 10 min: gives MCP clients (Claude Desktop, Cursor, etc.) and slow human
@@ -324,9 +324,13 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
   } catch {
     // redirectUri was validated upstream; keep strict fallback.
   }
+  // The consent page ships a tiny inline submit-handler that gives the user
+  // immediate visual feedback (disabled buttons + spinner) on click, so they
+  // don't double-submit the consent form during the 1–2s redirect round-trip.
+  // We pin its SHA-256 in `script-src` rather than allowing 'unsafe-inline'.
   res.setHeader(
     "Content-Security-Policy",
-    `default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'none'; img-src 'self'; form-action ${formActionOrigin}`,
+    `default-src 'self'; style-src 'self' 'unsafe-inline'; script-src ${CONSENT_SCRIPT_CSP_SOURCE}; img-src 'self'; form-action ${formActionOrigin}`,
   );
   res.type("text/html").send(html);
 }

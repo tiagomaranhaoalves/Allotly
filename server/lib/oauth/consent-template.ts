@@ -1,3 +1,5 @@
+import crypto from "crypto";
+
 export interface ConsentParams {
   authRequestId: string;
   csrfToken: string;
@@ -26,6 +28,41 @@ const SCOPE_LABELS: Record<string, string> = {
   "mcp:read": "Read-only: see your budget, status, and recent usage",
 };
 
+/**
+ * Inline submit-handler that gives the user immediate visual feedback when
+ * they click Authorize / Deny. The OAuth consent POST does a server round-trip
+ * (mint code, 302 back to the client) that takes 1–2 seconds — without this,
+ * users assume nothing happened and click again, which races the first
+ * submission and produces an "invalid_grant" error in the host app.
+ *
+ * Behavior:
+ *   - On first submit: disable both buttons, swap the clicked button's label
+ *     to "Authorizing…" / "Cancelling…" with a spinner.
+ *   - On any subsequent submit (double-click, Enter twice): preventDefault.
+ *   - First submit is NOT preventDefaulted — the form posts normally.
+ *   - If JS doesn't run, the form still submits with the original UI (the
+ *     script only enhances; it never gates submission).
+ *
+ * IMPORTANT: any change to the script body (even whitespace) changes the
+ * SHA-256 hash. The hash is computed at module load and exported as
+ * `CONSENT_SCRIPT_CSP_SOURCE` so authorize.ts can pin it in the CSP
+ * `script-src` directive.
+ */
+const CONSENT_INLINE_SCRIPT = `(function(){var f=document.querySelector('form[data-consent-form]');if(!f)return;var a=f.querySelector('[data-testid="consent-approve"]');var d=f.querySelector('[data-testid="consent-deny"]');var last=null;if(a)a.addEventListener('click',function(){last=a;});if(d)d.addEventListener('click',function(){last=d;});var sent=false;var spin='<svg class="allotly-spinner" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" style="vertical-align:middle;margin-right:6px;display:inline-block"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-dasharray="28" stroke-dashoffset="20"></circle></svg>';f.addEventListener('submit',function(e){if(sent){e.preventDefault();return;}sent=true;var b=e.submitter||last||a;var deny=b&&b.value==='deny';var label=deny?'Cancelling\\u2026':'Authorizing\\u2026';if(a){a.disabled=true;a.style.opacity='0.7';a.style.cursor='not-allowed';}if(d){d.disabled=true;d.style.opacity='0.7';d.style.cursor='not-allowed';}if(b){b.innerHTML=spin+label;}});})();`;
+
+/**
+ * CSP `script-src` source for the inline consent-button script. The full
+ * source is `'sha256-<base64>'` (with the surrounding single quotes) — this
+ * is the form CSP3 expects in the directive.
+ */
+export const CONSENT_SCRIPT_CSP_SOURCE: string = (() => {
+  const digest = crypto
+    .createHash("sha256")
+    .update(CONSENT_INLINE_SCRIPT, "utf8")
+    .digest("base64");
+  return `'sha256-${digest}'`;
+})();
+
 export function renderConsent(p: ConsentParams): string {
   const scopeList = p.scopes
     .map((s) => `<li><strong>${escape(s)}</strong> — ${escape(SCOPE_LABELS[s] || s)}</li>`)
@@ -37,6 +74,11 @@ export function renderConsent(p: ConsentParams): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Authorize ${escape(p.clientName)} — Allotly</title>
+<style>
+.allotly-spinner{animation:allotly-spin 0.8s linear infinite;transform-origin:center}
+@keyframes allotly-spin{to{transform:rotate(360deg)}}
+form[data-consent-form] button[disabled]{cursor:not-allowed}
+</style>
 </head>
 <body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
 <div style="max-width:480px;margin:48px auto;padding:0 16px">
@@ -61,7 +103,7 @@ export function renderConsent(p: ConsentParams): string {
 <div style="color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Will redirect to</div>
 <div style="color:#1e293b;font-size:12px;font-family:monospace;word-break:break-all" data-testid="consent-redirect-uri">${escape(p.redirectUri)}</div>
 </div>
-<form method="POST" action="${escape(p.approvePath)}" style="display:flex;gap:8px;margin:0">
+<form method="POST" action="${escape(p.approvePath)}" data-consent-form style="display:flex;gap:8px;margin:0">
 <input type="hidden" name="auth_request_id" value="${escape(p.authRequestId)}">
 <input type="hidden" name="csrf" value="${escape(p.csrfToken)}">
 <button type="submit" name="decision" value="deny" style="flex:1;padding:10px 16px;background:#fff;color:#475569;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer" data-testid="consent-deny">Deny</button>
@@ -72,6 +114,7 @@ export function renderConsent(p: ConsentParams): string {
 <p>You can revoke access at any time from your Allotly dashboard.</p>
 </div>
 </div>
+<script>${CONSENT_INLINE_SCRIPT}</script>
 </body>
 </html>`;
 }
