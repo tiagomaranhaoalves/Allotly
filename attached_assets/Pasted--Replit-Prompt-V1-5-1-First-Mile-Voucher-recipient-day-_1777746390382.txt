@@ -1,0 +1,375 @@
+# Replit Prompt — V1.5.1 "First Mile": Voucher recipient day-one experience
+
+You are implementing V1.5.1, a coordinated set of four user-facing improvements for the **voucher recipient's first-week experience**. The four pieces are independent and can be phased; the planner should split them as it sees fit. **All locked decisions below are non-negotiable. One end-of-task report covering all four.**
+
+State going in: V1.5.0 (M1 OAuth + M2 connections + M3a multi-currency + M3b /v1/messages + M4 streaming chat) is fully shipped. Multi-currency display utilities (`server/lib/fx/format.ts`) and shared cost helpers (`server/lib/proxy/cost-utils.ts`) exist and are battle-tested. All existing tests pass.
+
+---
+
+## Cross-cutting locked decisions
+
+1. **No edits to `processChatCompletion`** in `server/lib/proxy/handler.ts`. The proxy hot path stays bit-for-bit identical.
+2. **No edits to currently-shipped OAuth code paths** unless explicitly listed below.
+3. **No schema changes.** All four pieces are additive at response/UI layers. Do not run `npm run db:push`.
+4. **All money stays USD-cents internally.** Display formatting uses M3a's `convertUsdCentsToCurrency` and `formatCurrency` helpers.
+5. **All existing tests must pass unchanged.** Any test edits must be motivated by real shape changes (e.g. `BudgetSnapshot` gaining a `warning` field), not by working around regressions.
+6. **Description-hash pinning:** Piece 3 adds a new MCP tool, which requires updating `server/lib/mcp/tools/description-hashes.json` with the new tool's hash. The existing tools' descriptions don't change.
+7. **Pre-existing TS errors in `server/routes.ts`, `webhookHandlers.ts`, `lib/plan-limits.ts`, `lib/jobs/*`** — out of scope.
+
+---
+
+# Piece 1 — "Test your key now" button on /redeem
+
+## Why
+Every voucher recipient redeems, copies a snippet, pastes into Cursor/Claude.ai, and *hopes*. If it doesn't work, they have no diagnostic and bounce. This button validates the entire chain (auth + tier + provider + budget) in one click, before they wire any AI tool.
+
+## Locked decisions — Piece 1
+
+1. **New endpoint:** `POST /api/v1/test-connection`. Auth: same Bearer key as `/api/v1/chat/completions`. Counts against budget, rate limit, concurrency identically to a real call (because it is one).
+2. **Server-side behavior:** the endpoint internally invokes the existing chat completion path with:
+   - `model`: cheapest model in the user's allowlist that is currently active across providers
+   - `messages`: `[{ role: "user", content: "Reply with the single word 'ok' and nothing else." }]`
+   - `max_tokens`: 5
+   - `temperature`: 0
+3. **Response shape:**
+   ```ts
+   {
+     success: boolean,
+     model_used: string,                    // e.g. "claude-haiku-4-5"
+     response_text: string,                 // the model's reply, e.g. "ok"
+     cost_usd_cents: number,                // small number, typically < 1
+     budget: {                              // post-call snapshot
+       remaining_usd_cents: number,
+       total_usd_cents: number,
+       display: { ... }                     // M3a's display block
+     },
+     latency_ms: number,
+     error?: {
+       code: 'no_providers_active' | 'no_models_in_tier' | 'budget_exhausted' | 'rate_limited' | 'provider_error' | 'unknown',
+       message: string,                     // user-facing
+       hint: string,                        // suggested action
+     }
+   }
+   ```
+4. **Error mapping** — translate internal errors to user-facing codes:
+   - No active provider connections in user's tier → `no_providers_active`, hint: "Contact your admin to configure providers."
+   - User's allowlist filters out every active model → `no_models_in_tier`, hint: "Contact your admin to expand your allowed models."
+   - Budget already exhausted → `budget_exhausted`, hint: "Request a top-up from your admin via `request_topup` or visit the dashboard."
+   - Rate limited → `rate_limited`, hint: "Wait 60 seconds and try again."
+   - Upstream provider 5xx → `provider_error`, hint: "Try again in a moment. If it persists, the upstream provider may be down."
+   - Anything else → `unknown`, hint: "Contact support if this persists."
+5. **No leaking internals.** Don't expose provider names, internal config, error stack traces, or anything not user-actionable.
+6. **Frontend: button placement.** New component `client/src/components/redeem/test-key-button.tsx`. Placed inline on `/redeem` post-redemption view, **above** the connector grid. Heading: "✓ Voucher redeemed. Test your key works:". Button label: "Test connection".
+7. **Frontend: result display.** Success: green checkmark, "Connection works!", model name, cost ("$0.0001" or "R$ 0,0005" via M3a's formatter), budget remaining (formatted), latency. Failure: red X, error message, hint, retry button.
+8. **Idempotent:** repeated clicks each make a real call. No client-side caching of the result. (We're not optimizing — the user might want to re-test after fixing something.)
+9. **Optional `_meta.skipBudget`:** **NO**. The endpoint always charges the budget. We're not creating a budget-bypass path; that would be abusable.
+
+## Files — Piece 1
+
+**Create:**
+- `server/lib/proxy/test-connection.ts` — handler that calls into existing chat completion logic and translates errors
+- `client/src/components/redeem/test-key-button.tsx` — button + result display + retry
+- `tests/test-connection.test.ts` — endpoint tests (success, each error code, latency, budget decrement)
+
+**Modify:**
+- `server/routes.ts` — mount `app.post("/api/v1/test-connection", ...)` next to `/chat/completions`
+- `client/src/pages/redeem.tsx` — render `<TestKeyButton/>` above the existing `<ConnectorGrid/>` in the post-redemption view, only after a successful redemption
+
+## Tests — Piece 1
+
+1. POST `/api/v1/test-connection` with valid key + active provider → 200, `success: true`, `response_text` is a non-empty string, `cost_usd_cents > 0`, `budget.remaining` decremented
+2. POST with no active provider connections → 200, `success: false`, `error.code: 'no_providers_active'`
+3. POST with allowlist that filters every active model → 200, `success: false`, `error.code: 'no_models_in_tier'`
+4. POST with budget already at 0 → 200, `success: false`, `error.code: 'budget_exhausted'`
+5. POST without auth → 401
+6. Repeated POST counts each call against budget + rate limit (no caching)
+7. Frontend: success state renders with formatted cost in user's currency
+8. Frontend: each error code renders the correct hint
+
+---
+
+# Piece 2 — Show all 8 connectors on /redeem
+
+## Why
+M2 added Claude.ai/ChatGPT/Gemini OAuth cards on `/dashboard/connect` — but `/redeem`'s post-redemption view still shows only the 5 stdio bridges (Cursor, VS Code, Claude Code, Codex, Claude Desktop). New voucher recipients see the older list and miss the easier OAuth path.
+
+## Locked decisions — Piece 2
+
+1. **Two sections** on /redeem post-redemption view:
+   - Section A: **"Quick connect (recommended)"** — Claude.ai, ChatGPT, Gemini (the 3 OAuth options). Listed first because OAuth is easier (no key pasted into chat, no config file edits).
+   - Section B: **"Connect to your CLI / IDE"** — Cursor, VS Code, Claude Code, Codex, Claude Desktop (the 5 stdio bridges).
+2. **Reuse existing components.** `ConnectorGrid` already supports compact mode and the `OAuthConnectorCard` component shipped in M2. No new components needed; just configure the modes/cards rendered.
+3. **Section headers** are i18n keys: `redeem.connectors.quickConnect` and `redeem.connectors.cliIde`. Add to `en.json`, `es.json`, `pt-BR.json`.
+4. **No layout regressions** for `/dashboard/connect`. That page already uses both card types; verify it still renders correctly after any shared-component changes.
+5. **OAuth cards on /redeem** show the same MCP URL (`https://allotly.ai/mcp`) as on `/dashboard/connect`. Same instructions, same "Learn more" docs links. Single source of truth in `shared/connector-snippets.ts`.
+
+## Files — Piece 2
+
+**Modify:**
+- `client/src/pages/redeem.tsx` — render two sections (Quick connect + CLI/IDE) using existing components
+- `client/src/components/connectors/connector-grid.tsx` — add a mode prop or rendering flag if needed to support both subsets in one page (don't duplicate component logic)
+- `client/src/i18n/locales/en.json`, `es.json`, `pt-BR.json` — section heading keys
+- `shared/connector-snippets.ts` — verify OAuth snippets are exported (already added in M2; just confirm)
+
+## Tests — Piece 2
+
+1. `/redeem` post-redemption view renders both section headings
+2. `/redeem` shows 3 OAuth cards in section A
+3. `/redeem` shows 5 stdio cards in section B
+4. `/dashboard/connect` still renders correctly (regression guard)
+5. i18n keys resolve in en, es, pt-BR
+
+---
+
+# Piece 3 — New `estimate_cost` MCP tool
+
+## Why
+Power-user feature. Lets the host LLM ([Claude.ai](http://Claude.ai), ChatGPT, Gemini, Cursor) preview a `chat` request's max cost before invoking — *"this will cost ~$0.05, proceed?"*. Pairs with the host-LLM-picks-model pattern: now the LLM can also say "Sonnet would cost $X, Haiku $Y, want me to use Haiku?"
+
+## Locked decisions — Piece 3
+
+1. **Tool name:** `estimate_cost`. Registered in `server/lib/mcp/tools/consumption/`.
+2. **Description (verbatim, will be pinned via description-hash):**
+   > *"Estimate the maximum cost of a chat request before invoking it. Takes the same inputs as `chat` (model, messages, max_tokens) and returns the estimated input tokens, max output tokens, and worst-case cost in the user's currency, plus 2-3 cheaper alternative models if available. Does not invoke the model — purely a preview. Use this when the user asks 'how much will this cost?' or before running expensive long-output requests."*
+3. **Input schema:** identical to `chat` tool's input schema except `messages` is required and the tool does not accept tool/vision-specific fields beyond what's needed for token counting (system, max_tokens, model).
+4. **Output shape:**
+   ```ts
+   {
+     model: string,
+     estimated: {
+       input_tokens: number,
+       max_output_tokens: number,
+       max_cost_usd_cents: number,
+       max_cost_display: {                    // M3a-formatted in user's org currency
+         currency: string,
+         amount: number,
+         formatted: string                    // e.g. "$0.05" or "R$ 0,25"
+       },
+     },
+     alternatives: Array<{
+       model: string,
+       max_cost_usd_cents: number,
+       max_cost_display: { currency, amount, formatted },
+       savings_pct: number,                   // vs the requested model, e.g. 80 (means 80% cheaper)
+     }>,
+     disclaimer: "Estimate based on max_tokens; actual cost depends on output length. Token counts are approximate."
+   }
+   ```
+5. **`requiresAuth: true`, `requiredScope: "mcp:read"`, `voucherOnly: false`.** OAuth bearers with `mcp:read` scope can use this. It's a read-only operation that doesn't change state or charge budget.
+6. **Annotations:** `title: "Estimate cost of a chat request"`, `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`.
+7. **Token counting:** reuse the existing token-counting helpers in `server/lib/proxy/cost-utils.ts` (extracted during M4). For input tokens, use the model-specific tokenizer if cheap; otherwise fall back to the proxy's existing approximation. Document the approximation in the response disclaimer.
+8. **Alternatives selection:** filter the user's full allowlist for models with the same capability flags as the requested model (vision-capable if input has images, tool-capable if `tools` field present). Sort by cost ascending. Return the top 3 strictly cheaper than the requested model. If fewer than 3 cheaper exist, return what's available. If the requested model is already the cheapest, return an empty alternatives array.
+9. **Validation:** if the requested model isn't in the user's allowlist → `McpToolError` with code `ModelNotAllowed` and the existing error-shape pattern.
+10. **No charges.** This tool never charges budget, never increments rate-limit counters (it doesn't go upstream). It does count against MCP request limits as one tool call.
+11. **Audit:** logs a `mcp_audit_log` row with `tool_name: "estimate_cost"`, `ok: true`, no cost. Standard audit pattern.
+
+## Files — Piece 3
+
+**Create:**
+- `server/lib/mcp/tools/consumption/estimate-cost.ts` — tool registration + handler
+- `tests/mcp-estimate-cost.test.ts` — tool tests
+
+**Modify:**
+- `server/lib/mcp/tools/index.ts` — `import "./consumption/estimate-cost"`
+- `server/lib/mcp/tools/description-hashes.json` — add the pinned hash for the new tool
+
+## Tests — Piece 3
+
+1. Call with valid request → returns 200 with `estimated.max_cost_usd_cents > 0`, `model_used` matches input
+2. Call with model not in allowlist → `ModelNotAllowed` error
+3. Call with input that's vision-bearing → alternatives filtered to vision-capable only
+4. Call with simple text input → alternatives include a mix of text models
+5. Call where requested model is the cheapest in allowlist → `alternatives: []`
+6. Call where requested model is the most expensive in allowlist → `alternatives` has 3 entries
+7. Cost displayed in user's org currency (e.g. BRL org → "R$ 0,05")
+8. No budget decrement after the call
+9. Audit log row written with `tool_name: "estimate_cost"`, `ok: true`
+10. OAuth bearer with `mcp:read` scope can call (regression guard for scope handling)
+
+---
+
+# Piece 4 — Budget warnings embedded in `my_status`, `my_budget`, `my_recent_usage`
+
+## Why
+No proactive budget alerts today. Users discover they're at 5% only when they ask. Embedded `warning` field in tool responses lets host LLMs surface warnings naturally in conversation without us shipping email/push infrastructure.
+
+## Locked decisions — Piece 4
+
+1. **Helper:** `getBudgetWarning(remainingCents, totalCents, allowlist, currency)` in `server/lib/mcp/budget-warnings.ts`. Returns `Warning | null`.
+2. **Thresholds (locked):**
+   - `total > 0 && remaining / total < 0.10 && remaining > 0` → `level: 'critical'`
+   - `total > 0 && remaining / total < 0.25 && remaining / total >= 0.10` → `level: 'low'`
+   - `total > 0 && remaining <= 0` → `level: 'exhausted'`
+   - `total === 0` (unlimited) → `null` (no warning)
+   - `remaining / total >= 0.25` → `null` (healthy)
+3. **`Warning` shape:**
+   ```ts
+   {
+     level: 'low' | 'critical' | 'exhausted',
+     message: string,                     // localized using server-side default locale per currency (M3a pattern)
+     remaining_pct: number,               // e.g. 8 (means 8%)
+     suggestion: {
+       text: string,                      // user-facing
+       cheapest_model_in_allowlist: string | null,  // e.g. "claude-haiku-4-5"; null if allowlist is empty
+       topup_url: string | null,          // direct link to dashboard topup page; null if user can't request topup (e.g. synthetic voucher user without admin)
+     },
+   }
+   ```
+4. **Message wording (locked, in English; localize via existing i18n keys):**
+   - `low`: "Budget at {remaining_pct}% — running low. {currency_amount_remaining} of {currency_amount_total} left."
+   - `critical`: "Budget critically low — only {remaining_pct}% left. {currency_amount_remaining} remaining."
+   - `exhausted`: "Voucher fully spent. No budget remaining."
+5. **Suggestion text wording (locked):**
+   - `low`: "Try cheaper models like {cheapest_model} for routine tasks. Top up here: {topup_url}."
+   - `critical`: "Switch to {cheapest_model} immediately or top up: {topup_url}."
+   - `exhausted`: "Request a top-up to continue: {topup_url}."
+   - When `cheapest_model` is null: drop the model suggestion clause.
+   - When `topup_url` is null: replace with "Contact your admin for a top-up."
+6. **Where the warning appears:**
+   - `my_status` response — `warning?: Warning | null` field at top level
+   - `my_budget` response — same `warning?` field at top level
+   - `my_recent_usage` response — same `warning?` field at top level
+   - `BudgetSnapshot` (the canonical type) gains the `warning?` field — additive, doesn't break callers
+7. **Currency-aware:** the formatted amounts in messages use M3a's `formatCurrency` with the org's currency and default locale per currency.
+8. **Dashboard surfacing:** if `BudgetSnapshot.warning` is present in any API response the dashboard consumes, render a banner at the top of the relevant page (`overview`, `usage`, `bundles`):
+   - `low` → yellow banner
+   - `critical` → orange banner
+   - `exhausted` → red banner
+   - Banner shows `message` + `suggestion.text` + topup CTA button (if `topup_url` is set)
+9. **Webhooks unaffected.** No `warning` field in webhook payloads.
+10. **Tests deterministic:** when computing `remaining_pct`, round to nearest integer for stability.
+
+## Files — Piece 4
+
+**Create:**
+- `server/lib/mcp/budget-warnings.ts` — `getBudgetWarning(...)` helper
+- `client/src/components/dashboard/budget-warning-banner.tsx` — banner component
+- `tests/budget-warnings.test.ts` — helper unit tests
+- `tests/budget-warnings-integration.test.ts` — `my_status` + dashboard integration
+
+**Modify:**
+- `server/lib/mcp/meta-budget.ts` (or wherever `BudgetSnapshot` is constructed) — call `getBudgetWarning` and attach result
+- `server/lib/mcp/tools/recipient/my-status.ts`, `my-budget.ts`, `my-recent-usage.ts` — pass through warning
+- `client/src/pages/dashboard/overview.tsx`, `usage.tsx`, `bundles.tsx` — render `<BudgetWarningBanner/>` if warning present
+- `client/src/i18n/locales/en.json`, `es.json`, `pt-BR.json` — message keys for low/critical/exhausted
+
+## Tests — Piece 4
+
+1. `getBudgetWarning(50_00, 100_00, ...)` → `null` (50% remaining)
+2. `getBudgetWarning(20_00, 100_00, ...)` → `level: 'low'`, remaining_pct: 20
+3. `getBudgetWarning(8_00, 100_00, ...)` → `level: 'critical'`, remaining_pct: 8
+4. `getBudgetWarning(0, 100_00, ...)` → `level: 'exhausted'`
+5. `getBudgetWarning(50_00, 0, ...)` → `null` (unlimited)
+6. Suggestion text includes cheapest model when allowlist non-empty
+7. Suggestion text drops model clause when allowlist empty
+8. Suggestion text uses topup URL when present, fallback wording when null
+9. `my_status` response includes warning when budget < 25%
+10. `my_status` response has `warning: null` when budget healthy
+11. Currency-aware: BRL org sees `R$ 8,00 of R$ 100,00 left` in critical message
+12. Dashboard banner renders for each level with correct color
+13. Localization: en, es, pt-BR all resolve message keys
+
+---
+
+# Acceptance checklist — applies to all four pieces
+
+```bash
+npm run check       # type + description-hash check (Piece 3 will need a hash update)
+npx vitest run      # full test suite, all green (existing + new)
+npm run build       # esbuild bundle
+```
+
+Live preview verification (run on dev preview URL):
+
+**Piece 1:**
+```bash
+# Test-connection happy path
+curl -s -X POST 'https://<dev>/api/v1/test-connection' \
+  -H "Authorization: Bearer <test-key>" \
+  -H "Content-Type: application/json" \
+  -d '{}' | python3 -m json.tool
+# expect success: true, model_used, response_text, cost_usd_cents > 0, budget object
+
+# Test-connection no providers
+curl -s -X POST 'https://<dev>/api/v1/test-connection' \
+  -H "Authorization: Bearer <key-for-org-with-no-providers>" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+# expect success: false, error.code: 'no_providers_active'
+```
+
+**Piece 2:**
+```bash
+# Visual: navigate to /redeem in browser, redeem a test voucher
+# Confirm two sections: "Quick connect" (3 cards) above "CLI / IDE" (5 cards)
+```
+
+**Piece 3:**
+```bash
+curl -s -X POST 'https://<dev>/mcp' \
+  -H "Authorization: Bearer <test-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"estimate_cost","arguments":{"model":"claude-sonnet-4-5","max_tokens":1000,"messages":[{"role":"user","content":"Write a 500 word essay on bees"}]}}}' \
+  | python3 -m json.tool
+# expect estimated.max_cost_usd_cents, alternatives array with 2-3 cheaper models, max_cost_display in user's currency
+```
+
+**Piece 4:**
+```bash
+# Force a low-budget state on a test user, then:
+curl -s -X POST 'https://<dev>/mcp' \
+  -H "Authorization: Bearer <low-budget-test-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"my_status","arguments":{}}}' \
+  | python3 -m json.tool | grep -A6 warning
+# expect warning.level: 'critical', remaining_pct < 10, suggestion.text mentions cheapest model + topup URL
+
+# Visual: navigate to /dashboard/overview as low-budget user
+# Confirm orange banner at top with message + topup button
+```
+
+---
+
+# Out of scope — DO NOT TOUCH
+
+- `processChatCompletion` (proxy hot path)
+- OAuth flow (M1 + hotfixes are correct)
+- M3b `/api/v1/messages` endpoint
+- M4 streaming chat path
+- Schema changes (none needed)
+- Webhook payloads (no warning field)
+- Existing 451+ tests (must pass unchanged)
+- Pre-existing TS errors in `routes.ts`, `webhookHandlers.ts`, `lib/plan-limits.ts`, `lib/jobs/*`
+- The npm bridge package `@allotly/mcp` — no changes
+- LLM-based `recommend_model` (deferred indefinitely; the existing heuristic + host-LLM-picks pattern is the right approach)
+- Email-based budget alerts (out of scope; the embedded `warning` field is sufficient)
+
+---
+
+# Final report format
+
+**One** end-of-task message:
+
+## Summary
+- Piece 1 (test-connection button): ✅ / partial / blocked
+- Piece 2 (8 connectors on /redeem): ✅ / partial / blocked
+- Piece 3 (estimate_cost tool): ✅ / partial / blocked
+- Piece 4 (budget warnings): ✅ / partial / blocked
+- Total tests: `<n> passed`, `<m>` new
+- Build: success
+- Description hash for `estimate_cost`: `<hash>`
+
+## Per-piece deliverables
+For each piece: files created (paths only), files modified (paths only).
+
+## Live verification curl outputs
+Paste the dev-preview curl outputs from the Acceptance section above.
+
+## Anything blocked or deferred
+If a piece couldn't be completed, state which and why.
+
+Push to GitHub via the Git pane after the report. Do **not** push automatically. Do **not** redeploy to production — the user will do that after reviewing.
+
+---
+
+When all four land, I'll do the unified pull + audit + live-verify pass and confirm the day-one experience for a fresh voucher recipient is meaningfully better than today.

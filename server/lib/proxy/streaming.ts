@@ -1,5 +1,15 @@
 import type { Response as ExpressResponse } from "express";
-import { translateStreamChunkToOpenAI, extractGoogleStreamText, applyStopSequences, type ProviderType } from "./translate";
+import {
+  translateStreamChunkToOpenAI,
+  extractGoogleStreamText,
+  applyStopSequences,
+  translateStreamChunkToAnthropic,
+  createAnthropicStreamState,
+  buildAnthropicErrorEvent,
+  type AnthropicStreamState,
+  type AnthropicEvent,
+  type ProviderType,
+} from "./translate";
 
 export interface StreamResult {
   usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | null;
@@ -204,3 +214,117 @@ export async function readNonStreamingResponse(
     throw new Error(`Invalid JSON response from provider: ${text.slice(0, 200)}`);
   }
 }
+
+// =============================================================================
+// Anthropic-native streaming (M3b — /api/v1/messages)
+// =============================================================================
+
+export interface AnthropicStreamResult {
+  usage: { input_tokens: number; output_tokens: number } | null;
+  fullContent: string;
+  stopReason: string | null;
+}
+
+function writeAnthropicEvent(res: ExpressResponse, event: AnthropicEvent): void {
+  res.write(`event: ${event.event}\n`);
+  res.write(`data: ${JSON.stringify(event.data)}\n\n`);
+}
+
+export async function streamProviderResponseAsAnthropic(
+  providerResponse: globalThis.Response,
+  provider: ProviderType,
+  model: string,
+  res: ExpressResponse,
+): Promise<AnthropicStreamResult> {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("Transfer-Encoding", "chunked");
+
+  const state = createAnthropicStreamState(model);
+  const body = providerResponse.body;
+  if (!body) {
+    return { usage: null, fullContent: "", stopReason: null };
+  }
+
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let pingInterval: NodeJS.Timeout | null = null;
+
+  const sendPing = () => {
+    try { writeAnthropicEvent(res, { event: "ping", data: { type: "ping" } }); } catch {}
+  };
+
+  function processData(rawData: string) {
+    if (rawData === "[DONE]") return;
+    let parsed: any;
+    try { parsed = JSON.parse(rawData); } catch { return; }
+    const events = translateStreamChunkToAnthropic(provider, parsed, state);
+    for (const event of events) writeAnthropicEvent(res, event);
+  }
+
+  try {
+    pingInterval = setInterval(sendPing, 15000);
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        if (trimmed.startsWith("data: ")) {
+          processData(trimmed.slice(6));
+        }
+      }
+    }
+
+    if (buffer.trim().startsWith("data: ")) {
+      processData(buffer.trim().slice(6));
+    }
+
+    if (!state.messageStartSent) {
+      // Upstream produced nothing — emit a minimal envelope so SDK consumers don't hang.
+      writeAnthropicEvent(res, {
+        event: "message_start",
+        data: {
+          type: "message_start",
+          message: {
+            id: state.messageId,
+            type: "message",
+            role: "assistant",
+            model: state.model,
+            content: [],
+            stop_reason: null,
+            stop_sequence: null,
+            usage: { input_tokens: state.inputTokens, output_tokens: 0 },
+          },
+        },
+      });
+      writeAnthropicEvent(res, { event: "message_delta", data: { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: state.outputTokens } } });
+      writeAnthropicEvent(res, { event: "message_stop", data: { type: "message_stop" } });
+    }
+
+    res.end();
+  } catch (err) {
+    try {
+      writeAnthropicEvent(res, buildAnthropicErrorEvent("api_error", "Stream interrupted"));
+      res.end();
+    } catch {}
+    throw err;
+  } finally {
+    if (pingInterval) clearInterval(pingInterval);
+  }
+
+  return {
+    usage: { input_tokens: state.inputTokens, output_tokens: state.outputTokens },
+    fullContent: state.fullText,
+    stopReason: state.stopReason,
+  };
+}
+
+export { writeAnthropicEvent };
