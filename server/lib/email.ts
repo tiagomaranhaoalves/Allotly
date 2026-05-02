@@ -224,7 +224,12 @@ export const emailTemplates = {
     };
   },
 
-  voucherNotification(recipientName: string, code: string, budgetDollars: string, expiresAt: string, redeemUrl: string) {
+  /**
+   * @param budgetFormatted Pre-formatted, currency-aware budget string (e.g. "$25.00", "£19.75",
+   *   "R$ 130,00"). Callers are responsible for formatting in the org's chosen currency
+   *   so this template never has to know about FX.
+   */
+  voucherNotification(recipientName: string, code: string, budgetFormatted: string, expiresAt: string, redeemUrl: string) {
     // Derive the dashboard/connect URL from the redeem URL's origin so it
     // works in dev, staging, and production without a separate config knob.
     let connectUrl = "https://allotly.ai/dashboard/connect";
@@ -242,7 +247,7 @@ export const emailTemplates = {
         `<div style="background:#f8fafc;border-radius:8px;padding:20px;margin:16px 0;text-align:center">
 <div style="font-size:24px;font-weight:700;color:#6366F1;letter-spacing:2px;font-family:monospace">${code}</div>
 </div>`,
-        kv("Budget", `$${budgetDollars}`),
+        kv("Budget", budgetFormatted),
         kv("Expires", expiresAt),
         btn("Redeem Voucher", redeemUrl),
         p("Once redeemed, you'll receive an API key to use with Allotly's AI proxy."),

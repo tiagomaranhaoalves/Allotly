@@ -21,8 +21,9 @@ import {
   Settings as SettingsIcon, Building, CreditCard, Shield,
   ExternalLink, Check, AlertTriangle, Users, Database,
   Clock, Zap, Plus, Trash2, Bell, SlidersHorizontal,
-  KeyRound, Unplug, Download, Wrench, RefreshCcw,
+  KeyRound, Unplug, Download, Wrench, RefreshCcw, Globe,
 } from "lucide-react";
+import { SUPPORTED_CURRENCIES, CURRENCY_LABELS, CURRENCY_SYMBOLS, normalizeCurrency, formatUsdCents, type SupportedCurrency } from "@/lib/currency";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
@@ -51,6 +52,7 @@ export default function SettingsPage() {
   const [orgName, setOrgName] = useState("");
   const [billingEmail, setBillingEmail] = useState("");
   const [description, setDescription] = useState("");
+  const [currency, setCurrency] = useState<SupportedCurrency>("USD");
   const [seatCount, setSeatCount] = useState("1");
   const [addSeatsCount, setAddSeatsCount] = useState("1");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -79,6 +81,7 @@ export default function SettingsPage() {
       setOrgName(orgData.name);
       setBillingEmail(orgData.billingEmail || "");
       setDescription(orgData.description || "");
+      setCurrency(normalizeCurrency(orgData.currency));
       const s = orgData.settings || {};
       if (s.notifications) {
         setNotifications(prev => ({ ...prev, ...s.notifications }));
@@ -127,6 +130,19 @@ export default function SettingsPage() {
     },
     onError: (err: any) => {
       toast({ title: t("dashboard.settings.toastUpdateFailed"), description: err.message, variant: "destructive" });
+    },
+  });
+
+  const currencyMutation = useMutation({
+    mutationFn: async (next: SupportedCurrency) => {
+      await apiRequest("PATCH", "/api/org/settings", { currency: next });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/org/settings"] });
+      toast({ title: t("dashboard.settings.toastCurrencySaved") });
+    },
+    onError: (err: any) => {
+      toast({ title: t("dashboard.settings.toastCurrencyFailed"), description: err.message, variant: "destructive" });
     },
   });
 
@@ -383,6 +399,47 @@ export default function SettingsPage() {
               )}
             </div>
           </Card>
+
+          {isRootAdmin && (
+            <Card className="p-6" data-testid="card-currency-settings">
+              <div className="flex items-center gap-2 mb-4">
+                <Globe className="w-5 h-5 text-primary" />
+                <h2 className="text-base font-semibold">{t("dashboard.settings.currencyHeading")}</h2>
+              </div>
+              <p className="text-sm text-muted-foreground mb-4">
+                {t("dashboard.settings.currencyDescription")}
+              </p>
+              <div className="space-y-4 max-w-md">
+                <div className="space-y-2">
+                  <Label>{t("dashboard.settings.currencyLabel")}</Label>
+                  <Select
+                    value={currency}
+                    onValueChange={(v) => {
+                      const next = normalizeCurrency(v);
+                      setCurrency(next);
+                      currencyMutation.mutate(next);
+                    }}
+                  >
+                    <SelectTrigger data-testid="select-currency">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SUPPORTED_CURRENCIES.map(code => (
+                        <SelectItem key={code} value={code} data-testid={`option-currency-${code}`}>
+                          {CURRENCY_SYMBOLS[code]} — {CURRENCY_LABELS[code]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground" data-testid="text-currency-preview">
+                    {t("dashboard.settings.currencyPreview", {
+                      sample: formatUsdCents(2500, currency),
+                    })}
+                  </p>
+                </div>
+              </div>
+            </Card>
+          )}
 
           {isRootAdmin && (
             <Card className="p-6">

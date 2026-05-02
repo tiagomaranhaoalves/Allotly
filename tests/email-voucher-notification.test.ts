@@ -5,10 +5,14 @@ const VOUCHER = "ALLOT-1234-5678-9ABC";
 const REDEEM_URL = "https://allotly.example.com/redeem?code=ALLOT-1234-5678-9ABC";
 
 describe("voucherNotification email", () => {
+  // budgetFormatted is now a fully pre-formatted, currency-aware string supplied
+  // by the caller (see server/lib/currency.ts#formatMoney). The template no
+  // longer prepends a "$" — it embeds the value verbatim — so call sites can
+  // pass "$25.00", "£19.75", "R$ 130,00", etc.
   const out = emailTemplates.voucherNotification(
     "Alex",
     VOUCHER,
-    "25.00",
+    "$25.00",
     "2026-12-31",
     REDEEM_URL,
   );

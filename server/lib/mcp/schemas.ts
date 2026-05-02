@@ -1,5 +1,31 @@
 import { z } from "zod";
 
+/**
+ * Optional, additive display block. Internal accounting stays in USD-cents
+ * (remaining_cents/total_cents); this block exists purely so MCP clients can
+ * render the budget in the org's selected currency (USD/GBP/EUR/BRL) without
+ * doing FX themselves. Populated by withBudgetMeta when an org currency is
+ * resolvable; absent when the snapshot is built without org context.
+ */
+export const BudgetDisplaySchema = z.object({
+  currency: z.enum(["USD", "GBP", "EUR", "BRL"]),
+  locale: z.string(),
+  fx_rate: z.number().positive(),
+  fx_as_of: z.string().nullable(),
+  fx_source: z.string(),
+  formatted: z.object({
+    remaining: z.string(),
+    total: z.string(),
+    spent: z.string(),
+  }),
+  minor_units: z.object({
+    remaining: z.number().int().nonnegative(),
+    total: z.number().int().nonnegative(),
+    spent: z.number().int().nonnegative(),
+  }),
+});
+export type BudgetDisplay = z.infer<typeof BudgetDisplaySchema>;
+
 export const BudgetSnapshotSchema = z.object({
   remaining_cents: z.number().int().nonnegative(),
   total_cents: z.number().int().nonnegative(),
@@ -9,6 +35,7 @@ export const BudgetSnapshotSchema = z.object({
   rate_limit_per_min: z.number().int().positive(),
   concurrency_limit: z.number().int().positive(),
   voucher_expires_at: z.string().nullable(),
+  display: BudgetDisplaySchema.optional(),
 });
 export type BudgetSnapshot = z.infer<typeof BudgetSnapshotSchema>;
 

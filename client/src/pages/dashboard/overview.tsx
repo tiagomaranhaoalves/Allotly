@@ -30,6 +30,19 @@ import {
 } from "recharts";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient as qc } from "@/lib/queryClient";
+import { formatUsdCents, normalizeCurrency, type SupportedCurrency } from "@/lib/currency";
+
+/**
+ * Resolves the org's display currency + the FX rate for it. Cached for 1h
+ * (currency is rarely changed; rates refresh daily). All callers below pass
+ * USD-cents into formatUsdCents(value, ccy, fxRate).
+ */
+function useDisplayCurrency(): { ccy: SupportedCurrency; fxRate: number | undefined } {
+  const { data: org } = useQuery<any>({ queryKey: ["/api/org/settings"], staleTime: 60_000 });
+  const { data: fx } = useQuery<any>({ queryKey: ["/api/fx-rates"], staleTime: 60 * 60_000 });
+  const ccy = normalizeCurrency(org?.currency);
+  return { ccy, fxRate: fx?.rates?.[ccy] };
+}
 
 const PROVIDER_COLORS: Record<string, string> = {
   OPENAI: "#10A37F",
@@ -60,6 +73,7 @@ function RootAdminOverview() {
   const { t } = useTranslation();
   const { data, isLoading } = useQuery<any>({ queryKey: ["/api/dashboard/root-overview"] });
   const { data: vouchers } = useQuery<any[]>({ queryKey: ["/api/vouchers"] });
+  const { ccy, fxRate } = useDisplayCurrency();
 
   if (isLoading) {
     return (
@@ -103,7 +117,7 @@ function RootAdminOverview() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatsCard
           title={t("dashboard.overview.totalSpend")}
-          value={`$${((data?.totalSpendCents || 0) / 100).toFixed(2)}`}
+          value={formatUsdCents(data?.totalSpendCents || 0, ccy, fxRate)}
           icon={<DollarSign className="w-5 h-5" />}
         />
         <StatsCard
@@ -314,6 +328,7 @@ function TeamAdminOverview() {
   const { t } = useTranslation();
   const { data, isLoading } = useQuery<any>({ queryKey: ["/api/dashboard/team-overview"] });
   const { data: voucherStats } = useQuery<any>({ queryKey: ["/api/dashboard/voucher-stats"] });
+  const { ccy, fxRate } = useDisplayCurrency();
 
   if (isLoading) {
     return (
@@ -342,7 +357,7 @@ function TeamAdminOverview() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatsCard title={t("dashboard.overview.teamSpend")} value={`$${((stats.totalSpendCents || 0) / 100).toFixed(2)}`} icon={<DollarSign className="w-5 h-5" />} />
+        <StatsCard title={t("dashboard.overview.teamSpend")} value={formatUsdCents(stats.totalSpendCents || 0, ccy, fxRate)} icon={<DollarSign className="w-5 h-5" />} />
         <StatsCard title={t("dashboard.overview.directMembers")} value={String(stats.directMemberCount || 0)} icon={<Key className="w-5 h-5" />} />
         <StatsCard title={t("dashboard.overview.voucherRecipients")} value={String(stats.proxyMemberCount || 0)} icon={<Ticket className="w-5 h-5" />} />
         <StatsCard title={t("dashboard.overview.bundleCapacity")} value={String(stats.bundleCapacityRemaining || 0)} icon={<ShoppingCart className="w-5 h-5" />} />
@@ -767,6 +782,7 @@ function ProjectBreakdown({ proxyLogs }: { proxyLogs: any[] }) {
 }
 
 function ProxyMemberOverview({ data }: { data: any }) {
+  const { ccy, fxRate } = useDisplayCurrency();
   const { t } = useTranslation();
   const { toast } = useToast();
 
@@ -803,12 +819,12 @@ function ProxyMemberOverview({ data }: { data: any }) {
           <div>
             <p className="text-sm text-muted-foreground">{t("dashboard.overview.remaining")}</p>
             <p className="text-2xl font-bold" data-testid="text-budget-remaining">
-              ${((data.budgetCents - data.spendCents) / 100).toFixed(2)}
+              {formatUsdCents(Math.max(0, data.budgetCents - data.spendCents), ccy, fxRate)}
             </p>
           </div>
           <div>
             <p className="text-sm text-muted-foreground">{t("dashboard.overview.totalBudget")}</p>
-            <p className="text-2xl font-bold">${(data.budgetCents / 100).toFixed(2)}</p>
+            <p className="text-2xl font-bold">{formatUsdCents(data.budgetCents, ccy, fxRate)}</p>
           </div>
           <div>
             <p className="text-sm text-muted-foreground">{t("dashboard.overview.requestsMade")}</p>
@@ -902,6 +918,7 @@ function ProxyMemberOverview({ data }: { data: any }) {
 }
 
 function DirectMemberOverview({ data }: { data: any }) {
+  const { ccy, fxRate } = useDisplayCurrency();
   const { t } = useTranslation();
   const usageSnapshots = data?.usageSnapshots || [];
 
@@ -929,12 +946,12 @@ function DirectMemberOverview({ data }: { data: any }) {
           <div>
             <p className="text-sm text-muted-foreground">{t("dashboard.overview.remaining")}</p>
             <p className="text-2xl font-bold" data-testid="text-budget-remaining">
-              ${((data.budgetCents - data.spendCents) / 100).toFixed(2)}
+              {formatUsdCents(Math.max(0, data.budgetCents - data.spendCents), ccy, fxRate)}
             </p>
           </div>
           <div>
             <p className="text-sm text-muted-foreground">{t("dashboard.overview.totalBudget")}</p>
-            <p className="text-2xl font-bold">${(data.budgetCents / 100).toFixed(2)}</p>
+            <p className="text-2xl font-bold">{formatUsdCents(data.budgetCents, ccy, fxRate)}</p>
           </div>
           <div>
             <p className="text-sm text-muted-foreground">{t("dashboard.overview.period")}</p>

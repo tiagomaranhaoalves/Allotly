@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/brand/empty-state";
 import { BudgetBar } from "@/components/brand/budget-bar";
 import { Badge } from "@/components/ui/badge";
 import { Activity, Zap, DollarSign, Clock, Hash } from "lucide-react";
+import { formatUsdCents, normalizeCurrency } from "@/lib/currency";
 
 export default function UsagePage() {
   const { t } = useTranslation();
@@ -15,6 +16,10 @@ export default function UsagePage() {
   const { data: overview, isLoading } = useQuery<any>({
     queryKey: ["/api/dashboard/member-overview"],
   });
+  const { data: org } = useQuery<any>({ queryKey: ["/api/org/settings"], staleTime: 60_000 });
+  const { data: fx } = useQuery<any>({ queryKey: ["/api/fx-rates"], staleTime: 60 * 60_000 });
+  const ccy = normalizeCurrency(org?.currency);
+  const rate = fx?.rates?.[ccy];
 
   const membership = overview?.membership;
   const hasUsage = membership && (membership.currentPeriodSpendCents > 0 || overview?.proxyRequestCount > 0);
@@ -42,7 +47,7 @@ export default function UsagePage() {
                 <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t("dashboard.usage.currentSpend")}</span>
               </div>
               <p className="text-2xl font-bold" data-testid="text-current-spend">
-                ${((overview?.spendCents || membership.currentPeriodSpendCents || 0) / 100).toFixed(2)}
+                {formatUsdCents(overview?.spendCents || membership.currentPeriodSpendCents || 0, ccy, rate)}
               </p>
             </Card>
             <Card className="p-5" data-testid="card-budget">
@@ -51,7 +56,7 @@ export default function UsagePage() {
                 <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t("dashboard.usage.budget")}</span>
               </div>
               <p className="text-2xl font-bold" data-testid="text-budget">
-                ${((overview?.budgetCents || membership.monthlyBudgetCents || 0) / 100).toFixed(2)}
+                {formatUsdCents(overview?.budgetCents || membership.monthlyBudgetCents || 0, ccy, rate)}
               </p>
             </Card>
             <Card className="p-5" data-testid="card-requests">

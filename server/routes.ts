@@ -27,6 +27,16 @@ import { runSnapshotCleanup } from "./lib/jobs/snapshot-cleanup";
 import { runSpendAnomalyCheck } from "./lib/jobs/spend-anomaly";
 import { checkPlanLimit, PLAN_LIMITS } from "./lib/plan-limits";
 import { sendEmail, emailTemplates } from "./lib/email";
+import {
+  SUPPORTED_CURRENCIES,
+  getOrgCurrency,
+  getActiveRates,
+  formatMoney,
+  convertFromUsdCents,
+  CURRENCY_LOCALES,
+  type SupportedCurrency,
+} from "./lib/currency";
+import { runFxRefresh } from "./lib/jobs/fx-refresh";
 import { getCostPerModel, getTopSpenders, getSpendForecast, getAnomalies, getOptimizationRecommendations } from "./lib/analytics";
 import { loginLimiter, redeemLimiter, regenerateKeyLimiter, adminLoginLimiter } from "./lib/rate-limiter";
 import crypto from "crypto";
@@ -3304,6 +3314,16 @@ export async function registerRoutes(
       const org = await storage.getOrganization(user.orgId);
       const redeemUrl = `${req.protocol}://${req.get("host")}/redeem?code=${encodeURIComponent(code)}`;
 
+      // Format the voucher's USD-cents budget into the org's chosen currency for
+      // the recipient's email (display layer only — the underlying voucher
+      // record stays in USD-cents).
+      const orgCurrency = getOrgCurrency(org);
+      const fxSnap = await getActiveRates();
+      const budgetFormatted = formatMoney(
+        convertFromUsdCents(voucher.budgetCents, orgCurrency, fxSnap.rates[orgCurrency]),
+        orgCurrency,
+      );
+
       const emailSubject = `You've received an AI API voucher from ${org?.name || "Allotly"}`;
       const emailHtml = `
         <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto;">
@@ -3312,7 +3332,7 @@ export async function registerRoutes(
           <div style="background: #f3f4f6; border-radius: 8px; padding: 16px; text-align: center; margin: 16px 0;">
             <p style="font-family: monospace; font-size: 20px; letter-spacing: 2px; margin: 0;">${code}</p>
           </div>
-          <p>Budget: <strong>$${(voucher.budgetCents / 100).toFixed(2)}</strong></p>
+          <p>Budget: <strong>${budgetFormatted}</strong></p>
           <p>Expires: <strong>${new Date(voucher.expiresAt).toLocaleDateString()}</strong></p>
           <a href="${redeemUrl}" style="display: inline-block; background: #6366f1; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; margin-top: 8px;">Redeem Voucher</a>
         </div>
@@ -4595,6 +4615,38 @@ export async function registerRoutes(
     res.json(org);
   });
 
+  // Returns the live FX snapshot used for currency display. Authenticated so
+  // we don't expose the FX cache to the public internet, but does not require
+  // ROOT_ADMIN — any signed-in user can see the rates the dashboard formats with.
+  app.get("/api/fx-rates", requireAuth, async (_req, res) => {
+    const snap = await getActiveRates();
+    res.json({
+      rates: snap.rates,
+      asOf: snap.asOf.getTime() === 0 ? null : snap.asOf.toISOString(),
+      source: snap.source,
+      supported: SUPPORTED_CURRENCIES,
+      locales: CURRENCY_LOCALES,
+    });
+  });
+
+  // Manual refresh trigger for ROOT_ADMINs / ops. Useful for testing locale
+  // changes immediately without waiting for the daily 03:00 UTC cron.
+  app.post("/api/fx-rates/refresh", requireRole("ROOT_ADMIN"), async (_req, res) => {
+    try {
+      const result = await runFxRefresh();
+      const snap = await getActiveRates(true);
+      res.json({
+        ok: true,
+        result,
+        rates: snap.rates,
+        asOf: snap.asOf.getTime() === 0 ? null : snap.asOf.toISOString(),
+        source: snap.source,
+      });
+    } catch (e: any) {
+      res.status(500).json({ ok: false, message: e.message });
+    }
+  });
+
   app.patch("/api/org/settings", requireRole("ROOT_ADMIN"), async (req, res) => {
     const user = (req as any).user;
     const notificationsSchema = z.object({
@@ -4615,6 +4667,10 @@ export async function registerRoutes(
       description: z.string().max(500).nullable().optional(),
       orgBudgetCeilingCents: z.number().int().min(0).nullable().optional(),
       defaultMemberBudgetCents: z.number().int().min(0).nullable().optional(),
+      // Display currency for budgets/spend/voucher amounts. Internal
+      // accounting always stays in USD-cents — this knob only changes how
+      // those USD amounts are rendered for this org.
+      currency: z.enum(["USD", "GBP", "EUR", "BRL"]).optional(),
       settings: z.object({
         notifications: notificationsSchema,
         defaults: defaultsSchema,
@@ -4624,13 +4680,14 @@ export async function registerRoutes(
     if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
 
     const before = await storage.getOrganization(user.orgId);
-    const { name, billingEmail, description, orgBudgetCeilingCents, defaultMemberBudgetCents, settings } = parsed.data;
+    const { name, billingEmail, description, orgBudgetCeilingCents, defaultMemberBudgetCents, currency, settings } = parsed.data;
     const updateData: Record<string, any> = {};
     if (name !== undefined) updateData.name = name;
     if (billingEmail !== undefined) updateData.billingEmail = billingEmail;
     if (description !== undefined) updateData.description = description;
     if (orgBudgetCeilingCents !== undefined) updateData.orgBudgetCeilingCents = orgBudgetCeilingCents;
     if (defaultMemberBudgetCents !== undefined) updateData.defaultMemberBudgetCents = defaultMemberBudgetCents;
+    if (currency !== undefined) updateData.currency = currency;
     if (settings !== undefined) {
       const existingSettings = (before?.settings as Record<string, any>) || {};
       const merged: Record<string, any> = { ...existingSettings };

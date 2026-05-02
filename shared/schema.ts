@@ -8,6 +8,7 @@ import {
   timestamp,
   json,
   jsonb,
+  numeric,
   pgEnum,
   uniqueIndex,
   index,
@@ -41,6 +42,7 @@ export const providerStatusEnum = pgEnum("provider_status", ["ACTIVE", "INVALID"
 export const allotlyKeyStatusEnum = pgEnum("allotly_key_status", ["ACTIVE", "REVOKED", "EXPIRED"]);
 export const voucherStatusEnum = pgEnum("voucher_status", ["ACTIVE", "EXPIRED", "FULLY_REDEEMED", "REVOKED"]);
 export const bundleStatusEnum = pgEnum("bundle_status", ["ACTIVE", "EXHAUSTED", "EXPIRED"]);
+export const currencyEnum = pgEnum("currency", ["USD", "GBP", "EUR", "BRL"]);
 
 export const organizations = pgTable("organizations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -53,10 +55,23 @@ export const organizations = pgTable("organizations", {
   maxTeamAdmins: integer("max_team_admins").default(0).notNull(),
   orgBudgetCeilingCents: integer("org_budget_ceiling_cents"),
   defaultMemberBudgetCents: integer("default_member_budget_cents"),
+  currency: currencyEnum("currency").default("USD").notNull(),
   settings: jsonb("settings"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+export const fxRates = pgTable("fx_rates", {
+  currency: currencyEnum("currency").primaryKey(),
+  rateFromUsd: numeric("rate_from_usd", { precision: 20, scale: 10 }).notNull(),
+  source: text("source").notNull(),
+  asOf: timestamp("as_of").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertFxRateSchema = createInsertSchema(fxRates).omit({ updatedAt: true });
+export type InsertFxRate = z.infer<typeof insertFxRateSchema>;
+export type FxRate = typeof fxRates.$inferSelect;
 
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

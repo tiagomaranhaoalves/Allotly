@@ -3,6 +3,7 @@ import { storage } from "../../storage";
 import { getRateLimitTier } from "../proxy/handler";
 import type { BudgetSnapshot } from "./schemas";
 import type { TeamMembership } from "@shared/schema";
+import { getActiveRates, buildDisplayBlock, getOrgCurrency } from "../currency";
 
 export async function buildBudgetSnapshot(membership: TeamMembership): Promise<BudgetSnapshot> {
   const team = await storage.getTeam(membership.teamId);
@@ -15,15 +16,23 @@ export async function buildBudgetSnapshot(membership: TeamMembership): Promise<B
   const rlUsed = parseInt(await redisGet(rlKey) || "0");
   const requestsRemaining = Math.max(0, tier.rpm - rlUsed);
 
+  const remainingCents = Math.max(0, remaining);
+  const totalCents = membership.monthlyBudgetCents;
+
+  const orgCurrency = getOrgCurrency(org);
+  const rates = await getActiveRates();
+  const display = buildDisplayBlock(remainingCents, totalCents, orgCurrency, rates);
+
   return {
-    remaining_cents: Math.max(0, remaining),
-    total_cents: membership.monthlyBudgetCents,
+    remaining_cents: remainingCents,
+    total_cents: totalCents,
     currency: "usd",
     period_end: new Date(membership.periodEnd).toISOString(),
     requests_remaining: requestsRemaining,
     rate_limit_per_min: tier.rpm,
     concurrency_limit: tier.maxConcurrent,
     voucher_expires_at: membership.voucherExpiresAt ? new Date(membership.voucherExpiresAt).toISOString() : null,
+    display,
   };
 }
 
