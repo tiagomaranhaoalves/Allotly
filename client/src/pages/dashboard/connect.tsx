@@ -5,8 +5,7 @@ import { Link, useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/brand/empty-state";
 import { PlugZap, Key as KeyIcon, Link2 } from "lucide-react";
-import { ConnectorGrid, OAuthConnectorCard } from "@/components/connectors";
-import { OAUTH_CONNECTORS } from "@shared/connector-snippets";
+import { ConnectorGrid } from "@/components/connectors";
 
 interface MyKey {
   id: string;
@@ -124,6 +123,7 @@ export default function ConnectPage() {
 
       <ConnectorGrid
         mode="full"
+        variant="stdio-only"
         keyContext={{
           kind: "selectable",
           keys: activeKeys.map((k) => ({ id: k.id, keyPrefix: k.keyPrefix })),
@@ -135,7 +135,10 @@ export default function ConnectPage() {
       {/* OAuth section: hosted-AI tools (claude.ai, ChatGPT, Gemini) cannot
           accept a pasted bearer token, so the flow there is "paste our MCP URL
           and let the host run OAuth against us". After consent, the resulting
-          connection appears under /dashboard/connections. */}
+          connection appears under /dashboard/connections. The 3 cards
+          themselves are rendered by the shared <ConnectorGrid variant="oauth-only" />
+          (same component used by /redeem) — only the section heading +
+          "manage approved apps" link live here. */}
       <section className="space-y-3 pt-2" data-testid="section-oauth-connectors">
         <div className="space-y-1">
           <h2
@@ -157,11 +160,7 @@ export default function ConnectPage() {
             {t("connect.oauthSection.descriptionSuffix")}
           </p>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {OAUTH_CONNECTORS.map((spec) => (
-            <OAuthConnectorCard key={spec.id} spec={spec} />
-          ))}
-        </div>
+        <ConnectorGrid mode="full" variant="oauth-only" />
       </section>
 
       <p className="text-xs text-muted-foreground">

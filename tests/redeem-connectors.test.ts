@@ -114,11 +114,18 @@ describe("V1.5.1 Piece 2 — page composition (source-level guards)", () => {
 
   it("/dashboard/connect still composes all 8 connectors (regression guard)", () => {
     const src = readText("client/src/pages/dashboard/connect.tsx");
-    // Stdio cards still ship via the default ConnectorGrid render.
+    // Both subsets ship via the shared ConnectorGrid using the new variant
+    // prop — no hand-rolled OAUTH_CONNECTORS.map / OAuthConnectorCard inside
+    // the page anymore. The OAuth section heading + "manage approved apps"
+    // link wrapper still live here, sourced from the same i18n keys.
     expect(src).toContain("ConnectorGrid");
-    // OAuth cards still ship via OAUTH_CONNECTORS.map(...) inside the page.
-    expect(src).toContain("OAUTH_CONNECTORS");
-    expect(src).toContain("OAuthConnectorCard");
+    expect(src).toMatch(/variant="stdio-only"/);
+    expect(src).toMatch(/variant="oauth-only"/);
+    expect(src).toContain("connect.oauthSection.heading");
+    expect(src).toContain("link-to-connections");
+    // Inlined OAuth rendering must not return.
+    expect(src).not.toContain("OAUTH_CONNECTORS");
+    expect(src).not.toContain("OAuthConnectorCard");
   });
 
   it("ConnectorGrid exposes the new variant prop with all three values", () => {
