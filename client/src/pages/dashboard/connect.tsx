@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/brand/empty-state";
 import { PlugZap, Key as KeyIcon, Link2 } from "lucide-react";
 import { ConnectorGrid } from "@/components/connectors";
+import { TestKeyButton } from "@/components/redeem/test-key-button";
 
 interface MyKey {
   id: string;
@@ -54,6 +55,7 @@ export default function ConnectPage() {
   );
 
   const [selectedKeyId, setSelectedKeyId] = useState<string | null>(null);
+  const [testKey, setTestKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (selectedKeyId === null && activeKeys.length > 0) {
@@ -121,15 +123,24 @@ export default function ConnectPage() {
         </p>
       </div>
 
+      <TestKeyButton
+        testKey={testKey}
+        heading={t("testKey.heading")}
+        subtitle={t("testKey.subtitle")}
+        missingKeyMessage={t("testKey.missingKey")}
+      />
+
       <ConnectorGrid
         mode="full"
         variant="stdio-only"
+        showTestConnection={false}
         keyContext={{
           kind: "selectable",
           keys: activeKeys.map((k) => ({ id: k.id, keyPrefix: k.keyPrefix })),
           selectedId: selectedKeyId,
           onSelectKey: setSelectedKeyId,
         }}
+        onTestKeyChange={setTestKey}
       />
 
       {/* OAuth section: hosted-AI tools (claude.ai, ChatGPT, Gemini) cannot

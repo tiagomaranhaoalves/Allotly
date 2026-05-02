@@ -14,6 +14,7 @@ import { Link } from "wouter";
 import { useState, useEffect, useRef } from "react";
 import { apiRequest } from "@/lib/queryClient";
 import { ConnectorGrid } from "@/components/connectors";
+import { TestKeyButton } from "@/components/redeem/test-key-button";
 import { useAuth } from "@/lib/auth";
 import {
   Ticket, ArrowRight, Check, AlertTriangle, Copy, Clock, Shield,
@@ -53,8 +54,8 @@ function formatCode(raw: string): string {
 }
 
 export default function RedeemPage() {
-  const { toast } = useToast();
   const { t } = useTranslation();
+  const { toast } = useToast();
   const { user } = useAuth();
   const [state, setState] = useState<RedeemState>("input");
   const [codeInput, setCodeInput] = useState("");
@@ -377,6 +378,12 @@ export default function RedeemPage() {
 
             <KeyRevealCard keyValue={redeemResult.apiKey} masked={false} />
 
+            <TestKeyButton
+              testKey={redeemResult.apiKey}
+              heading={t("testKey.redeemHeading")}
+              subtitle={t("testKey.subtitle")}
+            />
+
             <div className="space-y-6" data-testid="section-post-redeem-connectors">
               <div>
                 <h2 className="text-lg font-semibold flex items-center gap-2">
@@ -403,11 +410,13 @@ export default function RedeemPage() {
                   <Link2 className="w-4 h-4 text-primary" />
                   {t("redeem.connectors.quickConnect")}
                 </h3>
-                <ConnectorGrid mode="compact" variant="oauth-only" />
+                <ConnectorGrid mode="compact" variant="oauth-only" showTestConnection={false} />
               </section>
 
               {/* Section B — stdio bridges (CLI / IDE). 5 cards, key already
-                  pre-filled from the just-minted API key. */}
+                  pre-filled from the just-minted API key. The TestKeyButton
+                  above replaces the legacy ConnectorTestPanel, so we suppress
+                  it on this grid via showTestConnection={false}. */}
               <section
                 className="space-y-3"
                 data-testid="section-post-redeem-stdio-connectors"
@@ -422,6 +431,7 @@ export default function RedeemPage() {
                 <ConnectorGrid
                   mode="compact"
                   variant="stdio-only"
+                  showTestConnection={false}
                   keyContext={{
                     kind: "fixed",
                     value: redeemResult.apiKey,

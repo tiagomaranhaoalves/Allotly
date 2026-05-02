@@ -1923,6 +1923,58 @@
       "cliIde": "Connect to your CLI / IDE"
     }
   },
+  "testKey": {
+    "heading": "Test your key works:",
+    "redeemHeading": "✓ Voucher redeemed. Test your key works:",
+    "subtitle": "Sends one tiny request through the proxy to confirm auth, providers, and budget are all wired up. Costs a fraction of a cent against your budget.",
+    "button": "Test connection",
+    "testing": "Testing…",
+    "retry": "Try again",
+    "missingKey": "Paste your full key above to enable Test connection.",
+    "network": {
+      "title": "Couldn't reach Allotly",
+      "unreachable": "We couldn't reach the Allotly API. Check your network and try again.",
+      "invalidResponse": "Allotly returned an unexpected response. Try again."
+    },
+    "success": {
+      "title": "Connection works",
+      "modelLabel": "Model",
+      "costLabel": "Cost",
+      "budgetLabel": "Remaining budget",
+      "latencyLabel": "Latency",
+      "latencyValue": "{{ms}} ms"
+    },
+    "error": {
+      "titles": {
+        "no_providers_active": "No AI providers connected",
+        "no_models_in_tier": "No models available in your tier",
+        "budget_exhausted": "Budget fully used",
+        "rate_limited": "Too many requests",
+        "provider_error": "Provider error",
+        "unknown": "Test failed"
+      }
+    },
+    "hints": {
+      "no_providers_active": {
+        "team_admin": "No AI providers are connected yet. Connect one at <code>/dashboard/providers</code> to start testing.",
+        "team_member": "No AI providers are connected. Contact your team admin so they can connect one.",
+        "voucher_recipient": "No AI providers are connected. Contact the issuing admin so they can connect one."
+      },
+      "no_models_in_tier": {
+        "team_admin": "Your allowed-models list has no currently-active models. Update it at <code>/dashboard/teams</code>.",
+        "team_member": "No models are available in your tier. Contact your team admin to update your allowed-models list.",
+        "voucher_recipient": "No models are available in your tier. Contact the issuing admin."
+      },
+      "budget_exhausted": {
+        "team_admin": "Your budget for this period is fully used. Top up at <code>/dashboard/billing</code> or wait for the next period.",
+        "team_member": "Your budget for this period is fully used. Contact your team admin to increase it or wait for the next period.",
+        "voucher_recipient": "Your voucher budget is fully used. Run <code>request_topup</code> from your AI client, or contact the issuing admin."
+      },
+      "rate_limited": "You're sending requests too fast. Wait a moment and try again.",
+      "provider_error": "The AI provider returned an error. Try again in a moment.",
+      "unknown": "Something went wrong. Try again, and if it keeps failing, contact support."
+    }
+  },
   "auth": {
     "claim": {
       "badge": "Step 2 of 2 — Claim your account",

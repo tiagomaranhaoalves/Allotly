@@ -1923,6 +1923,58 @@
       "cliIde": "Conectar ao seu CLI / IDE"
     }
   },
+  "testKey": {
+    "heading": "Teste se sua chave funciona:",
+    "redeemHeading": "✓ Voucher resgatado. Teste se sua chave funciona:",
+    "subtitle": "Envia uma requisição mínima pelo proxy para confirmar que autenticação, provedores e orçamento estão configurados. Custa uma fração de centavo do seu orçamento.",
+    "button": "Testar conexão",
+    "testing": "Testando…",
+    "retry": "Tentar de novo",
+    "missingKey": "Cole sua chave completa acima para habilitar Testar conexão.",
+    "network": {
+      "title": "Não foi possível contatar o Allotly",
+      "unreachable": "Não conseguimos contatar a API do Allotly. Verifique sua rede e tente novamente.",
+      "invalidResponse": "O Allotly retornou uma resposta inesperada. Tente novamente."
+    },
+    "success": {
+      "title": "Conexão funcionando",
+      "modelLabel": "Modelo",
+      "costLabel": "Custo",
+      "budgetLabel": "Orçamento restante",
+      "latencyLabel": "Latência",
+      "latencyValue": "{{ms}} ms"
+    },
+    "error": {
+      "titles": {
+        "no_providers_active": "Nenhum provedor de IA conectado",
+        "no_models_in_tier": "Nenhum modelo disponível no seu nível",
+        "budget_exhausted": "Orçamento totalmente usado",
+        "rate_limited": "Muitas requisições",
+        "provider_error": "Erro do provedor",
+        "unknown": "Falha no teste"
+      }
+    },
+    "hints": {
+      "no_providers_active": {
+        "team_admin": "Nenhum provedor de IA conectado ainda. Conecte um em <code>/dashboard/providers</code> para começar a testar.",
+        "team_member": "Nenhum provedor de IA conectado. Fale com o admin do seu time para que ele conecte um.",
+        "voucher_recipient": "Nenhum provedor de IA conectado. Fale com o admin que emitiu o voucher para que ele conecte um."
+      },
+      "no_models_in_tier": {
+        "team_admin": "Sua lista de modelos permitidos não tem nenhum modelo ativo. Atualize em <code>/dashboard/teams</code>.",
+        "team_member": "Nenhum modelo disponível no seu nível. Fale com o admin do seu time para atualizar a lista de modelos permitidos.",
+        "voucher_recipient": "Nenhum modelo disponível no seu nível. Fale com o admin que emitiu o voucher."
+      },
+      "budget_exhausted": {
+        "team_admin": "Seu orçamento deste período está totalmente usado. Recarregue em <code>/dashboard/billing</code> ou aguarde o próximo período.",
+        "team_member": "Seu orçamento deste período está totalmente usado. Fale com o admin do seu time para aumentá-lo ou aguarde o próximo período.",
+        "voucher_recipient": "O orçamento do voucher está totalmente usado. Execute <code>request_topup</code> a partir do seu cliente de IA, ou fale com o admin que emitiu o voucher."
+      },
+      "rate_limited": "Você está enviando requisições rápido demais. Espere um momento e tente novamente.",
+      "provider_error": "O provedor de IA retornou um erro. Tente novamente em instantes.",
+      "unknown": "Algo deu errado. Tente novamente e, se continuar falhando, fale com o suporte."
+    }
+  },
   "auth": {
     "claim": {
       "badge": "Passo 2 de 2 — Reivindique sua conta",

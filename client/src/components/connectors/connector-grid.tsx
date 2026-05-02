@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -79,6 +79,13 @@ export interface ConnectorGridProps {
   showTestConnection?: boolean;
   /** Whether to render the example prompts collapsible. Default: true in "full", false in "compact". */
   showExamples?: boolean;
+  /**
+   * Optional callback fired when the testable full plaintext key changes
+   * (becomes valid → string, becomes invalid → null). Used by the
+   * /dashboard/connect page to surface a "Test your key" button ABOVE the
+   * grid that shares the same pasted-key state.
+   */
+  onTestKeyChange?: (testKey: string | null) => void;
 }
 
 const SNIPPET_PLACEHOLDER_TOKEN = "<paste-your-allotly-key>";
@@ -90,6 +97,7 @@ export function ConnectorGrid({
   defaultMasked,
   showTestConnection = true,
   showExamples,
+  onTestKeyChange,
 }: ConnectorGridProps) {
   const { t } = useTranslation();
   const renderOAuth = variant === "oauth-only" || variant === "all";
@@ -143,6 +151,12 @@ export function ConnectorGrid({
 
   // For Test Connection — only the actual full plaintext key is testable.
   const testKey = fullKeyMatches && fullKey ? fullKey : null;
+
+  // Notify the parent (e.g. /dashboard/connect) so it can render its own
+  // "Test your key" button above the grid that shares this state.
+  useEffect(() => {
+    onTestKeyChange?.(testKey);
+  }, [testKey, onTestKeyChange]);
 
   const showExamplesResolved = showExamples ?? (mode === "full");
 
