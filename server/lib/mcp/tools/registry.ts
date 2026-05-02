@@ -1,9 +1,30 @@
 import { z } from "zod";
 import type { McpPrincipal } from "../auth";
 
+/**
+ * M4: optional streaming context passed by the MCP transport when (a) the
+ * `MCP_STREAMING_ENABLED` flag is on, (b) the tool name is `chat`, and (c)
+ * the request includes `params._meta.progressToken`. When absent, tools
+ * behave exactly as before. The `chat` tool inspects this and dispatches
+ * to `processChatCompletionStreaming` instead of the buffered path.
+ */
+export interface ToolStreamingContext {
+  /** The `params._meta.progressToken` from the inbound `tools/call`. */
+  progressToken: string | number;
+  /**
+   * Emit a `notifications/progress` JSON-RPC line on the open ndjson
+   * response. Caller is responsible for monotonic `progress` and the
+   * (optional) `total`. The transport echoes `progressToken` automatically.
+   */
+  emitProgress: (msg: { progress: number; total?: number; message?: string }) => void;
+  /** Fires when the HTTP client disconnects mid-stream. */
+  abortSignal: AbortSignal;
+}
+
 export interface ToolContext {
   principal: McpPrincipal | null;
   authHeader: string | undefined;
+  streaming?: ToolStreamingContext;
 }
 
 export interface ToolDefinition<TSchema extends z.ZodTypeAny = z.ZodTypeAny, TOut = any> {

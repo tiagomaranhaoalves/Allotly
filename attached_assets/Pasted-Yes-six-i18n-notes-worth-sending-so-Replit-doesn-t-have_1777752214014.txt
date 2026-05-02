@@ -1,0 +1,36 @@
+Yes, six i18n notes worth sending so Replit doesn't have to guess later.
+
+# Addendum to V1.5.1 — Translation & locale notes
+
+Apply these to all four pieces:
+
+**1. Three locale files required for every new key.** Every i18n addition lands in `en.json`, `es.json`, AND `pt-BR.json` simultaneously. No English-only shipping. If the Spanish or Brazilian Portuguese phrasing isn't obvious, match the tone of existing nearby keys in the same file (grep for adjacent labels like "Connect", "Cancel", "Top up", and copy that voice).
+
+**2. Server-side `message`/`suggestion.text` stays English.** For Piece 4's `Warning.message` and `Warning.suggestion.text`:
+- The server returns English strings.
+- These are consumed by (a) MCP tool callers — host LLMs (Claude.ai/ChatGPT/Gemini) translate naturally during conversation, so server-side localization is wasted effort here, and (b) the dashboard banner — see point 3.
+- Don't auto-translate based on org currency. The default-locale-per-currency pattern from M3a is for **emails only** (no browser context). MCP responses go to LLMs; banners go to browsers.
+
+**3. Dashboard banner uses i18next, not the server's English string.** The banner component receives the structured fields (`level`, `remaining_pct`, `cheapest_model_in_allowlist`, `topup_url`, `topup_via_mcp_tool`) and builds the localized message client-side via i18next. The server-provided `message`/`suggestion.text` is **fallback only** — used if i18next can't resolve a key. This means the banner has its own set of i18n keys per level (low/critical/exhausted) per user-type-branch (admin/member/voucher), and uses placeholders for the dynamic values.
+
+**4. Code identifiers stay literal.** Never translate:
+- Tool names: `request_topup`, `chat`, `estimate_cost`, `my_status`, `my_budget`, `my_recent_usage`, `list_available_models`, `recommend_model`
+- Model names: `claude-haiku-4-5`, `gpt-4o-mini`, `gemini-2.5-flash`, etc.
+- URLs and paths: `/dashboard/billing`, `/dashboard/providers`, `https://allotly.ai/mcp`
+- Format these as inline code (backticks in markdown contexts; `<code>` in HTML) in all locales so users recognize them as commands/identifiers, not translatable nouns.
+
+**5. Currency interpolation via i18next placeholders, not concatenation.** Right:
+```ts
+t('warning.low.message', {
+  remaining_pct: 8,
+  amount_remaining: 'R$ 8,00',
+  amount_total: 'R$ 100,00'
+})
+```
+Wrong: `t('warning.low.prefix') + ' ' + amount + ' ' + t('warning.low.suffix')`. Word order shifts between languages (Portuguese/Spanish put the number before the noun in some constructions; English doesn't). Single-template interpolation handles this; concatenation breaks it.
+
+**6. Plurals via i18next plural keys when applicable.** Strings like "X tools available", "X seconds remaining" — use the `_one`/`_other` suffix pattern (e.g. `dashboard.toolsAvailable_one: "1 tool available"`, `dashboard.toolsAvailable_other: "{{count}} tools available"`). Spanish and Portuguese have similar plural rules to English, but consistent use here keeps the codebase ready for future locales (e.g. Russian, Polish) that have more complex plural forms.
+
+---
+
+Send these as a separate message to Replit before they finish Pieces 3 and 4 (Pieces 1 and 2 might already be in flight, but they're lightweight on i18n — only section headings and button labels — so any minor catch-up is trivial).

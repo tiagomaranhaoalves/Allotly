@@ -26,6 +26,12 @@ export interface AuditEntry {
   clientId?: string | null;
   /** RFC 8707 audience (resource indicator) when bearer is OAuth, otherwise null. */
   audience?: string | null;
+  /**
+   * True iff this row was produced via the M4 ndjson streaming branch of the
+   * `chat` tool. Defaults to false everywhere else so existing call sites
+   * keep their behaviour. Persisted to the `streamed` column.
+   */
+  streamed?: boolean;
 }
 
 export function recordAudit(entry: AuditEntry): void {
@@ -40,6 +46,7 @@ export function recordAudit(entry: AuditEntry): void {
         latencyMs: entry.latencyMs,
         clientId: entry.clientId ?? null,
         audience: entry.audience ?? null,
+        streamed: entry.streamed ?? false,
       });
     } catch (err: any) {
       console.error(`[mcp:audit] write failed for ${entry.toolName}: ${err?.message}`);

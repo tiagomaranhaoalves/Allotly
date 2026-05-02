@@ -1,9 +1,11 @@
+import crypto from "crypto";
 import { storage } from "../../../../storage";
 import { ChatToolInputSchema, type ChatMessage } from "../../schemas";
 import { withBudgetMeta } from "../../meta-budget";
 import { McpToolError } from "../../errors";
 import { callChatCompletion } from "../../proxy-bridge";
 import { registerTool } from "../registry";
+import { processChatCompletionStreaming } from "../../../proxy/handler-streaming";
 
 const VISION_CAPABLE = /gpt-4o|claude-(sonnet|haiku|opus)|gemini/i;
 const TOOL_CAPABLE = /gpt|o1|o3|o4|claude|gemini/i;
@@ -104,6 +106,14 @@ registerTool({
     if (input.tools !== undefined) body.tools = input.tools;
     if (input.tool_choice !== undefined) body.tool_choice = input.tool_choice;
 
+    // M4: branch when (a) MCP_STREAMING_ENABLED=true, (b) the transport
+    // detected a `params._meta.progressToken` and supplied a streaming
+    // ctx, AND (c) the tool is `chat`. Otherwise the buffered path runs
+    // unchanged.
+    if (ctx.streaming && process.env.MCP_STREAMING_ENABLED === "true") {
+      return await runStreamingChat(principal, ctx.streaming, body, model);
+    }
+
     const result = await callChatCompletion({
       membership: principal.membership,
       userId: principal.userId,
@@ -138,6 +148,65 @@ registerTool({
     return out;
   },
 });
+
+async function runStreamingChat(
+  principal: any,
+  streaming: { progressToken: string | number; emitProgress: (m: { progress: number; total?: number; message?: string }) => void; abortSignal: AbortSignal },
+  body: any,
+  fallbackModel: string,
+): Promise<any> {
+  type StreamErr = { status: number; errorBody: any; budgetSnapshot: any; errorCode: number };
+  let finalOut: any = null;
+  let errOut: StreamErr | null = null;
+  let runningTotal: number | undefined;
+
+  await processChatCompletionStreaming(
+    {
+      membership: principal.membership,
+      userId: principal.userId,
+      apiKeyId: principal.apiKeyId,
+      oauthClientId: principal.oauthClientId,
+      body,
+      requestId: crypto.randomUUID(),
+      abortSignal: streaming.abortSignal,
+    },
+    (chunk) => {
+      if (chunk.totalTokens !== undefined) runningTotal = chunk.totalTokens;
+      streaming.emitProgress({
+        progress: chunk.outputTokensSoFar,
+        ...(runningTotal !== undefined ? { total: runningTotal } : {}),
+        message: chunk.delta,
+      });
+    },
+    (result) => {
+      finalOut = {
+        content: result.body?.choices?.[0]?.message?.content || "",
+        ...(result.body?.choices?.[0]?.message?.tool_calls
+          ? { tool_calls: result.body.choices[0].message.tool_calls }
+          : {}),
+        model: result.effectiveModel || fallbackModel,
+        finish_reason: result.body?.choices?.[0]?.finish_reason || "stop",
+        usage: {
+          prompt_tokens: result.inputTokens,
+          completion_tokens: result.outputTokens,
+          total_tokens: result.inputTokens + result.outputTokens,
+          cost_cents: result.costCents,
+        },
+        max_tokens_applied: result.maxTokensApplied,
+        _meta: { budget: result.budgetSnapshot, streamed: true },
+      };
+    },
+    (e) => {
+      errOut = e as StreamErr;
+    },
+  );
+
+  if (errOut) {
+    const e: StreamErr = errOut;
+    throw mapProxyErrorToMcp({ status: e.status, errorBody: e.errorBody, budgetSnapshot: e.budgetSnapshot });
+  }
+  return finalOut;
+}
 
 export function mapProxyErrorToMcp(result: { status: number; errorBody?: any; budgetSnapshot: any }): McpToolError {
   const status = result.status;

@@ -275,6 +275,152 @@ async function handleJsonRpc(req: JsonRpcRequest, authHeader: string | undefined
   return envelope(err(id, -32601, `Method not found: ${req.method}`));
 }
 
+/**
+ * M4: ndjson streaming branch for the `chat` tool. Routed here from
+ * `mountMcp`'s POST handler when the feature flag is on AND the call is
+ * `chat` AND `_meta.progressToken` is present. Mirrors the auth/scope/
+ * validation steps of `handleJsonRpc`'s `tools/call` branch but writes
+ * `notifications/progress` lines mid-call followed by a single
+ * `tools/call` response line, all `application/x-ndjson`.
+ *
+ * Headers are set lazily — only when the first chunk is emitted — so
+ * pre-stream errors (auth failures, validation errors, budget rejections)
+ * can return a normal JSON response without committing to ndjson framing.
+ */
+async function handleStreamingChatToolsCall(req: JsonRpcRequest, authHeader: string | undefined, res: Response): Promise<void> {
+  const id = req.id ?? null;
+  const start = Date.now();
+  const params = req.params || {};
+  const args = params.arguments || {};
+  const progressToken = params._meta?.progressToken;
+  const tool = getTool("chat");
+  if (!tool) {
+    res.status(500).json(err(id, -32603, "chat tool not registered"));
+    return;
+  }
+  const inputHash = hashInput(args);
+
+  let principal: McpPrincipal | null = null;
+  let principalMembershipId: string | null = null;
+  try {
+    principal = await authenticate(authHeader, { allowAnonymous: !tool.requiresAuth });
+    principalMembershipId = principal?.membership.id ?? null;
+  } catch (authErr: any) {
+    const errCode = authErr instanceof McpToolError ? authErr.code : -32001;
+    recordAudit({ membershipId: null, toolName: "chat", inputHash, ok: false, errorCode: errCode, latencyMs: Date.now() - start, streamed: false });
+    res.setHeader("WWW-Authenticate", WWW_AUTH_INVALID_TOKEN);
+    const body = authErr instanceof McpToolError
+      ? err(id, authErr.code, authErr.message, authErr.data)
+      : err(id, -32001, authErr.message || "Authentication failed");
+    res.status(401).json(body);
+    return;
+  }
+
+  if (tool.requiresAuth && !principal) {
+    recordAudit({ membershipId: null, toolName: "chat", inputHash, ok: false, errorCode: -32001, latencyMs: Date.now() - start, streamed: false });
+    res.setHeader("WWW-Authenticate", WWW_AUTH_INVALID_TOKEN);
+    res.status(401).json(err(id, -32001, "Authentication required for this tool"));
+    return;
+  }
+
+  const auditCols = principalAuditCols(principal);
+
+  if (principal && principal.bearerKind === "oauth") {
+    const requiredScope: "mcp" | "mcp:read" = tool.requiredScope ?? "mcp";
+    const granted = principal.scopes || [];
+    if (!scopeIncludes(granted, requiredScope)) {
+      recordAudit({ membershipId: principalMembershipId, toolName: "chat", inputHash, ok: false, errorCode: -32002, latencyMs: Date.now() - start, ...auditCols, streamed: false });
+      res.setHeader("WWW-Authenticate", wwwAuthInsufficientScope(requiredScope));
+      res.status(403).json(err(id, -32002, `OAuth token is missing required scope: ${requiredScope}`, {
+        required_scope: requiredScope,
+        granted_scopes: granted,
+        hint: "Request a new authorization with this scope.",
+      }));
+      return;
+    }
+  }
+
+  const parsed = tool.inputSchema.safeParse(args);
+  if (!parsed.success) {
+    recordAudit({ membershipId: principalMembershipId, toolName: "chat", inputHash, ok: false, errorCode: -32100, latencyMs: Date.now() - start, ...auditCols, streamed: false });
+    res.status(200).json(err(id, -32100, "Invalid input", {
+      message: "Input validation failed",
+      hint: "Check the tool's input schema and retry.",
+      issues: parsed.error.issues.map(i => ({ path: i.path, message: i.message, code: i.code })),
+    }));
+    return;
+  }
+
+  // ---- Streaming framing ----
+  let headersCommitted = false;
+  let progressCount = 0;
+
+  const commitHeaders = () => {
+    if (headersCommitted) return;
+    res.setHeader("Content-Type", "application/x-ndjson");
+    res.status(200);
+    headersCommitted = true;
+  };
+
+  const emitProgress = (msg: { progress: number; total?: number; message?: string }) => {
+    commitHeaders();
+    const notification = {
+      jsonrpc: "2.0",
+      method: "notifications/progress",
+      params: {
+        progressToken,
+        progress: msg.progress,
+        ...(msg.total !== undefined ? { total: msg.total } : {}),
+        ...(msg.message !== undefined ? { message: msg.message } : {}),
+      },
+    };
+    progressCount++;
+    res.write(JSON.stringify(notification) + "\n");
+  };
+
+  const abortController = new AbortController();
+  const onClose = () => {
+    if (!res.writableEnded) abortController.abort();
+  };
+  res.on("close", onClose);
+
+  try {
+    const result = await tool.handler(parsed.data, {
+      principal,
+      authHeader,
+      streaming: {
+        progressToken,
+        emitProgress,
+        abortSignal: abortController.signal,
+      },
+    });
+    commitHeaders();
+    const finalResp = ok(id, {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+      structuredContent: result,
+    });
+    res.write(JSON.stringify(finalResp) + "\n");
+    res.end();
+    recordAudit({ membershipId: principalMembershipId, toolName: "chat", inputHash, ok: true, errorCode: null, latencyMs: Date.now() - start, ...auditCols, streamed: true });
+  } catch (toolErr: any) {
+    const errCode = toolErr instanceof McpToolError ? toolErr.code : -32603;
+    recordAudit({ membershipId: principalMembershipId, toolName: "chat", inputHash, ok: false, errorCode: errCode, latencyMs: Date.now() - start, ...auditCols, streamed: true });
+    const errBody = toolErr instanceof McpToolError
+      ? err(id, toolErr.code, toolErr.message, toolErr.data)
+      : err(id, -32603, toolErr?.message || "Internal error");
+    if (headersCommitted) {
+      // Mid-stream failure — write the error as the final ndjson line so
+      // the client sees a coherent end-of-stream marker.
+      res.write(JSON.stringify(errBody) + "\n");
+      try { res.end(); } catch {}
+    } else {
+      res.status(200).json(errBody);
+    }
+  } finally {
+    res.off("close", onClose);
+  }
+}
+
 export function mountMcp(app: Express, path: string = "/mcp"): void {
   pinDescriptionsAtStartup();
 
@@ -319,7 +465,24 @@ export function mountMcp(app: Express, path: string = "/mcp"): void {
       return;
     }
 
-    const env = await handleJsonRpc(body as JsonRpcRequest, authHeader);
+    const single = body as JsonRpcRequest;
+
+    // M4: ndjson streaming branch for the `chat` tool. All three conditions
+    // must hold: (1) the feature flag is on, (2) the call targets the
+    // `chat` tool, and (3) the client passed a `params._meta.progressToken`
+    // per the MCP progress-notifications spec. Anything else falls through
+    // to the byte-for-byte buffered path.
+    if (
+      process.env.MCP_STREAMING_ENABLED === "true" &&
+      single.method === "tools/call" &&
+      single.params?.name === "chat" &&
+      single.params?._meta?.progressToken !== undefined
+    ) {
+      await handleStreamingChatToolsCall(single, authHeader, res);
+      return;
+    }
+
+    const env = await handleJsonRpc(single, authHeader);
     if (env.wwwAuthenticate) res.setHeader("WWW-Authenticate", env.wwwAuthenticate);
     res.status(env.httpStatus).json(env.body);
   });

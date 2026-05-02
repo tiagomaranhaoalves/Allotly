@@ -322,6 +322,7 @@ export const mcpAuditLog = pgTable("mcp_audit_log", {
   latencyMs: integer("latency_ms").notNull(),
   clientId: text("client_id"),
   audience: text("audience"),
+  streamed: boolean("streamed").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   index("mcp_audit_log_membership_idx").on(table.membershipId, table.createdAt),

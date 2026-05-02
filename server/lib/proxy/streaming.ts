@@ -10,6 +10,7 @@ import {
   type AnthropicEvent,
   type ProviderType,
 } from "./translate";
+import { consumeSseUpstream } from "./upstream-stream";
 
 export interface StreamResult {
   usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | null;
@@ -256,8 +257,7 @@ export async function streamProviderResponseAsAnthropic(
   res.setHeader("Transfer-Encoding", "chunked");
 
   const state = createAnthropicStreamState(model);
-  const body = providerResponse.body;
-  if (!body) {
+  if (!providerResponse.body) {
     return {
       usage: null,
       fullContent: "",
@@ -266,11 +266,7 @@ export async function streamProviderResponseAsAnthropic(
     };
   }
 
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
   let pingInterval: NodeJS.Timeout | null = null;
-
   const sendPing = () => {
     try { writeAnthropicEvent(res, { event: "ping", data: { type: "ping" } }); } catch {}
   };
@@ -285,26 +281,7 @@ export async function streamProviderResponseAsAnthropic(
 
   try {
     pingInterval = setInterval(sendPing, 15000);
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        if (trimmed.startsWith("data: ")) {
-          processData(trimmed.slice(6));
-        }
-      }
-    }
-
-    if (buffer.trim().startsWith("data: ")) {
-      processData(buffer.trim().slice(6));
-    }
+    await consumeSseUpstream(providerResponse, { onData: processData });
   } catch (err) {
     try {
       writeAnthropicEvent(res, buildAnthropicErrorEvent("api_error", "Stream interrupted"));
