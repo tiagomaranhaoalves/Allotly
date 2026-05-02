@@ -354,6 +354,12 @@ async function handleStreamingChatToolsCall(req: JsonRpcRequest, authHeader: str
   // ---- Streaming framing ----
   let headersCommitted = false;
   let progressCount = 0;
+  // Track the last MONOTONIC token-progress value so the final
+  // error-progress notification can re-use it instead of a counter
+  // (which would non-monotonically jump down). Per MCP spec, `progress`
+  // is a running token count and must never decrease.
+  let lastTokenProgress = 0;
+  let lastTokenTotal: number | undefined;
 
   const commitHeaders = () => {
     if (headersCommitted) return;
@@ -364,13 +370,17 @@ async function handleStreamingChatToolsCall(req: JsonRpcRequest, authHeader: str
 
   const emitProgress = (msg: { progress: number; total?: number; message?: string }) => {
     commitHeaders();
+    // Clamp to monotonic non-decreasing progress (defensive against
+    // upstream weirdness like usage replay or out-of-order chunks).
+    if (msg.progress > lastTokenProgress) lastTokenProgress = msg.progress;
+    if (msg.total !== undefined) lastTokenTotal = msg.total;
     const notification = {
       jsonrpc: "2.0",
       method: "notifications/progress",
       params: {
         progressToken,
-        progress: msg.progress,
-        ...(msg.total !== undefined ? { total: msg.total } : {}),
+        progress: lastTokenProgress,
+        ...(lastTokenTotal !== undefined ? { total: lastTokenTotal } : {}),
         ...(msg.message !== undefined ? { message: msg.message } : {}),
       },
     };
@@ -414,12 +424,18 @@ async function handleStreamingChatToolsCall(req: JsonRpcRequest, authHeader: str
       // tools/call error response. This guarantees clients that read
       // ndjson chunk-by-chunk see the error association with the
       // progressToken even before parsing the closing JSON-RPC error.
+      // Use the last token-progress value (monotonically non-decreasing)
+      // so the closing error notification preserves the monotonic
+      // contract. Using progressCount here would have surfaced a value
+      // unrelated to tokens and could have appeared smaller than the
+      // last emitted progress.
       const errorProgress = {
         jsonrpc: "2.0",
         method: "notifications/progress",
         params: {
           progressToken,
-          progress: progressCount,
+          progress: lastTokenProgress,
+          ...(lastTokenTotal !== undefined ? { total: lastTokenTotal } : {}),
           error: { code: errCode, message: errMessage, ...(errData ? { data: errData } : {}) },
         },
       };

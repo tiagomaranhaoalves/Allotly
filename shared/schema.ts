@@ -306,6 +306,11 @@ export const modelPricing = pgTable("model_pricing", {
   displayName: text("display_name").notNull(),
   inputPricePerMTok: integer("input_price_per_m_tok").notNull(),
   outputPricePerMTok: integer("output_price_per_m_tok").notNull(),
+  // M4: nullable per-model max output token cap. When populated, the
+  // streaming reservation falls back to this value instead of the
+  // hardcoded 4096 used by the buffered handler. Existing rows default
+  // to NULL, preserving prior behaviour.
+  maxOutputTokens: integer("max_output_tokens"),
   isActive: boolean("is_active").default(true).notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [

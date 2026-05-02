@@ -286,9 +286,14 @@ export async function processChatCompletionStreaming(
     const { effectiveMaxTokens, clamped } = clampMaxTokens(remainingBudgetCents, inputCostCents, pricing, clientTokenCap);
 
     // Pessimistic reservation = input cost + output cost at the effective
-    // max_tokens cap (or 4096 default when uncapped — same heuristic as
-    // processChatCompletion).
-    const budgetEstimateTokens = effectiveMaxTokens ?? 4096;
+    // max_tokens cap. Fallback chain when caller omitted max_tokens:
+    //   1. effectiveMaxTokens (clamped against remaining budget)
+    //   2. pricing.maxOutputTokens (per-model cap from model_pricing —
+    //      M4 added this nullable column so streaming can use real model
+    //      limits when known, instead of a one-size-fits-all heuristic)
+    //   3. 4096 (parity floor with processChatCompletion when neither
+    //      the client nor the pricing row supplies a cap)
+    const budgetEstimateTokens = effectiveMaxTokens ?? pricing.maxOutputTokens ?? 4096;
     const estimatedOutputCostCents = calculateOutputCostCents(budgetEstimateTokens, pricing);
     const totalEstimatedCostCents = inputCostCents + estimatedOutputCostCents;
     reservedCostCents = totalEstimatedCostCents;
