@@ -92,6 +92,21 @@ export const CompareModelsInputSchema = z.object({
   temperature: z.number().min(0).max(2).optional(),
 });
 
+/**
+ * V1.5.1: input shape mirrors the chat tool's `model` / `messages` /
+ * `max_tokens` / `system` fields. Tool/vision-specific fields beyond what's
+ * needed for token counting (temperature, top_p, response_format, tools,
+ * tool_choice, stream) are intentionally omitted — this is a pure preview,
+ * not a sub-call. Vision capability is detected from the messages content
+ * (image_url parts) rather than a separate input flag.
+ */
+export const EstimateCostInputSchema = z.object({
+  model: z.string().min(1),
+  messages: z.array(ChatMessageSchema).min(1),
+  max_tokens: z.number().int().positive().optional(),
+  system: z.string().optional(),
+});
+
 export const RecommendModelInputSchema = z.object({
   task_description: z.string().min(10).max(1000),
   expected_output_length: z.enum(["short", "medium", "long"]).optional().default("medium"),

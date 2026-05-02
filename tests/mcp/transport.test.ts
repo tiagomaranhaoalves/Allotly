@@ -52,12 +52,12 @@ describe("mcp transport: initialize + tools/list", () => {
     }
   });
 
-  it("tools/list returns 13 tools with input schemas", async () => {
+  it("tools/list returns 14 tools with input schemas", async () => {
     const app = makeApp();
     const server = app.listen(0);
     try {
       const r = await rpc(server, { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
-      expect(r.body.result.tools).toHaveLength(13);
+      expect(r.body.result.tools).toHaveLength(14);
       for (const t of r.body.result.tools) {
         expect(t.name).toBeTruthy();
         expect(t.description).toBeTruthy();
@@ -77,6 +77,7 @@ describe("mcp transport: initialize + tools/list", () => {
       const expectedTitles: Record<string, string> = {
         chat: "Chat with an AI model",
         compare_models: "Compare outputs from multiple models",
+        estimate_cost: "Estimate cost of a chat request",
         list_available_models: "List available AI models",
         recommend_model: "Recommend the best model for a task",
         diagnose: "Diagnose proxy or routing issues",

@@ -243,8 +243,8 @@ describe("M4 — regression guarantees", () => {
     else process.env.MCP_STREAMING_ENABLED = ORIGINAL_FLAG;
   });
 
-  it("tools/list still returns exactly 13 tools (M4 must not add any)", async () => {
-    expect(listTools()).toHaveLength(13);
+  it("tools/list returns exactly 14 tools (M4 adds none; V1.5.1 adds estimate_cost only)", async () => {
+    expect(listTools()).toHaveLength(14);
     const names = listTools().map(t => t.name).sort();
     expect(names).toContain("chat");
     expect(names).not.toContain("chat_stream");
@@ -272,7 +272,7 @@ describe("M4 — regression guarantees", () => {
       });
       expect(r.status).toBe(200);
       expect(r.headers["content-type"]).toMatch(/application\/json/);
-      expect(r.body?.result?.tools).toHaveLength(13);
+      expect(r.body?.result?.tools).toHaveLength(14);
     } finally { server.close(); }
   });
 });

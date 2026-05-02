@@ -4,12 +4,13 @@ import { listPrompts } from "../../server/lib/mcp/prompts";
 import { RESOURCES } from "../../server/lib/mcp/resources";
 
 describe("mcp registry", () => {
-  it("registers all 13 V1 tools", () => {
+  it("registers all 14 V1 tools (V1 + V1.5.1 estimate_cost)", () => {
     const names = listTools().map(t => t.name).sort();
     expect(names).toEqual([
       "chat",
       "compare_models",
       "diagnose",
+      "estimate_cost",
       "list_available_models",
       "my_budget",
       "my_recent_usage",

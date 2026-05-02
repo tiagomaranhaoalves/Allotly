@@ -6,6 +6,7 @@ import "./consumption/list-available-models";
 import "./consumption/chat";
 import "./consumption/compare-models";
 import "./consumption/recommend-model";
+import "./consumption/estimate-cost";
 
 import "./recipient/voucher-info";
 import "./recipient/my-budget";
