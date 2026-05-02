@@ -1,0 +1,384 @@
+# Replit Prompt — V1.5.0 M3a + M3b + M4: Multi-currency, /v1/messages, MCP streaming
+
+You are implementing the remainder of V1.5.0 in one bundled task. Three sub-projects: **M3a** (multi-currency display), **M3b** (Anthropic-native `/api/v1/messages` endpoint), **M4** (MCP `chat` streaming). They are independent and can be phased; the planner should split them into phases as it sees fit. **All locked decisions below are non-negotiable. One end-of-task report covering all three.**
+
+State going in: V1.5.0 M1 (OAuth 2.1 + DCR + RFC 9728), all three M1 hotfixes, M2 (connections dashboard + OAuth UI), and pre-submission polish (tool annotations, CORS allowlist, favicon redirect) are all live in production. Allotly is connected to [Claude.ai](http://Claude.ai) end-to-end. 451 tests pass.
+
+---
+
+## Cross-cutting locked decisions
+
+1. **No edits to currently-shipped OAuth code paths** unless explicitly listed below. M1 + hotfixes are correct; do not refactor.
+2. **No edits to `processChatCompletion` in `server/lib/proxy/handler.ts`.** This is the proxy hot path for every paying user. M3b adds a sibling endpoint; M4 adds a sibling streaming function. The existing function stays bit-for-bit identical.
+3. **All money is stored as USD cents internally.** Multi-currency is display-only at API boundaries and UI. Budget ledger, FX-converted-back arithmetic, audit logs, and webhook payloads stay USD.
+4. **Schema changes are required.** Run `npm run db:push --force` against the dev database during development. Production schema changes will be applied after merge by the user.
+5. **Existing 451 tests must all pass unchanged.** Any test file edit must be motivated by a real shape change (e.g. `BudgetSnapshot` gaining a `display` block), not by working around a regression.
+6. **Description-hash pinning** for MCP tools is unaffected — descriptions don't change in this task.
+7. **Pre-existing TS errors in `server/routes.ts`, `server/webhookHandlers.ts`, `server/lib/plan-limits.ts`, and `server/lib/jobs/*`** are out of scope. Leave them alone.
+
+---
+
+# Sub-project M3a — Multi-currency budget display
+
+## Why
+Allotly's user base is global (Brazil, EU, UK significant). Users currently see "$49.94 of $50.00" regardless of locale. M3a makes budgets display in the user's organisation's chosen currency with locale-correct formatting, while internal accounting stays USD-cents. No proxy hot-path changes.
+
+## Locked decisions — M3a
+
+1. **Supported currencies:** `USD`, `GBP`, `EUR`, `BRL` (4 total). Add as a Postgres enum `CURRENCY`. Default `USD`.
+2. **Currency lives on `organizations`.** New column `currency CURRENCY NOT NULL DEFAULT 'USD'`. All members of an org share currency. Voucher recipients (synthetic users) inherit the issuing org's currency.
+3. **FX storage:** new table `fx_rates` (one row per non-USD currency, upserted daily by cron). Schema below.
+4. **FX source:** [exchangerate.host](https://exchangerate.host) free API (no key). Endpoint: `https://api.exchangerate.host/latest?base=USD&symbols=GBP,EUR,BRL`.
+5. **Cron schedule:** daily at 03:00 UTC. Job name `fx-rates-refresh`. Add to existing scheduler in `server/lib/jobs/scheduler.ts`.
+6. **Hardcoded fallback rates** in `server/lib/fx/fallback-rates.ts`, used only when the FX cron has never succeeded AND the live API call fails:
+   ```ts
+   export const FALLBACK_FX_RATES: Record<NonUsdCurrency, number> = {
+     GBP: 0.79,
+     EUR: 0.92,
+     BRL: 5.20,
+   };
+   ```
+7. **Conversion helper:** `convertUsdCentsToCurrency(cents, currency)` returns `{ amount: number, currency: Currency, rate: number, source: 'live' | 'fallback', fetchedAt: ISO8601 | null }`. Always returns `rate: 1, source: 'live'` for USD.
+8. **`BudgetSnapshot` shape change.** The existing tool responses for `my_budget`, `my_status`, `my_recent_usage` add a `display` block:
+   ```ts
+   display: {
+     currency: 'USD' | 'GBP' | 'EUR' | 'BRL',
+     remaining: number,        // converted, e.g. 488.90
+     total: number,            // converted
+     used: number,             // converted
+     rate: number,             // 1 for USD; e.g. 0.79 for GBP
+     formatted: {              // server-formatted using default locale-per-currency
+       remaining: string,      // "R$ 254,23" or "$49.94" or "£39.46" etc.
+       total: string,
+       used: string,
+     },
+   }
+   ```
+   The existing `remainingCents`, `totalCents`, etc. fields stay — clients keep working. `display` is purely additive.
+9. **Default locale per currency** for server-side `Intl.NumberFormat`:
+   - `USD` → `en-US`
+   - `GBP` → `en-GB`
+   - `EUR` → `de-DE`
+   - `BRL` → `pt-BR`
+10. **Frontend formatting:** dashboard pages that show budget should prefer `Intl.NumberFormat(navigator.language || defaultLocale, { style: 'currency', currency })`. Use the server's `formatted` strings as fallback if `Intl.NumberFormat` errors (some locales/browsers).
+11. **Voucher emails:** the existing budget-mention text uses `display.formatted.total` so recipients see their currency. Email rendering uses server-side default locale (no browser context).
+12. **Webhooks stay USD.** External integrations expect stable USD format.
+13. **Currency settings UI.** New section "Display currency" on `/dashboard/settings` with a dropdown (USD/GBP/EUR/BRL). Org admins only. Saves via `PATCH /api/organizations/:orgId/settings { currency }`. Non-admins see read-only label.
+14. **Migration safety.** New column has a default; existing rows backfill to `'USD'` automatically. No data migration needed.
+
+## Schema — M3a
+
+In `shared/schema.ts`:
+
+```ts
+// New enum
+export const currencyEnum = pgEnum("currency", ["USD", "GBP", "EUR", "BRL"]);
+
+// Add to organizations table:
+currency: currencyEnum("currency").notNull().default("USD"),
+
+// New table
+export const fxRates = pgTable("fx_rates", {
+  currency: currencyEnum("currency").primaryKey(),  // not USD; only stores non-USD
+  rateFromUsd: decimal("rate_from_usd", { precision: 12, scale: 6 }).notNull(),
+  source: text("source", { enum: ["live", "fallback"] }).notNull(),
+  fetchedAt: timestamp("fetched_at").defaultNow().notNull(),
+});
+```
+
+Run `npm run db:push --force` during development. The user runs this against prod after merge.
+
+## Files to create — M3a
+
+- `server/lib/fx/fallback-rates.ts` — hardcoded constants + types
+- `server/lib/fx/convert.ts` — `convertUsdCentsToCurrency(...)` helper, reads `fx_rates` table
+- `server/lib/fx/format.ts` — `formatCurrency(amount, currency, locale?)` using `Intl.NumberFormat` with the default-locale-per-currency table
+- `server/lib/jobs/fx-rates-refresh.ts` — daily cron handler, hits exchangerate.host, upserts `fx_rates` table, falls back to hardcoded rates on API failure with `source: 'fallback'`
+- `client/src/components/settings/currency-selector.tsx` — dropdown component
+- `tests/fx/convert.test.ts` — unit tests for conversion + fallback path
+- `tests/fx/format.test.ts` — locale formatting tests for all 4 currencies
+- `tests/fx/refresh-job.test.ts` — cron handler tests with mocked HTTP
+- `tests/budget-display.test.ts` — integration test that `BudgetSnapshot.display` matches `BudgetSnapshot.totalCents` after conversion
+
+## Files to modify — M3a
+
+- `shared/schema.ts` — add enum + column + table
+- `server/lib/jobs/scheduler.ts` — register `fx-rates-refresh` cron
+- `server/lib/mcp/meta-budget.ts` (or wherever `BudgetSnapshot` is constructed; find the canonical location) — add `display` block
+- `server/lib/mcp/tools/recipient/my-status.ts`, `my-budget.ts`, `my-recent-usage.ts` — pass through `display`
+- `server/lib/email/templates/voucher-welcome.ts` (or wherever the voucher email is built) — use `display.formatted.total`
+- `server/routes.ts` — add `PATCH /api/organizations/:orgId/settings` for currency change (org-admin auth)
+- `client/src/pages/dashboard/settings.tsx` — add currency-selector section
+- `client/src/pages/dashboard/overview.tsx`, `usage.tsx`, `bundles.tsx` — use `display.formatted` for currency labels (find every `$xx.xx` literal and replace)
+- `client/src/i18n/locales/en.json`, `es.json`, `pt-BR.json` — add `dashboard.settings.displayCurrency` keys
+
+## Tests — M3a
+
+Cover at minimum:
+1. `convertUsdCentsToCurrency(4994, 'USD')` → `{ amount: 49.94, currency: 'USD', rate: 1, source: 'live' }`
+2. `convertUsdCentsToCurrency(4994, 'GBP')` with FX row 0.79 → amount ≈ 39.45, source 'live'
+3. `convertUsdCentsToCurrency(4994, 'BRL')` with no FX row but fallback → amount ≈ 259.69, source 'fallback'
+4. `formatCurrency(49.94, 'USD')` → `'$49.94'`
+5. `formatCurrency(39.45, 'GBP')` → `'£39.45'`
+6. `formatCurrency(259.69, 'BRL')` → `'R$ 259,69'`
+7. `formatCurrency(45.94, 'EUR')` → `'45,94 €'`
+8. `BudgetSnapshot` from `my_status` includes a complete `display` block
+9. FX refresh job, with successful API: upserts 3 rows with `source: 'live'`
+10. FX refresh job, with API failure and no existing rows: writes 3 rows with `source: 'fallback'` from hardcoded constants
+11. FX refresh job, with API failure and existing live rows: leaves existing rows untouched
+12. Org currency change endpoint: 200 + persists; non-admin gets 403
+13. Email renderer with currency='BRL' shows `R$ 259,69` in the welcome body
+
+---
+
+# Sub-project M3b — `/api/v1/messages` Anthropic-native endpoint
+
+## Why
+Today, developers using the Anthropic SDK can't point `baseURL` at Allotly because we only expose `/api/v1/chat/completions` (OpenAI-compat). M3b adds the missing Anthropic-native endpoint so they can drop Allotly in front of any Anthropic SDK app and get budget control without code changes.
+
+## Locked decisions — M3b
+
+1. **Endpoint:** `POST /api/v1/messages`. Anthropic-native request/response shape.
+2. **Reuses every V1 safeguard:** auth (Bearer key/voucher/OAuth), budget, concurrency, rate limit, audit, error mapping. Same middleware chain as `/api/v1/chat/completions`.
+3. **No code in `processChatCompletion`.** Add a sibling function `processMessages` in `server/lib/proxy/handler-messages.ts` (new file). Share helpers with handler.ts (auth, budget, error mapping) but not the request/response loop.
+4. **Provider routing:**
+   - **Anthropic providers** (Claude direct API, AWS Bedrock if applicable): pass through verbatim — request body straight to upstream, response body straight back to client.
+   - **OpenAI / Azure OpenAI providers:** translate Anthropic format to OpenAI Chat Completions on the way upstream; translate OpenAI response back to Anthropic Messages format on the way back.
+   - **Google providers:** translate Anthropic to Google Gemini format and back.
+   - All translations live in `server/lib/proxy/translate.ts` — extend the existing translation functions; do not create a new module.
+5. **Streaming support:** if request body has `stream: true`, return SSE per Anthropic's standard event types: `message_start`, `content_block_start`, `content_block_delta`, `content_block_stop`, `message_delta`, `message_stop`, `ping`, `error`. Reuse `server/lib/proxy/streaming.ts` plumbing; adapt the framing for Anthropic event types.
+6. **Default model selection:** if request omits `model`, pick the cheapest allowed Anthropic-format-compatible model (same logic as `selectDefaultModel` in `chat.ts`, but biased to Anthropic providers when available — using Anthropic-native is meaningless if we then route to GPT).
+7. **Tool use / vision / system prompts:** all passed through as-is. Any feature Anthropic supports natively must work via this endpoint.
+8. **Prompt caching, thinking, citations:** if request includes Anthropic-specific fields (`cache_control`, `thinking`, `citations`), pass them through to Anthropic-native upstreams. For non-Anthropic upstreams, drop those fields with a warning header `X-Allotly-Dropped-Fields: cache_control,thinking`.
+9. **Response headers:** include the existing `X-Allotly-Budget-Remaining-USD-Cents`, `X-Allotly-Budget-Total-USD-Cents`, `X-Allotly-Effective-Model`, `X-Allotly-Request-ID`. Add `X-Allotly-Native-Format: anthropic` for parity with the implicit `openai` on `/chat/completions`.
+10. **Error mapping:** Anthropic errors stay Anthropic-shaped (`{ type: 'error', error: { type, message } }`). OpenAI/Google errors are translated to Anthropic error shape on the way back.
+11. **No webhook changes.** This is a proxy endpoint, not a billing event.
+
+## Files to create — M3b
+
+- `server/lib/proxy/handler-messages.ts` — `processMessages(...)`
+- `server/lib/proxy/messages-schemas.ts` — Zod schemas for Anthropic Messages request/response
+- `tests/proxy-messages.test.ts` — endpoint tests
+- `tests/proxy-messages-translate.test.ts` — translation tests for OpenAI/Google routing
+- `tests/proxy-messages-streaming.test.ts` — SSE framing tests
+
+## Files to modify — M3b
+
+- `server/lib/proxy/translate.ts` — add Anthropic↔OpenAI and Anthropic↔Google translators (likely already partially exists; extend)
+- `server/routes.ts` — mount `app.post("/api/v1/messages", ...)` near the existing `/chat/completions` route
+- `server/lib/proxy/streaming.ts` — extend with Anthropic-event-type framing helpers
+- `tests/proxy-tiers.test.ts`, `tests/proxy-errors.test.ts` — add tier + error parity assertions for the new endpoint
+
+## Tests — M3b
+
+Cover:
+1. POST `/api/v1/messages` to Anthropic provider, non-streaming, returns Anthropic-shaped response
+2. POST `/api/v1/messages` to OpenAI provider, non-streaming, request translated upstream, response translated back
+3. POST `/api/v1/messages` to Google provider, non-streaming, request translated upstream, response translated back
+4. POST with `stream: true` to Anthropic provider returns SSE with `message_start` ... `message_stop`
+5. POST with `stream: true` to OpenAI provider returns SSE re-framed to Anthropic event types (translation applied per chunk)
+6. POST omitting `model` selects the cheapest allowed Anthropic-format-compatible model
+7. POST with `cache_control` to Anthropic provider preserves the field upstream
+8. POST with `cache_control` to OpenAI provider strips it and adds `X-Allotly-Dropped-Fields: cache_control` header
+9. Auth missing → 401 with Anthropic-shaped error
+10. Budget exhausted → 429 with Anthropic-shaped error
+11. Rate limit → 429 with Anthropic-shaped error
+12. Concurrency limit → 429 with Anthropic-shaped error
+13. Tier-allowlist enforcement parity with `/chat/completions`
+
+---
+
+# Sub-project M4 — MCP `chat` tool streaming
+
+## Why
+The MCP `chat` tool currently forces `stream: false` and buffers full responses. Long generations (>30s) often time out at the MCP client because no progress signal goes back. Streaming makes `chat` feel native and unblocks generation-heavy use cases. **Strictly additive — `processChatCompletion` is not touched.**
+
+## Locked decisions — M4
+
+1. **Strictly additive design.** New function `processChatCompletionStreaming` in a new file `server/lib/proxy/handler-streaming.ts`. The existing `processChatCompletion` is **not edited**. The chat tool branches on whether `_meta.progressToken` is present.
+2. **Feature flag:** environment variable `MCP_STREAMING_ENABLED`. Default `false` for the first week post-deploy. When `false`, all chat requests use today's buffered path regardless of `_meta.progressToken`. When `true`, chat requests with `_meta.progressToken` use the streaming path. Must be tested in both modes.
+3. **Affects only the `chat` MCP tool.** No other MCP tools change. `compare_models` does not stream (it's already a multi-call aggregation).
+4. **MCP transport extension.** [server/lib/mcp/transport.ts](server/lib/mcp/transport.ts) gains the ability to send mid-call `notifications/progress` JSON-RPC messages, then a final `tools/call` response, all over a single HTTP response. Use Streamable HTTP framing (newline-delimited JSON; one JSON message per line; `Content-Type: application/x-ndjson`).
+5. **Activation path:** when `tools/call` body contains `params._meta.progressToken: <string>` AND the tool name is `chat` AND `MCP_STREAMING_ENABLED=true`, the handler enters the streaming branch. Every other path (tool != chat, no progressToken, flag off) keeps today's behavior bit-for-bit.
+6. **Progress notification payload shape:**
+   ```ts
+   {
+     jsonrpc: "2.0",
+     method: "notifications/progress",
+     params: {
+       progressToken: "<echo from request>",
+       progress: <number>,        // monotonically increasing — token count emitted so far
+       total: <number | undefined>, // from request max_tokens if specified
+       message: <chunk-text-since-last-progress>,
+     }
+   }
+   ```
+7. **Final response.** After upstream stream ends, send a single `tools/call` response message with the same shape today's chat tool returns: `{ content, model, finish_reason, usage, ... }`. Same `id` as the original `tools/call` request.
+8. **Budget reservation.** Before initiating upstream stream, compute pessimistic max cost: `inputTokens * inputPricePerMTok / 1000 + maxTokens * outputPricePerMTok / 1000` (cents). Reserve via existing budget ledger. On stream end, settle to actual usage; refund the unused reservation atomically. If `max_tokens` is omitted, use the model's max output tokens from the pricing table.
+9. **Concurrency:** streaming chat counts against the same per-membership concurrency limit as non-streaming chat. Acquire a slot before reservation; release in the cleanup `finally`.
+10. **Rate limit:** same per-membership rate limit. Counted as one request regardless of stream length.
+11. **Audit log.** Same `mcp_audit_log` row, populated after the stream ends with actual token counts. Add a new column `streamed BOOLEAN NOT NULL DEFAULT false`. Migration required.
+12. **Disconnect handling:**
+    - Client disconnects mid-stream → close upstream connection, settle budget to actual-tokens-consumed-so-far, release concurrency slot, write audit row with `ok: false, errorCode: -32099, finishReason: 'client_disconnected'`.
+    - Upstream provider drops mid-stream → emit one final `notifications/progress` with `error` field, then `tools/call` error response, settle budget, release slot, audit.
+    - Server crashes mid-stream → reservation TTL (5 minutes) eventually expires, ledger reconciles. Acceptable failure mode.
+13. **No edits to `processChatCompletion`.** Period. If any helper function needs to be shared (e.g. token cost calculation), extract it to `server/lib/proxy/cost-utils.ts` as a new file and import from both functions. Don't move logic out of the existing function.
+14. **Compatibility with M3b.** The streaming work in M3b (`/api/v1/messages` with `stream: true`) is HTTP SSE; M4 streaming is MCP `notifications/progress`. Different framings, different consumers. Code-share opportunities are limited to upstream HTTP request handling — extract those into `server/lib/proxy/upstream-stream.ts` (new) and use from both M3b's streaming path and M4's streaming path. The transport-level framing (SSE vs ndjson) lives in the respective endpoint handlers.
+
+## Schema change — M4
+
+In `shared/schema.ts`:
+```ts
+// Add to mcp_audit_log table:
+streamed: boolean("streamed").notNull().default(false),
+```
+
+Run `npm run db:push --force` during development.
+
+## Files to create — M4
+
+- `server/lib/proxy/handler-streaming.ts` — `processChatCompletionStreaming(ctx, onChunk, onComplete, onError)`
+- `server/lib/proxy/cost-utils.ts` — shared token cost calculation extracted from existing handler
+- `server/lib/proxy/upstream-stream.ts` — shared upstream HTTP-stream consumer (used by both M3b SSE and M4 ndjson)
+- `tests/mcp/chat-streaming.test.ts` — main test file
+- `tests/mcp/chat-streaming-budget.test.ts` — reservation/settlement/refund correctness
+- `tests/mcp/chat-streaming-disconnect.test.ts` — client disconnect, upstream disconnect, server-side error paths
+
+## Files to modify — M4
+
+- `server/lib/mcp/transport.ts` — add streaming response capability gated on `_meta.progressToken` and feature flag
+- `server/lib/mcp/tools/consumption/chat.ts` — branch on progressToken + flag; call streaming function when active
+- `shared/schema.ts` — add `streamed` column to `mcp_audit_log`
+- `server/lib/mcp/audit.ts` — accept `streamed` parameter
+
+## Tests — M4
+
+Cover:
+1. With flag off, `chat` tool with `_meta.progressToken` set returns single buffered response (today's behavior); audit `streamed: false`
+2. With flag on, `chat` tool without `_meta.progressToken` returns single buffered response; audit `streamed: false`
+3. With flag on AND `_meta.progressToken` set, `chat` tool returns ndjson stream of `notifications/progress` followed by final `tools/call` response; audit `streamed: true`
+4. Streaming chat reserves the correct pessimistic budget at start
+5. Streaming chat settles to actual token usage at end (refund visible in budget ledger)
+6. Streaming chat with `max_tokens` omitted uses the model's max-output-tokens from pricing table
+7. Streaming chat client-disconnect mid-stream: upstream closed, budget settled to actual-so-far, concurrency slot released, audit row written with `ok: false`
+8. Streaming chat upstream disconnect mid-stream: error notification + error response, budget settled, slot released
+9. Streaming chat counts against concurrency limit (concurrent streaming + buffered = one slot each)
+10. Streaming chat counts as one rate-limit request
+11. Final response shape (`content`, `model`, `finish_reason`, `usage`) matches non-streaming response shape exactly
+12. Progress notifications use monotonically increasing `progress` values
+13. Existing `chat` non-streaming tests all pass unchanged
+
+---
+
+# Acceptance checklist — applies to all three sub-projects
+
+```bash
+npm run check       # type + description-hash check
+npx vitest run      # full test suite, all green (existing 451 + new tests)
+npm run build       # esbuild bundle
+```
+
+Live preview verification (run on dev preview URL):
+
+**M3a:**
+```bash
+# FX rates table populated after first cron run
+curl -s 'https://<dev>/api/v1/health'
+# (manual) trigger fx-rates-refresh job, check fx_rates table has 3 rows (GBP/EUR/BRL)
+
+# my_status returns display block in BRL when org.currency = 'BRL'
+curl -s -X POST 'https://<dev>/mcp' \
+  -H "Authorization: Bearer <test-key-for-BRL-org>" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"my_status","arguments":{}}}' \
+  | python3 -m json.tool | grep -A6 display
+# expect display.currency = 'BRL', display.formatted.remaining like 'R$ 259,69'
+```
+
+**M3b:**
+```bash
+# Anthropic-native pass-through
+curl -s -X POST 'https://<dev>/api/v1/messages' \
+  -H "Authorization: Bearer <test-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"claude-haiku-4-5","max_tokens":50,"messages":[{"role":"user","content":"Hi"}]}'
+# expect Anthropic-shaped response with content blocks
+
+# Streaming
+curl -s -X POST 'https://<dev>/api/v1/messages' \
+  -H "Authorization: Bearer <test-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"claude-haiku-4-5","max_tokens":50,"stream":true,"messages":[{"role":"user","content":"Count to 5"}]}'
+# expect SSE with event: message_start, content_block_delta, etc.
+
+# OpenAI-routed
+curl -s -X POST 'https://<dev>/api/v1/messages' \
+  -H "Authorization: Bearer <test-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-4o-mini","max_tokens":50,"messages":[{"role":"user","content":"Hi"}]}'
+# expect Anthropic-shaped response (translated from OpenAI upstream)
+```
+
+**M4:**
+```bash
+# Flag off: buffered behavior
+MCP_STREAMING_ENABLED=false
+curl -s -X POST 'https://<dev>/mcp' \
+  -H "Authorization: Bearer <test-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"chat","arguments":{"messages":[{"role":"user","content":"Hi"}]},"_meta":{"progressToken":"abc"}}}'
+# expect single JSON response, no streaming
+
+# Flag on: streamed
+MCP_STREAMING_ENABLED=true
+curl -sN -X POST 'https://<dev>/mcp' \
+  -H "Authorization: Bearer <test-key>" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/x-ndjson" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"chat","arguments":{"messages":[{"role":"user","content":"Count to 10 slowly"}],"max_tokens":100},"_meta":{"progressToken":"abc"}}}'
+# expect newline-delimited JSON: notifications/progress messages then final tools/call response
+```
+
+---
+
+# Out of scope (DO NOT TOUCH) — for all three sub-projects
+
+- `processChatCompletion` in [server/lib/proxy/handler.ts:218](server/lib/proxy/handler.ts:218) — not edited.
+- OAuth flow, DCR, consent, token, revoke endpoints — already correct.
+- MCP tool annotations, CORS allowlist, favicon redirect — already correct.
+- Existing 451 tests — must pass unchanged.
+- Pre-existing TS errors in `server/routes.ts`, `webhookHandlers.ts`, `lib/plan-limits.ts`, `lib/jobs/*` — leave them.
+- Webhook payloads (stay USD).
+- The npm bridge package `@allotly/mcp` — no changes needed.
+- LLM-based `recommend_model` (M3c, deferred) — V1 heuristic stays.
+
+---
+
+# Final report format
+
+**One** end-of-task message with the following structure:
+
+## Summary
+- M3a: ✅ / partial / blocked
+- M3b: ✅ / partial / blocked
+- M4: ✅ / partial / blocked
+- Total tests: `<n> passed`, including `<m>` new tests across the three sub-projects
+- Build: success
+- DB migrations: list of new tables/columns + confirmation that `npm run db:push --force` ran cleanly against dev DB
+
+## M3a deliverables
+Files created (paths only) | Files modified (paths only)
+
+## M3b deliverables
+Files created | Files modified
+
+## M4 deliverables
+Files created | Files modified | Feature-flag default value confirmed (false)
+
+## Live verification curl outputs
+Paste the dev-preview curl outputs from the Acceptance section above for each sub-project.
+
+## Anything blocked or deferred
+If a piece couldn't be completed, state which sub-project, what specifically, and why. Do not silently drop scope.
+
+Push to GitHub via the Git pane after the report. Do **not** push automatically. Do **not** redeploy to production — the user will do that after reviewing.
