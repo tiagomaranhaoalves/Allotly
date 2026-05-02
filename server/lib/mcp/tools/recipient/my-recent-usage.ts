@@ -1,5 +1,5 @@
 import { storage } from "../../../../storage";
-import { withBudgetMeta } from "../../meta-budget";
+import { withBudgetMeta, buildBudgetSnapshot } from "../../meta-budget";
 import { RecentUsageInputSchema } from "../../schemas";
 import { registerTool } from "../registry";
 
@@ -39,6 +39,9 @@ registerTool({
       }));
 
     const totalCost = filtered.reduce((sum, c) => sum + c.cost_cents, 0);
-    return withBudgetMeta(principal.membership, { calls: filtered, total_cost_cents: totalCost });
+    const snap = await buildBudgetSnapshot(principal.membership);
+    const result: Record<string, any> = { calls: filtered, total_cost_cents: totalCost };
+    if (snap.warning) result.warning = snap.warning;
+    return withBudgetMeta(principal.membership, result);
   },
 });

@@ -25,7 +25,7 @@ registerTool({
       : 0;
     const expiresMs = new Date(snap.period_end).getTime() - Date.now();
     const expiresIn = formatDuration(expiresMs);
-    return withBudgetMeta(principal.membership, {
+    const result: Record<string, any> = {
       ...snap,
       formatted: {
         remaining: snap.display.formatted.remaining,
@@ -33,7 +33,9 @@ registerTool({
         used_pct: usedPct,
         expires_in: expiresIn,
       },
-    });
+    };
+    if (snap.warning) result.warning = snap.warning;
+    return withBudgetMeta(principal.membership, result);
   },
 });
 

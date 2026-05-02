@@ -4,6 +4,7 @@ import { getRateLimitTier } from "../proxy/handler";
 import type { BudgetSnapshot } from "./schemas";
 import type { TeamMembership } from "@shared/schema";
 import { getActiveRates, buildDisplayBlock, getOrgCurrency } from "../currency";
+import { getBudgetWarning } from "./budget-warnings";
 
 export async function buildBudgetSnapshot(membership: TeamMembership): Promise<BudgetSnapshot> {
   const team = await storage.getTeam(membership.teamId);
@@ -23,6 +24,26 @@ export async function buildBudgetSnapshot(membership: TeamMembership): Promise<B
   const rates = await getActiveRates();
   const display = buildDisplayBlock(remainingCents, totalCents, orgCurrency, rates);
 
+  // V1.5.1 Piece 4: attach optional proactive budget warning. orgRole is
+  // looked up only for TEAM members (it determines admin-vs-member branch);
+  // VOUCHER memberships ignore orgRole entirely.
+  let orgRole: string | null = null;
+  if (membership.accessType === "TEAM") {
+    try {
+      const user = await storage.getUser(membership.userId);
+      orgRole = user?.orgRole ?? null;
+    } catch {
+      orgRole = null;
+    }
+  }
+  const warning = await getBudgetWarning(
+    remainingCents,
+    totalCents,
+    { accessType: membership.accessType, orgRole },
+    membership.allowedModels as string[] | null,
+    orgCurrency,
+  );
+
   return {
     remaining_cents: remainingCents,
     total_cents: totalCents,
@@ -33,6 +54,7 @@ export async function buildBudgetSnapshot(membership: TeamMembership): Promise<B
     concurrency_limit: tier.maxConcurrent,
     voucher_expires_at: membership.voucherExpiresAt ? new Date(membership.voucherExpiresAt).toISOString() : null,
     display,
+    warning,
   };
 }
 

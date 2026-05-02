@@ -8,6 +8,7 @@ import { BudgetBar } from "@/components/brand/budget-bar";
 import { Badge } from "@/components/ui/badge";
 import { Activity, Zap, DollarSign, Clock, Hash } from "lucide-react";
 import { formatUsdCents, normalizeCurrency } from "@/lib/currency";
+import { BudgetWarningBanner } from "@/components/dashboard/budget-warning-banner";
 
 export default function UsagePage() {
   const { t } = useTranslation();
@@ -30,6 +31,8 @@ export default function UsagePage() {
         <h1 className="text-2xl font-bold tracking-tight" data-testid="text-usage-heading">{t("dashboard.usage.title")}</h1>
         <p className="text-muted-foreground mt-1">{t("dashboard.usage.subtitle")}</p>
       </div>
+
+      <BudgetWarningBanner />
 
       {isLoading ? (
         <div className="space-y-4">

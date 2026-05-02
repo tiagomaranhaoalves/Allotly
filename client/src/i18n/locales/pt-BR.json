@@ -1782,6 +1782,57 @@
     "oauthConnectors": {
       "copyMcpUrl": "Copiar URL do MCP",
       "learnMore": "Saiba mais"
+    },
+    "budgetWarning": {
+      "topUp": "Recarregar",
+      "admin": {
+        "low": {
+          "message": "Orçamento em {{remaining_pct}}% — acabando. Restam {{amount_remaining}} de {{amount_total}}.",
+          "suggestion": "Experimente modelos mais baratos como <0>{{cheapest_model}}</0> para tarefas rotineiras. Recarregue em <1>{{topup_url}}</1>.",
+          "suggestion_no_model": "Recarregue em <1>{{topup_url}}</1>."
+        },
+        "critical": {
+          "message": "Orçamento criticamente baixo — restam apenas {{remaining_pct}}%. {{amount_remaining}} restantes.",
+          "suggestion": "Experimente modelos mais baratos como <0>{{cheapest_model}}</0> para tarefas rotineiras. Recarregue em <1>{{topup_url}}</1>.",
+          "suggestion_no_model": "Recarregue em <1>{{topup_url}}</1>."
+        },
+        "exhausted": {
+          "message": "Orçamento totalmente gasto.",
+          "suggestion": "Recarregue em <1>{{topup_url}}</1>."
+        }
+      },
+      "member": {
+        "low": {
+          "message": "Orçamento em {{remaining_pct}}% — acabando. Restam {{amount_remaining}} de {{amount_total}}.",
+          "suggestion": "Experimente modelos mais baratos como <0>{{cheapest_model}}</0> para tarefas rotineiras. Entre em contato com o administrador do seu time para aumentar o orçamento.",
+          "suggestion_no_model": "Entre em contato com o administrador do seu time para aumentar o orçamento."
+        },
+        "critical": {
+          "message": "Orçamento criticamente baixo — restam apenas {{remaining_pct}}%. {{amount_remaining}} restantes.",
+          "suggestion": "Experimente modelos mais baratos como <0>{{cheapest_model}}</0> para tarefas rotineiras. Entre em contato com o administrador do seu time para aumentar o orçamento.",
+          "suggestion_no_model": "Entre em contato com o administrador do seu time para aumentar o orçamento."
+        },
+        "exhausted": {
+          "message": "Orçamento totalmente gasto.",
+          "suggestion": "Entre em contato com o administrador do seu time para aumentar o orçamento."
+        }
+      },
+      "voucher": {
+        "low": {
+          "message": "Orçamento em {{remaining_pct}}% — acabando. Restam {{amount_remaining}} de {{amount_total}}.",
+          "suggestion": "Experimente modelos mais baratos como <0>{{cheapest_model}}</0> para tarefas rotineiras. Execute <1>request_topup</1> para pedir mais orçamento ao administrador emissor.",
+          "suggestion_no_model": "Execute <1>request_topup</1> para pedir mais orçamento ao administrador emissor."
+        },
+        "critical": {
+          "message": "Orçamento criticamente baixo — restam apenas {{remaining_pct}}%. {{amount_remaining}} restantes.",
+          "suggestion": "Experimente modelos mais baratos como <0>{{cheapest_model}}</0> para tarefas rotineiras. Execute <1>request_topup</1> para pedir mais orçamento ao administrador emissor.",
+          "suggestion_no_model": "Execute <1>request_topup</1> para pedir mais orçamento ao administrador emissor."
+        },
+        "exhausted": {
+          "message": "Voucher totalmente gasto.",
+          "suggestion": "Execute <1>request_topup</1> para pedir mais orçamento ao administrador emissor."
+        }
+      }
     }
   },
   "connect": {

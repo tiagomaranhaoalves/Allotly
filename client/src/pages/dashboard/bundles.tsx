@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Package, DollarSign, ExternalLink, Ticket, Clock, Zap } from "lucide-react";
 import { useEffect } from "react";
 import { formatUsdCents, normalizeCurrency, type SupportedCurrency } from "@/lib/currency";
+import { BudgetWarningBanner } from "@/components/dashboard/budget-warning-banner";
 
 const BUNDLE_PRICE_USD_CENTS = 2500;
 const BUNDLE_MAX_BUDGET_USD_CENTS = 5000;
@@ -77,6 +78,8 @@ export default function BundlesPage() {
           <ExternalLink className="w-3.5 h-3.5" />
         </Button>
       </div>
+
+      <BudgetWarningBanner />
 
       <Card className="p-6">
         <h2 className="text-base font-semibold mb-4">{t("dashboard.bundles.bundleTitle")}</h2>

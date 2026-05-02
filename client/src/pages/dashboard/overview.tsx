@@ -31,6 +31,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient as qc } from "@/lib/queryClient";
 import { formatUsdCents, normalizeCurrency, type SupportedCurrency } from "@/lib/currency";
+import { BudgetWarningBanner } from "@/components/dashboard/budget-warning-banner";
 
 /**
  * Resolves the org's display currency + the FX rate for it. Cached for 1h
@@ -810,6 +811,8 @@ function ProxyMemberOverview({ data }: { data: any }) {
         </div>
       </div>
 
+      <BudgetWarningBanner />
+
       <Card className="p-6" data-testid="card-budget">
         <h2 className="text-base font-semibold mb-4">{t("dashboard.overview.budget")}</h2>
         <div className="max-w-lg">
@@ -936,6 +939,8 @@ function DirectMemberOverview({ data }: { data: any }) {
           <span className="text-sm text-muted-foreground">{t("dashboard.overview.memberDirectSubtitle")}</span>
         </div>
       </div>
+
+      <BudgetWarningBanner />
 
       <Card className="p-6" data-testid="card-budget">
         <h2 className="text-base font-semibold mb-4">{t("dashboard.overview.budget")}</h2>

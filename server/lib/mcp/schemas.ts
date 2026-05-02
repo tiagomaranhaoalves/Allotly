@@ -26,6 +26,19 @@ export const BudgetDisplaySchema = z.object({
 });
 export type BudgetDisplay = z.infer<typeof BudgetDisplaySchema>;
 
+export const BudgetWarningSchema = z.object({
+  level: z.enum(["low", "critical", "exhausted"]),
+  message: z.string(),
+  remaining_pct: z.number().int().nonnegative(),
+  suggestion: z.object({
+    text: z.string(),
+    cheapest_model_in_allowlist: z.string().nullable(),
+    topup_url: z.string().nullable(),
+    topup_via_mcp_tool: z.string().nullable(),
+  }),
+});
+export type BudgetWarning = z.infer<typeof BudgetWarningSchema>;
+
 export const BudgetSnapshotSchema = z.object({
   remaining_cents: z.number().int().nonnegative(),
   total_cents: z.number().int().nonnegative(),
@@ -36,6 +49,14 @@ export const BudgetSnapshotSchema = z.object({
   concurrency_limit: z.number().int().positive(),
   voucher_expires_at: z.string().nullable(),
   display: BudgetDisplaySchema.optional(),
+  /**
+   * V1.5.1 Piece 4: optional, additive proactive budget warning. Present
+   * when remaining budget < 25% of total or fully exhausted; null/absent
+   * when healthy or unlimited (total_cents === 0). Server text stays
+   * English — host LLMs translate naturally; the dashboard banner
+   * localizes client-side via i18next using the structured fields.
+   */
+  warning: BudgetWarningSchema.nullable().optional(),
 });
 export type BudgetSnapshot = z.infer<typeof BudgetSnapshotSchema>;
 

@@ -37,7 +37,7 @@ registerTool({
       label = v?.label ?? null;
     }
 
-    return withBudgetMeta(m, {
+    const result: Record<string, any> = {
       budget: snap,
       concurrency: { in_flight: Math.max(0, inFlight), limit: tier.maxConcurrent },
       rate_limit: {
@@ -51,6 +51,8 @@ registerTool({
         status: m.status.toLowerCase(),
         label,
       },
-    });
+    };
+    if (snap.warning) result.warning = snap.warning;
+    return withBudgetMeta(m, result);
   },
 });

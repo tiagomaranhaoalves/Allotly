@@ -1782,6 +1782,57 @@
     "oauthConnectors": {
       "copyMcpUrl": "Copy MCP URL",
       "learnMore": "Learn more"
+    },
+    "budgetWarning": {
+      "topUp": "Top up",
+      "admin": {
+        "low": {
+          "message": "Budget at {{remaining_pct}}% — running low. {{amount_remaining}} of {{amount_total}} left.",
+          "suggestion": "Try cheaper models like <0>{{cheapest_model}}</0> for routine tasks. Top up at <1>{{topup_url}}</1>.",
+          "suggestion_no_model": "Top up at <1>{{topup_url}}</1>."
+        },
+        "critical": {
+          "message": "Budget critically low — only {{remaining_pct}}% left. {{amount_remaining}} remaining.",
+          "suggestion": "Try cheaper models like <0>{{cheapest_model}}</0> for routine tasks. Top up at <1>{{topup_url}}</1>.",
+          "suggestion_no_model": "Top up at <1>{{topup_url}}</1>."
+        },
+        "exhausted": {
+          "message": "Budget fully spent.",
+          "suggestion": "Top up at <1>{{topup_url}}</1>."
+        }
+      },
+      "member": {
+        "low": {
+          "message": "Budget at {{remaining_pct}}% — running low. {{amount_remaining}} of {{amount_total}} left.",
+          "suggestion": "Try cheaper models like <0>{{cheapest_model}}</0> for routine tasks. Contact your team admin to increase the budget.",
+          "suggestion_no_model": "Contact your team admin to increase the budget."
+        },
+        "critical": {
+          "message": "Budget critically low — only {{remaining_pct}}% left. {{amount_remaining}} remaining.",
+          "suggestion": "Try cheaper models like <0>{{cheapest_model}}</0> for routine tasks. Contact your team admin to increase the budget.",
+          "suggestion_no_model": "Contact your team admin to increase the budget."
+        },
+        "exhausted": {
+          "message": "Budget fully spent.",
+          "suggestion": "Contact your team admin to increase the budget."
+        }
+      },
+      "voucher": {
+        "low": {
+          "message": "Budget at {{remaining_pct}}% — running low. {{amount_remaining}} of {{amount_total}} left.",
+          "suggestion": "Try cheaper models like <0>{{cheapest_model}}</0> for routine tasks. Run <1>request_topup</1> to ask the issuing admin for more budget.",
+          "suggestion_no_model": "Run <1>request_topup</1> to ask the issuing admin for more budget."
+        },
+        "critical": {
+          "message": "Budget critically low — only {{remaining_pct}}% left. {{amount_remaining}} remaining.",
+          "suggestion": "Try cheaper models like <0>{{cheapest_model}}</0> for routine tasks. Run <1>request_topup</1> to ask the issuing admin for more budget.",
+          "suggestion_no_model": "Run <1>request_topup</1> to ask the issuing admin for more budget."
+        },
+        "exhausted": {
+          "message": "Voucher fully spent.",
+          "suggestion": "Run <1>request_topup</1> to ask the issuing admin for more budget."
+        }
+      }
     }
   },
   "connect": {

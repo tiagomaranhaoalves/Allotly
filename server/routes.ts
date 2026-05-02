@@ -39,6 +39,7 @@ import {
   type SupportedCurrency,
 } from "./lib/currency";
 import { runFxRefresh } from "./lib/jobs/fx-refresh";
+import { getBudgetWarning } from "./lib/mcp/budget-warnings";
 import { getCostPerModel, getTopSpenders, getSpendForecast, getAnomalies, getOptimizationRecommendations } from "./lib/analytics";
 import { loginLimiter, redeemLimiter, regenerateKeyLimiter, adminLoginLimiter } from "./lib/rate-limiter";
 import crypto from "crypto";
@@ -4398,8 +4399,27 @@ export async function registerRoutes(
     const rates = await getActiveRates();
     const budgetCents = data.budgetCents || 0;
     const spendCents = data.spendCents || 0;
-    const display = buildDisplayBlock(Math.max(0, budgetCents - spendCents), budgetCents, orgCurrency, rates);
-    res.json({ ...data, display });
+    const remainingCents = Math.max(0, budgetCents - spendCents);
+    const display = buildDisplayBlock(remainingCents, budgetCents, orgCurrency, rates);
+    // V1.5.1 Piece 4: surface the budget warning so the dashboard banner can
+    // render the right colour + localized text. Branch is derived from the
+    // membership's accessType + the user's orgRole. The dashboard banner is
+    // explicitly scoped to TEAM users (admins + members); voucher recipients
+    // receive their warning via MCP tool responses (my_status / my_budget /
+    // my_recent_usage), not via this endpoint.
+    const membership = data.membership || null;
+    const accessType = membership?.accessType || "TEAM";
+    const allowedModels = (membership?.allowedModels as string[] | null) || null;
+    const warning = accessType === "TEAM"
+      ? await getBudgetWarning(
+          remainingCents,
+          budgetCents,
+          { accessType, orgRole: user.orgRole },
+          allowedModels,
+          orgCurrency,
+        )
+      : null;
+    res.json({ ...data, display, warning });
   });
 
   app.get("/api/dashboard/team-overview", requireAuth, async (req, res) => {
