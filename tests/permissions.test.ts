@@ -20,6 +20,10 @@ const PERMISSIONS: Record<string, string[]> = {
   "analytics.view": ["ROOT_ADMIN", "TEAM_ADMIN"],
   "auditLog.view": ["ROOT_ADMIN"],
   "settings.update": ["ROOT_ADMIN"],
+  // PATCH /api/org/settings { currency } is gated by `requireRole("ROOT_ADMIN")`
+  // at server/routes.ts ~L4650 so only ROOT_ADMIN can change the org-wide
+  // display currency. Non-admins still see the read-only chip in settings.tsx.
+  "settings.updateCurrency": ["ROOT_ADMIN"],
   "member.viewOwnKeys": ["MEMBER"],
   "member.viewOwnUsage": ["MEMBER"],
 };

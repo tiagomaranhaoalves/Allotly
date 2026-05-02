@@ -27,7 +27,7 @@ export const CURRENCY_SYMBOLS: Record<SupportedCurrency, string> = {
 export interface RatesSnapshot {
   rates: Record<SupportedCurrency, number>;
   asOf: Date;
-  source: string;
+  source: "live" | "fallback";
 }
 
 let cachedRates: RatesSnapshot | null = null;
@@ -37,6 +37,20 @@ const RATE_CACHE_TTL_MS = 60 * 60 * 1000;
 export function clearRateCache() {
   cachedRates = null;
   cachedAt = 0;
+}
+
+/**
+ * fx_source is normalized to one of two values everywhere downstream callers
+ * (MCP display block, /api/fx-rates) see it:
+ *   - "live"     — from a real upstream FX provider (e.g. exchangerate.host)
+ *   - "fallback" — hard-coded constants because no live row exists yet
+ * The DB column may carry richer provider tags (e.g. "exchangerate.host") for
+ * audit, but we collapse them to "live" for the wire contract.
+ */
+export type FxSource = "live" | "fallback";
+
+export function normalizeFxSource(raw: string | null | undefined): FxSource {
+  return raw === "fallback" ? "fallback" : "live";
 }
 
 function fallbackSnapshot(): RatesSnapshot {
@@ -58,14 +72,14 @@ export async function getActiveRates(force = false): Promise<RatesSnapshot> {
     }
     const rates: Record<SupportedCurrency, number> = { USD: 1, GBP: FALLBACK_RATES.GBP, EUR: FALLBACK_RATES.EUR, BRL: FALLBACK_RATES.BRL };
     let asOf = new Date(0);
-    let source = "fallback";
+    let source: FxSource = "fallback";
     for (const r of rows) {
       const rate = parseFloat(r.rateFromUsd as unknown as string);
       if (Number.isFinite(rate) && rate > 0) {
         rates[r.currency as SupportedCurrency] = rate;
         if (r.asOf > asOf) {
           asOf = r.asOf;
-          source = r.source;
+          source = normalizeFxSource(r.source);
         }
       }
     }
@@ -109,7 +123,7 @@ export interface DisplayBlock {
   locale: string;
   fx_rate: number;
   fx_as_of: string | null;
-  fx_source: string;
+  fx_source: FxSource;
   formatted: {
     remaining: string;
     total: string;
@@ -129,7 +143,12 @@ export function buildDisplayBlock(
   snapshot: RatesSnapshot,
 ): DisplayBlock {
   const locale = CURRENCY_LOCALES[currency];
-  const rate = snapshot.rates[currency] ?? 1;
+  // USD short-circuit: rate=1, source="live" (USD itself is always trivially
+  // "live" — there's no FX involved). This keeps MCP clients from rendering
+  // a misleading "fallback" badge for orgs that never opted out of USD.
+  const isUsd = currency === "USD";
+  const rate = isUsd ? 1 : (snapshot.rates[currency] ?? 1);
+  const source: FxSource = isUsd ? "live" : snapshot.source;
   const remainingMinor = convertFromUsdCents(Math.max(0, remainingUsdCents), currency, rate);
   const totalMinor = convertFromUsdCents(Math.max(0, totalUsdCents), currency, rate);
   const spentMinor = Math.max(0, totalMinor - remainingMinor);
@@ -138,7 +157,7 @@ export function buildDisplayBlock(
     locale,
     fx_rate: rate,
     fx_as_of: snapshot.asOf.getTime() === 0 ? null : snapshot.asOf.toISOString(),
-    fx_source: snapshot.source,
+    fx_source: source,
     formatted: {
       remaining: formatMoney(remainingMinor, currency, locale),
       total: formatMoney(totalMinor, currency, locale),

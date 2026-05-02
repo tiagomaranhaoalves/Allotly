@@ -96,6 +96,8 @@ export default function UsagePage() {
                 spent={overview?.spendCents || membership.currentPeriodSpendCents || 0}
                 budget={overview?.budgetCents || membership.monthlyBudgetCents || 0}
                 showLabel
+                currency={ccy}
+                fxRate={rate}
               />
             </div>
             {membership.periodEnd && (

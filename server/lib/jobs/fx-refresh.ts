@@ -17,14 +17,14 @@ interface ExchangerateApiResponse {
  * Fetch live USD-base rates and upsert them into fx_rates.
  *
  * Behavior:
- *   - On success: upsert GBP/EUR/BRL with source="exchangerate.host" and as_of=API date.
+ *   - On success: upsert GBP/EUR/BRL with source="live" and as_of=API date.
  *   - On API failure (network/parse error or missing rates):
  *       - If fx_rates is EMPTY: write fallback rows (so the app can format prices).
  *       - If fx_rates already has rows: leave them in place (do NOT overwrite live rates with fallback).
  *   - USD itself is implicit (rate=1) and is not stored.
  */
-export async function runFxRefresh(): Promise<{ updated: number; source: string; asOf: string | null }> {
-  let result: { updated: number; source: string; asOf: string | null } = { updated: 0, source: "exchangerate.host", asOf: null };
+export async function runFxRefresh(): Promise<{ updated: number; source: "live" | "fallback" | "no-update"; asOf: string | null }> {
+  let result: { updated: number; source: "live" | "fallback" | "no-update"; asOf: string | null } = { updated: 0, source: "live", asOf: null };
 
   let apiSucceeded = false;
   let apiPayload: ExchangerateApiResponse | null = null;
@@ -46,18 +46,18 @@ export async function runFxRefresh(): Promise<{ updated: number; source: string;
               await db.insert(fxRates).values({
                 currency: code,
                 rateFromUsd: String(rate),
-                source: "exchangerate.host",
+                source: "live",
                 asOf,
               }).onConflictDoUpdate({
                 target: fxRates.currency,
-                set: { rateFromUsd: String(rate), source: "exchangerate.host", asOf, updatedAt: new Date() },
+                set: { rateFromUsd: String(rate), source: "live", asOf, updatedAt: new Date() },
               });
               result.updated++;
             }
           }
           result.asOf = asOf.toISOString();
           apiSucceeded = true;
-          console.log(`[fx-refresh] Updated ${result.updated} rates from exchangerate.host (as_of=${result.asOf})`);
+          console.log(`[fx-refresh] Updated ${result.updated} rates from upstream (as_of=${result.asOf})`);
         }
       }
     } else {

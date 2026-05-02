@@ -92,6 +92,41 @@ describe("buildDisplayBlock", () => {
     expect(block.minor_units.spent).toBe(7500);
   });
 
+  it("short-circuits USD to source='live' regardless of snapshot source", () => {
+    // Even when the rate snapshot is fallback, USD itself never involves FX
+    // so MCP clients should see "live" + rate=1 to avoid a misleading badge.
+    const block = buildDisplayBlock(2500, 10000, "USD", FALLBACK_SNAPSHOT);
+    expect(block.fx_source).toBe("live");
+    expect(block.fx_rate).toBe(1);
+  });
+
+  it("emits fx_source as exactly 'live' or 'fallback' (never richer tags)", () => {
+    const fb = buildDisplayBlock(1000, 1000, "GBP", FALLBACK_SNAPSHOT);
+    expect(fb.fx_source).toBe("fallback");
+    const live: RatesSnapshot = {
+      rates: { USD: 1, GBP: 0.8, EUR: 0.9, BRL: 5.0 },
+      asOf: new Date("2026-01-15T03:00:00Z"),
+      source: "live",
+    };
+    const liveBlock = buildDisplayBlock(1000, 1000, "GBP", live);
+    expect(liveBlock.fx_source).toBe("live");
+  });
+
+  it("MCP BudgetDisplaySchema rejects fx_source values outside the enum", async () => {
+    // Importing here (not at top) keeps the test self-contained — if any
+    // future contributor swaps z.enum back to z.string this assertion fails.
+    const { BudgetDisplaySchema } = await import("../server/lib/mcp/schemas");
+    const block = buildDisplayBlock(1000, 1000, "GBP", FALLBACK_SNAPSHOT);
+    // Real block validates fine.
+    expect(BudgetDisplaySchema.safeParse(block).success).toBe(true);
+    // Tampered block with a richer provider tag must be rejected.
+    const tampered = { ...block, fx_source: "exchangerate.host" };
+    expect(BudgetDisplaySchema.safeParse(tampered).success).toBe(false);
+    // Random string also rejected.
+    const tampered2 = { ...block, fx_source: "stale" };
+    expect(BudgetDisplaySchema.safeParse(tampered2).success).toBe(false);
+  });
+
   it("clamps negative remaining to zero", () => {
     const block = buildDisplayBlock(-500, 1000, "USD", FALLBACK_SNAPSHOT);
     expect(block.minor_units.remaining).toBe(0);
@@ -102,11 +137,11 @@ describe("buildDisplayBlock", () => {
     const live: RatesSnapshot = {
       rates: { USD: 1, GBP: 0.8, EUR: 0.9, BRL: 5.0 },
       asOf: new Date("2026-01-15T03:00:00Z"),
-      source: "exchangerate.host",
+      source: "live",
     };
     const block = buildDisplayBlock(1000, 1000, "EUR", live);
     expect(block.fx_as_of).toBe("2026-01-15T03:00:00.000Z");
-    expect(block.fx_source).toBe("exchangerate.host");
+    expect(block.fx_source).toBe("live");
     expect(block.fx_rate).toBe(0.9);
   });
 });

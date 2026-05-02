@@ -382,7 +382,7 @@ function TeamAdminOverview() {
                       {m.status}
                     </Badge>
                   </div>
-                  <BudgetBar spent={m.currentPeriodSpendCents} budget={m.monthlyBudgetCents} />
+                  <BudgetBar spent={m.currentPeriodSpendCents} budget={m.monthlyBudgetCents} currency={ccy} fxRate={fxRate} />
                 </div>
               ))}
             </div>
@@ -421,7 +421,7 @@ function TeamAdminOverview() {
                       )}
                     </div>
                   </div>
-                  <BudgetBar spent={m.currentPeriodSpendCents} budget={m.monthlyBudgetCents} />
+                  <BudgetBar spent={m.currentPeriodSpendCents} budget={m.monthlyBudgetCents} currency={ccy} fxRate={fxRate} />
                 </div>
               ))}
             </div>

@@ -9,12 +9,25 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Package, DollarSign, ExternalLink, Ticket, Clock, Zap } from "lucide-react";
 import { useEffect } from "react";
+import { formatUsdCents, normalizeCurrency, type SupportedCurrency } from "@/lib/currency";
+
+const BUNDLE_PRICE_USD_CENTS = 2500;
+const BUNDLE_MAX_BUDGET_USD_CENTS = 5000;
 
 export default function BundlesPage() {
   const { toast } = useToast();
   const { t } = useTranslation();
 
   const { data: bundles, isLoading } = useQuery<any[]>({ queryKey: ["/api/bundles"] });
+  // Org's display currency for the bundle's price/maxBudget labels. Bundles
+  // are USD-priced upstream (Stripe), but we render the equivalent in the
+  // org's chosen currency so multi-currency orgs see consistent figures.
+  const { data: org } = useQuery<any>({ queryKey: ["/api/org/settings"], staleTime: 60_000 });
+  const { data: fx } = useQuery<any>({ queryKey: ["/api/fx-rates"], staleTime: 60 * 60_000 });
+  const ccy: SupportedCurrency = normalizeCurrency(org?.currency);
+  const fxRate: number | undefined = fx?.rates?.[ccy];
+  const priceLabel = formatUsdCents(BUNDLE_PRICE_USD_CENTS, ccy, fxRate);
+  const maxBudgetLabel = formatUsdCents(BUNDLE_MAX_BUDGET_USD_CENTS, ccy, fxRate);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -73,7 +86,7 @@ export default function BundlesPage() {
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <div className="p-3 rounded-lg bg-muted/50">
             <p className="text-xs text-muted-foreground">{t("dashboard.bundles.priceLabel")}</p>
-            <p className="text-lg font-bold">{t("dashboard.bundles.priceValue")}</p>
+            <p className="text-lg font-bold" data-testid="text-bundle-price">{priceLabel}</p>
             <p className="text-xs text-muted-foreground">{t("dashboard.bundles.priceCaption")}</p>
           </div>
           <div className="p-3 rounded-lg bg-muted/50">
@@ -95,7 +108,7 @@ export default function BundlesPage() {
         <div className="grid sm:grid-cols-3 gap-3 mb-4">
           <div className="p-2.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/30 text-sm">
             <span className="font-medium text-indigo-700 dark:text-indigo-300">{t("dashboard.bundles.maxBudgetLabel")}</span>
-            <span className="ml-1">{t("dashboard.bundles.maxBudgetValue")}</span>
+            <span className="ml-1" data-testid="text-bundle-max-budget">{maxBudgetLabel}</span>
           </div>
           <div className="p-2.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/30 text-sm">
             <span className="font-medium text-indigo-700 dark:text-indigo-300">{t("dashboard.bundles.rateLimitLabel")}</span>

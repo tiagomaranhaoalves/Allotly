@@ -400,18 +400,18 @@ export default function SettingsPage() {
             </div>
           </Card>
 
-          {isRootAdmin && (
-            <Card className="p-6" data-testid="card-currency-settings">
-              <div className="flex items-center gap-2 mb-4">
-                <Globe className="w-5 h-5 text-primary" />
-                <h2 className="text-base font-semibold">{t("dashboard.settings.currencyHeading")}</h2>
-              </div>
-              <p className="text-sm text-muted-foreground mb-4">
-                {t("dashboard.settings.currencyDescription")}
-              </p>
-              <div className="space-y-4 max-w-md">
-                <div className="space-y-2">
-                  <Label>{t("dashboard.settings.currencyLabel")}</Label>
+          <Card className="p-6" data-testid="card-currency-settings">
+            <div className="flex items-center gap-2 mb-4">
+              <Globe className="w-5 h-5 text-primary" />
+              <h2 className="text-base font-semibold">{t("dashboard.settings.currencyHeading")}</h2>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              {t("dashboard.settings.currencyDescription")}
+            </p>
+            <div className="space-y-4 max-w-md">
+              <div className="space-y-2">
+                <Label>{t("dashboard.settings.currencyLabel")}</Label>
+                {isRootAdmin ? (
                   <Select
                     value={currency}
                     onValueChange={(v) => {
@@ -431,15 +431,26 @@ export default function SettingsPage() {
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground" data-testid="text-currency-preview">
-                    {t("dashboard.settings.currencyPreview", {
-                      sample: formatUsdCents(2500, currency),
-                    })}
-                  </p>
-                </div>
+                ) : (
+                  // Non-admin read-only view: show the org's chosen currency
+                  // so members understand why amounts render the way they do,
+                  // without exposing the (admin-only) ability to change it.
+                  <div
+                    className="flex items-center gap-2 px-3 py-2 rounded-md border border-border bg-muted/30 text-sm"
+                    data-testid="text-currency-readonly"
+                  >
+                    <span className="font-medium">{CURRENCY_SYMBOLS[currency]}</span>
+                    <span>{CURRENCY_LABELS[currency]}</span>
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground" data-testid="text-currency-preview">
+                  {t("dashboard.settings.currencyPreview", {
+                    sample: formatUsdCents(2500, currency),
+                  })}
+                </p>
               </div>
-            </Card>
-          )}
+            </div>
+          </Card>
 
           {isRootAdmin && (
             <Card className="p-6">
