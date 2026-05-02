@@ -1227,7 +1227,7 @@ export function translateStreamChunkToAnthropic(
         const tcIndex = typeof tc.index === "number" ? tc.index : 0;
         // Look up the tool block for this OpenAI tool-call index.
         let blockIdx = -1;
-        for (const [idx, info] of state.toolBlocks.entries()) {
+        for (const [idx, info] of Array.from(state.toolBlocks.entries())) {
           if ((info as any).openaiIndex === tcIndex) { blockIdx = idx; break; }
         }
         if (blockIdx === -1) {

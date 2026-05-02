@@ -1,0 +1,69 @@
+# Replit Prompt — V1.5.1 "First Mile": Day-one experience for every Allotly key user
+
+You are implementing V1.5.1, a coordinated set of four user-facing improvements to the day-one and ongoing experience for **every Allotly key user** — TEAM admins, TEAM members, and voucher recipients alike. The four pieces are independent and can be phased; the planner should split them as it sees fit. **All locked decisions below are non-negotiable. One end-of-task report covering all four.**
+
+State going in: V1.5.0 (M1 OAuth + M2 connections + M3a multi-currency + M3b /v1/messages + M4 streaming chat) is fully shipped. Multi-currency display utilities (`server/lib/fx/format.ts`, `convertUsdCentsToCurrency`) and shared cost helpers (`server/lib/proxy/cost-utils.ts`) exist and are battle-tested. All existing tests pass.
+
+---
+
+## Cross-cutting locked decisions
+
+1. **No edits to `processChatCompletion`** in `server/lib/proxy/handler.ts`. The proxy hot path stays bit-for-bit identical.
+2. **No edits to currently-shipped OAuth code paths** unless explicitly listed below.
+3. **No schema changes.** All four pieces are additive at response/UI layers. Do not run `npm run db:push`.
+4. **All money stays USD-cents internally.** Display formatting uses M3a's `convertUsdCentsToCurrency` and `formatCurrency` helpers.
+5. **All existing tests must pass unchanged.** Any test edits must be motivated by real shape changes (e.g. `BudgetSnapshot` gaining a `warning` field), not by working around regressions.
+6. **Description-hash pinning:** Piece 3 adds a new MCP tool, which requires updating `server/lib/mcp/tools/description-hashes.json` with the new tool's hash. The existing tools' descriptions don't change.
+7. **Pre-existing TS errors in `server/routes.ts`, `webhookHandlers.ts`, `lib/plan-limits.ts`, `lib/jobs/*`** — out of scope.
+8. **User types.** Three distinct user types must be supported wherever a piece is user-facing:
+   - **TEAM admin** — `membership.accessType === 'TEAM'` and `membership.role` is `OWNER` or `TEAM_ADMIN`. Has billing access.
+   - **TEAM member** (non-admin) — `accessType === 'TEAM'`, role is anything else. No billing access.
+   - **Voucher recipient** — `accessType === 'VOUCHER'`. Synthetic `@allotly.local` user. No dashboard billing.
+   Piece behavior must branch on these distinctions where specified below.
+
+---
+
+# Piece 1 — "Test your key" button on /redeem AND /dashboard/connect
+
+## Why
+Every Allotly key user — voucher recipient, TEAM admin, TEAM member — at some point copies a snippet, pastes it into Cursor/Claude.ai, and *hopes* it works. If it doesn't, there's no diagnostic, and they bounce. This button validates the entire chain (auth + tier + provider + budget) in one click.
+
+Voucher recipients see this on `/redeem` immediately after redemption. TEAM users see it on `/dashboard/connect` whenever they need to verify their setup.
+
+## Locked decisions — Piece 1
+
+1. **New endpoint:** `POST /api/v1/test-connection`. Auth: same Bearer key as `/api/v1/chat/completions`. Counts against budget, rate limit, concurrency identically to a real call (because it is one). Universal — works for any bearer kind (API key, voucher, OAuth bearer).
+2. **Server-side behavior:** the endpoint internally invokes the existing chat completion path with:
+   - `model`: cheapest model in the user's allowlist that is currently active across providers
+   - `messages`: `[{ role: "user", content: "Reply with the single word 'ok' and nothing else." }]`
+   - `max_tokens`: 5
+   - `temperature`: 0
+3. **Response shape:**
+   ```ts
+   {
+     success: boolean,
+     model_used: string,                    // e.g. "claude-haiku-4-5"
+     response_text: string,                 // the model's reply, e.g. "ok"
+     cost_usd_cents: number,                // small number, typically < 1
+     budget: {                              // post-call snapshot
+       remaining_usd_cents: number,
+       total_usd_cents: number,
+       display: { ... }                     // M3a's display block — currency-aware
+     },
+     latency_ms: number,
+     error?: {
+       code: 'no_providers_active' | 'no_models_in_tier' | 'budget_exhausted' | 'rate_limited' | 'provider_error' | 'unknown',
+       message: string,                     // user-facing
+       hint: string,                        // suggested action; varies by user type per below
+     }
+   }
+   ```
+4. **Error mapping** — translate internal errors to user-facing codes. **Hint text branches by user type** to give actionable guidance:
+   - `no_providers_active`:
+     - TEAM admin: "Configure providers in `/dashboard/providers`."
+     - TEAM member: "Contact your team admin to configure providers."
+     - Voucher recipient: "Contact the admin who issued your voucher."
+   - `no_models_in_tier`:
+     - TEAM admin: "Adjust your tier's model allowlist in `/dashboard/teams`."
+     - TEAM member: "Contact your team admin to expand your allowed models."
+     - Voucher recipient: "Contact the issuing admin to expand allowed mo...

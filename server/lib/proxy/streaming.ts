@@ -223,6 +223,8 @@ export interface AnthropicStreamResult {
   usage: { input_tokens: number; output_tokens: number } | null;
   fullContent: string;
   stopReason: string | null;
+  /** True iff at least one `message_start` event was emitted to the client. */
+  messageStartSent: boolean;
 }
 
 function writeAnthropicEvent(res: ExpressResponse, event: AnthropicEvent): void {
@@ -230,6 +232,18 @@ function writeAnthropicEvent(res: ExpressResponse, event: AnthropicEvent): void 
   res.write(`data: ${JSON.stringify(event.data)}\n\n`);
 }
 
+/**
+ * Stream an upstream provider response and re-frame it as Anthropic SSE events.
+ *
+ * IMPORTANT: this helper does NOT call `res.end()` on the success path and
+ * does NOT auto-emit a minimal envelope when upstream produces nothing. The
+ * caller is responsible for closing the stream (and/or emitting a trailing
+ * `error` event for empty-response refunds) so empty-response semantics stay
+ * with the handler.
+ *
+ * On a hard read error, the helper emits an Anthropic `error` event, ends the
+ * stream, and rethrows.
+ */
 export async function streamProviderResponseAsAnthropic(
   providerResponse: globalThis.Response,
   provider: ProviderType,
@@ -244,7 +258,12 @@ export async function streamProviderResponseAsAnthropic(
   const state = createAnthropicStreamState(model);
   const body = providerResponse.body;
   if (!body) {
-    return { usage: null, fullContent: "", stopReason: null };
+    return {
+      usage: null,
+      fullContent: "",
+      stopReason: null,
+      messageStartSent: state.messageStartSent,
+    };
   }
 
   const reader = body.getReader();
@@ -286,34 +305,10 @@ export async function streamProviderResponseAsAnthropic(
     if (buffer.trim().startsWith("data: ")) {
       processData(buffer.trim().slice(6));
     }
-
-    if (!state.messageStartSent) {
-      // Upstream produced nothing — emit a minimal envelope so SDK consumers don't hang.
-      writeAnthropicEvent(res, {
-        event: "message_start",
-        data: {
-          type: "message_start",
-          message: {
-            id: state.messageId,
-            type: "message",
-            role: "assistant",
-            model: state.model,
-            content: [],
-            stop_reason: null,
-            stop_sequence: null,
-            usage: { input_tokens: state.inputTokens, output_tokens: 0 },
-          },
-        },
-      });
-      writeAnthropicEvent(res, { event: "message_delta", data: { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: state.outputTokens } } });
-      writeAnthropicEvent(res, { event: "message_stop", data: { type: "message_stop" } });
-    }
-
-    res.end();
   } catch (err) {
     try {
       writeAnthropicEvent(res, buildAnthropicErrorEvent("api_error", "Stream interrupted"));
-      res.end();
+      if (!res.writableEnded) res.end();
     } catch {}
     throw err;
   } finally {
@@ -324,6 +319,7 @@ export async function streamProviderResponseAsAnthropic(
     usage: { input_tokens: state.inputTokens, output_tokens: state.outputTokens },
     fullContent: state.fullText,
     stopReason: state.stopReason,
+    messageStartSent: state.messageStartSent,
   };
 }
 

@@ -19,6 +19,7 @@ import { runBundleExpiry } from "./lib/jobs/bundle-expiry";
 import { runRedisReconciliation } from "./lib/jobs/redis-reconciliation";
 import { runModelSync } from "./lib/jobs/model-sync";
 import { handleChatCompletion, handleListModels, handleKeyValidation } from "./lib/proxy/handler";
+import { handleMessages } from "./lib/proxy/handler-messages";
 import { mountMcp } from "./lib/mcp/server";
 import { mountOAuth } from "./lib/oauth";
 import { redisSet, redisGet, redisDel, redisIncr, redisIncrBy, REDIS_KEYS } from "./lib/redis";
@@ -6108,7 +6109,7 @@ export async function registerRoutes(
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
-    res.setHeader("Access-Control-Expose-Headers", "X-Allotly-Budget-Remaining, X-Allotly-Budget-Total, X-Allotly-Expires, X-Allotly-Requests-Remaining, X-Allotly-Key-Type, X-Allotly-Max-Tokens-Applied");
+    res.setHeader("Access-Control-Expose-Headers", "X-Allotly-Budget-Remaining, X-Allotly-Budget-Total, X-Allotly-Expires, X-Allotly-Requests-Remaining, X-Allotly-Key-Type, X-Allotly-Max-Tokens-Applied, X-Allotly-Native-Format, X-Allotly-Dropped-Fields, X-Allotly-Effective-Model, X-Allotly-Request-ID");
     if (req.method === "OPTIONS") {
       return res.sendStatus(204);
     }
@@ -6116,6 +6117,7 @@ export async function registerRoutes(
   });
 
   app.post("/api/v1/chat/completions", handleChatCompletion);
+  app.post("/api/v1/messages", handleMessages);
   app.get("/api/v1/models", handleListModels);
   app.get("/api/v1/keys/me", handleKeyValidation);
   app.get("/api/v1/health", (_req, res) => {
@@ -6138,6 +6140,16 @@ export async function registerRoutes(
         code: "method_not_allowed",
         message: `Method ${req.method} is not allowed on this endpoint. Use POST.`,
         type: "allotly_error",
+      },
+    });
+  });
+
+  app.all("/api/v1/messages", (req, res) => {
+    res.status(405).json({
+      type: "error",
+      error: {
+        type: "invalid_request_error",
+        message: `Method ${req.method} is not allowed on this endpoint. Use POST.`,
       },
     });
   });
@@ -6182,7 +6194,7 @@ export async function registerRoutes(
     });
   });
 
-  console.log("[routes] Proxy routes registered: POST /api/v1/chat/completions, GET /api/v1/models, GET /api/v1/keys/me, GET /api/v1/health");
+  console.log("[routes] Proxy routes registered: POST /api/v1/chat/completions, POST /api/v1/messages, GET /api/v1/models, GET /api/v1/keys/me, GET /api/v1/health");
 
   mountMcp(app, "/mcp");
 
