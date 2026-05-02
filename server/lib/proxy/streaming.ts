@@ -316,10 +316,7 @@ export async function streamProviderResponseAsAnthropic(
   }
 
   return {
-    // Return null when upstream never reported token usage so the caller
-    // (handler-messages) falls back to estimating output tokens from
-    // `fullContent`. Returning a zeroed object here would silently
-    // undercharge budget on providers/streams that omit usage metadata.
+    // Null when upstream never reported usage — caller falls back to estimating from fullContent.
     usage: state.usageObserved
       ? { input_tokens: state.inputTokens, output_tokens: state.outputTokens }
       : null,

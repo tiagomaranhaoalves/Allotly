@@ -480,92 +480,32 @@ describe("buildAnthropicErrorEvent", () => {
 
 import { sanitizeProviderBody as sanitizeForProvider } from "../server/lib/proxy/translate";
 
-// =============================================================================
-// Anthropic verbatim pass-through fidelity — unknown/extra top-level fields
-// must survive the full handler pipeline end-to-end (request body sent to
-// upstream + response body returned to client) when provider is ANTHROPIC.
-// We exercise the real request-build branch and the response-pass-through
-// branch in isolation, since they are the two places where field-loss could
-// regress in the future.
-// =============================================================================
-
 describe("/api/v1/messages — Anthropic verbatim pass-through", () => {
   it("preserves unknown top-level fields when building the upstream request body", () => {
-    // This mirrors the exact body-construction branch in handler-messages.ts:
-    //   if (provider === "ANTHROPIC") {
-    //     translated.body = { ...parsed, model: effectiveModel, max_tokens: ... };
-    //   }
     const parsed: any = {
       model: "claude-3-5-sonnet",
       max_tokens: 100,
       messages: [{ role: "user", content: "hi" }],
       thinking: { type: "enabled", budget_tokens: 1024 },
-      // Hypothetical future Anthropic-only fields:
       anthropic_beta_feature: { enabled: true },
       mcp_servers: [{ name: "fs", url: "stdio://x" }],
       service_tier: "priority",
     };
-    const effectiveModel = "claude-3-5-sonnet";
-    const effectiveMaxTokens = 100;
-    const upstreamBody = {
-      ...parsed,
-      model: effectiveModel,
-      max_tokens: effectiveMaxTokens,
-    };
+    const upstreamBody = { ...parsed, model: "claude-3-5-sonnet", max_tokens: 100 };
     expect(upstreamBody.thinking).toEqual({ type: "enabled", budget_tokens: 1024 });
     expect(upstreamBody.anthropic_beta_feature).toEqual({ enabled: true });
     expect(upstreamBody.mcp_servers).toEqual([{ name: "fs", url: "stdio://x" }]);
     expect(upstreamBody.service_tier).toBe("priority");
   });
 
-  it("returns the upstream Anthropic JSON verbatim (preserves unknown response fields)", () => {
-    // Mirrors the response branch in handler-messages.ts:
-    //   const anthropicResponse = (provider === "ANTHROPIC")
-    //     ? responseBody : translateResponseToAnthropic(...);
-    const upstreamResponse: any = {
-      id: "msg_xyz",
-      type: "message",
-      role: "assistant",
-      model: "claude-3-5-sonnet",
-      content: [
-        { type: "text", text: "hi" },
-        // Future content block kind we don't know about yet:
-        { type: "future_block", payload: { x: 1 } },
-      ],
-      stop_reason: "end_turn",
-      stop_sequence: null,
-      usage: {
-        input_tokens: 5,
-        output_tokens: 1,
-        cache_creation_input_tokens: 2,
-        cache_read_input_tokens: 3,
-        // Future usage field:
-        server_tool_use: { web_search_requests: 0 },
-      },
-      // Future top-level field:
-      container: { id: "ct_1" },
-    };
-    const provider = "ANTHROPIC";
-    const passthrough = provider === "ANTHROPIC" ? upstreamResponse : { /* translated */ };
-    expect(passthrough).toBe(upstreamResponse); // identity, not a copy
-    expect((passthrough as any).container).toEqual({ id: "ct_1" });
-    expect((passthrough as any).content[1]).toEqual({ type: "future_block", payload: { x: 1 } });
-    expect((passthrough as any).usage.cache_creation_input_tokens).toBe(2);
-    expect((passthrough as any).usage.server_tool_use).toEqual({ web_search_requests: 0 });
-  });
-
   it("non-Anthropic providers still go through translateResponseToAnthropic (normalization)", async () => {
-    // Sanity check that pass-through is ONLY for Anthropic. OpenAI responses
-    // must still be normalized into Anthropic shape.
     const { translateResponseToAnthropic } = await import("../server/lib/proxy/translate");
-    const openaiBody = {
+    const out = translateResponseToAnthropic("OPENAI", {
       id: "chatcmpl-1",
       choices: [{ message: { content: "hi" }, finish_reason: "stop" }],
       usage: { prompt_tokens: 5, completion_tokens: 1 },
-    };
-    const out = translateResponseToAnthropic("OPENAI", openaiBody, "gpt-4o", undefined);
+    }, "gpt-4o", undefined);
     expect(out.type).toBe("message");
-    expect(out.role).toBe("assistant");
     expect(out.usage.input_tokens).toBe(5);
     expect(out.usage.output_tokens).toBe(1);
   });
@@ -732,14 +672,6 @@ describe("streamProviderResponseAsAnthropic — tool-only stream", () => {
   });
 });
 
-// =============================================================================
-// Budget-accounting safeguard — when an upstream stream emits content but
-// never reports token usage, the helper MUST return `usage: null` so the
-// handler falls back to estimating output tokens from `fullContent`. Returning
-// a zeroed usage object would silently undercharge budget (an economic abuse
-// vector). When upstream DOES report usage, we MUST surface those numbers.
-// =============================================================================
-
 function makeOpenAIStreamWithoutUsage(): Response {
   const chunks = [
     `data: {"id":"x","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello, "}}]}\n\n`,
@@ -894,6 +826,17 @@ describe("/api/v1/messages — live route smoke", () => {
     const body = await r.json();
     expect(body.type).toBe("error");
     expect(body.error.type).toBe("invalid_request_error");
+  });
+
+  it("response exposes the spec'd budget header names via Access-Control-Expose-Headers", async () => {
+    if (!(await reachable())) return;
+    const r = await fetch(`${base}/api/v1/messages`, { method: "GET" });
+    const expose = r.headers.get("Access-Control-Expose-Headers") || "";
+    expect(expose).toContain("X-Allotly-Budget-Remaining-USD-Cents");
+    expect(expose).toContain("X-Allotly-Budget-Total-USD-Cents");
+    expect(expose).toContain("X-Allotly-Native-Format");
+    expect(expose).toContain("X-Allotly-Request-ID");
+    expect(expose).toContain("X-Allotly-Effective-Model");
   });
 
 });

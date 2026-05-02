@@ -6109,7 +6109,7 @@ export async function registerRoutes(
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
-    res.setHeader("Access-Control-Expose-Headers", "X-Allotly-Budget-Remaining, X-Allotly-Budget-Total, X-Allotly-Expires, X-Allotly-Requests-Remaining, X-Allotly-Key-Type, X-Allotly-Max-Tokens-Applied, X-Allotly-Native-Format, X-Allotly-Dropped-Fields, X-Allotly-Effective-Model, X-Allotly-Request-ID");
+    res.setHeader("Access-Control-Expose-Headers", "X-Allotly-Budget-Remaining, X-Allotly-Budget-Total, X-Allotly-Budget-Remaining-USD-Cents, X-Allotly-Budget-Total-USD-Cents, X-Allotly-Expires, X-Allotly-Requests-Remaining, X-Allotly-Key-Type, X-Allotly-Max-Tokens-Applied, X-Allotly-Native-Format, X-Allotly-Dropped-Fields, X-Allotly-Effective-Model, X-Allotly-Request-ID");
     if (req.method === "OPTIONS") {
       return res.sendStatus(204);
     }

@@ -122,8 +122,8 @@ function setBudgetHeaders(
   ctx?: { remaining: number; total: number; expires: string; requestsRemaining: number; keyType?: string },
 ) {
   if (!ctx) return;
-  res.setHeader("X-Allotly-Budget-Remaining", String(ctx.remaining));
-  res.setHeader("X-Allotly-Budget-Total", String(ctx.total));
+  res.setHeader("X-Allotly-Budget-Remaining-USD-Cents", String(ctx.remaining));
+  res.setHeader("X-Allotly-Budget-Total-USD-Cents", String(ctx.total));
   res.setHeader("X-Allotly-Expires", ctx.expires);
   res.setHeader("X-Allotly-Requests-Remaining", String(ctx.requestsRemaining));
   if (ctx.keyType) res.setHeader("X-Allotly-Key-Type", ctx.keyType);
@@ -524,10 +524,7 @@ export async function handleMessages(req: Request, res: Response) {
       effectiveMaxTokens ?? parsed.max_tokens,
       azureContext,
     );
-    // Verbatim pass-through for Anthropic upstreams: forward the validated
-    // request body unchanged so unknown/future Anthropic-only fields are not
-    // silently dropped. Sanitization stays on for non-Anthropic providers
-    // because those upstreams reject unknown top-level keys.
+    // Anthropic→Anthropic is verbatim pass-through; other providers sanitize.
     if (provider === "ANTHROPIC") {
       translated.body = {
         ...parsed,
@@ -595,8 +592,8 @@ export async function handleMessages(req: Request, res: Response) {
       res.setHeader("X-Allotly-Max-Tokens-Applied", String(effectiveMaxTokens));
     }
     res.setHeader("X-Allotly-Effective-Model", effectiveModel);
-    res.setHeader("X-Allotly-Budget-Remaining", String(budgetResult.remaining));
-    res.setHeader("X-Allotly-Budget-Total", String(membership.monthlyBudgetCents));
+    res.setHeader("X-Allotly-Budget-Remaining-USD-Cents", String(budgetResult.remaining));
+    res.setHeader("X-Allotly-Budget-Total-USD-Cents", String(membership.monthlyBudgetCents));
     const bundleRemainingNow = await getBundleRequestsRemaining(membership, true);
     const requestsRemainingNow = bundleRemainingNow !== null
       ? bundleRemainingNow
@@ -650,12 +647,7 @@ export async function handleMessages(req: Request, res: Response) {
     } else {
       const responseBody = await readNonStreamingResponse(providerResponse);
 
-      // Verbatim pass-through for Anthropic upstreams: return the upstream
-      // JSON unchanged so unknown/future top-level fields survive end-to-end.
-      // Token accounting still uses the canonical `usage` shape that
-      // Anthropic always emits.
-      const isAnthropicPassthrough = provider === "ANTHROPIC";
-      const anthropicResponse = isAnthropicPassthrough
+      const anthropicResponse = provider === "ANTHROPIC"
         ? responseBody
         : translateResponseToAnthropic(provider, responseBody, effectiveModel, translated.proxyStopSequences);
 
