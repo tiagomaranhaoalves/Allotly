@@ -474,6 +474,52 @@ describe("buildAnthropicErrorEvent", () => {
 });
 
 // =============================================================================
+// Sanitization parity — Anthropic-native pass-through fields must survive
+// the full handler pipeline when the upstream provider is Anthropic.
+// =============================================================================
+
+import { sanitizeProviderBody as sanitizeForProvider } from "../server/lib/proxy/translate";
+
+describe("sanitizeProviderBody — Anthropic pass-through", () => {
+  it("preserves top-level `thinking` for ANTHROPIC upstreams", () => {
+    const body = {
+      model: "claude-3-5-sonnet",
+      messages: [{ role: "user", content: "x" }],
+      max_tokens: 10,
+      thinking: { type: "enabled", budget_tokens: 1024 },
+    };
+    const out = sanitizeForProvider(body, "ANTHROPIC");
+    expect(out.thinking).toEqual({ type: "enabled", budget_tokens: 1024 });
+    expect(out.model).toBe("claude-3-5-sonnet");
+    expect(out.max_tokens).toBe(10);
+  });
+
+  it("strips `thinking` for OPENAI upstreams (it's Anthropic-only)", () => {
+    const body = {
+      model: "gpt-4o",
+      messages: [{ role: "user", content: "x" }],
+      max_tokens: 10,
+      thinking: { type: "enabled" },
+    };
+    const out = sanitizeForProvider(body, "OPENAI");
+    expect(out.thinking).toBeUndefined();
+  });
+
+  it("end-to-end: translateAnthropicToProvider + sanitize keeps `thinking` for ANTHROPIC", async () => {
+    const { translateAnthropicToProvider } = await import("../server/lib/proxy/translate");
+    const req: any = {
+      model: "claude-3-5-sonnet",
+      max_tokens: 100,
+      messages: [{ role: "user", content: "hi" }],
+      thinking: { type: "enabled", budget_tokens: 2048 },
+    };
+    const translated = translateAnthropicToProvider(req, "ANTHROPIC", 100);
+    const sanitized = sanitizeForProvider(translated.body, "ANTHROPIC");
+    expect(sanitized.thinking).toEqual({ type: "enabled", budget_tokens: 2048 });
+  });
+});
+
+// =============================================================================
 // /api/v1/messages route smoke tests — verify the live endpoint returns
 // Anthropic-shaped envelopes for unauthenticated and method-not-allowed cases.
 // =============================================================================

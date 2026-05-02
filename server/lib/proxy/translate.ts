@@ -16,6 +16,9 @@ const OPENAI_ALLOWED_PARAMS = new Set([
 const ANTHROPIC_ALLOWED_PARAMS = new Set([
   "model", "messages", "max_tokens", "temperature", "top_p", "top_k",
   "stream", "stop_sequences", "system", "metadata", "tools", "tool_choice",
+  // Anthropic-native pass-through fields — must survive sanitization for
+  // the /api/v1/messages endpoint when the upstream is Anthropic itself.
+  "thinking",
 ]);
 
 const GOOGLE_ALLOWED_PARAMS = new Set([
