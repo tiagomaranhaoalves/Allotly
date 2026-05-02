@@ -343,7 +343,7 @@ When a client calls the MCP `chat` tool with a `_meta.progressToken` and the ser
 3. The final `tools/call` response still carries the complete reply, the cost breakdown, and the updated budget snapshot — so non-streaming clients stay byte-compatible.
 4. Each streamed call is logged with `streamed=true` in the `mcp_audit_log` table (column added in V1.5.1) so we can tell streamed and non-streamed traffic apart in usage analytics.
 
-If the flag is off, or the client does not pass a `progressToken`, the tool falls back to a single non-streaming reply with `streamed=false` recorded.
+`MCP_STREAMING_ENABLED` defaults to **false** — streaming has to be explicitly opted into at the server level. If the flag is off, or the client does not pass a `progressToken`, the tool falls back to a single non-streaming reply with `streamed=false` recorded.
 
 ---
 

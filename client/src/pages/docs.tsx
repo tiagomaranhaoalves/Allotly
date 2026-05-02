@@ -1033,7 +1033,7 @@ Authorization: Bearer allotly_sk_...`}</CodeBlock>
 
           <SubHeading id="test-connection" title="Test Connection" />
           <p className="text-muted-foreground leading-relaxed mb-4">
-            Two endpoints let you smoke-test an Allotly key against a real provider before wiring it into your code. Both make a tiny chat call (≈10 output tokens) against a cheap model from your allowlist and return a structured envelope you can render directly in a UI.
+            Two endpoints let you smoke-test an Allotly key against a real provider before wiring it into your code. Both make a tiny capped chat call (locked at <code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">max_tokens=5</code>, <code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">temperature=0</code>) against the cheapest active model in your allowlist and return a structured envelope you can render directly in a UI.
           </p>
           <ul className="space-y-2 text-sm text-muted-foreground mb-4">
             <li className="flex gap-2"><Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" /><span><code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">POST /api/v1/test-connection</code> — Bearer-authenticated. Use this from server-side code or CLI tools that already have an <code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">allotly_sk_</code> key.</span></li>
