@@ -26,9 +26,12 @@ Do **not** ship a release that was built with `SKIP_RELEASE_TESTS=1`.
 ## 2. Playwright e2e — required before publish
 
 The arena setup → round → vote → results walk lives at
-`tests/e2e/arena-flow.spec.ts`. It is checked into the repo and run via
-the Playwright project configured in `playwright.config.ts`. Run it
-before clicking *Publish* in Replit:
+`tests/e2e/arena-flow.spec.ts`. The dashboard budget-warning banner
+walk (low / critical / exhausted, across admin / member / voucher
+principals — added in V1.5.1) lives alongside it at
+`tests/e2e/budget-warning-banner.spec.ts`. Both are checked into the
+repo and run via the Playwright project configured in
+`playwright.config.ts`. Run them before clicking *Publish* in Replit:
 
 ```
 bash scripts/pre-release.sh           # vitest + playwright

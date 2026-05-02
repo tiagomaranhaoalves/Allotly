@@ -30,8 +30,10 @@ Allotly exposes a single OpenAI-compatible endpoint that transparently proxies r
 |----------|--------|-------------|
 | `/api/v1/chat/completions` | `POST` | Main proxy endpoint (OpenAI-compatible) |
 | `/api/v1/models` | `GET` | List available models filtered by provider connections and membership permissions |
+| `/api/v1/test-connection` | `POST` | Bearer-authenticated smoke test — runs a ≈10-token call against a cheap model from the key's allowlist. Returns a structured envelope (`model_used`, `response_text`, `cost.display`, `budget`, `latency`) on success or one of six branded failure codes (`no_models_allowed`, `no_provider_configured`, `budget_exhausted`, `key_revoked`, `upstream_error`, `internal_error`) with a hint branched by `user_type` (team_admin / team_member / voucher_recipient). |
+| `/api/v1/test-connection/session` | `POST` | Same payload and envelope as the bearer endpoint, but cookie-authenticated. Powers the dashboard's "Test your key" button without forcing the user to copy-paste their key. Auto-invoked by the redemption flow so vouchers are validated end-to-end before the recipient ever leaves the redeem page. |
 
-Both endpoints require `Authorization: Bearer allotly_sk_...` headers.
+`/api/v1/chat/completions` and `/api/v1/models` require `Authorization: Bearer allotly_sk_...` headers. The two test-connection endpoints differ only in auth strategy (bearer vs. session cookie) — both reuse the full proxy pipeline including budget reservation, model allowlist checks, and Redis cost reconciliation.
 
 The chat completions endpoint accepts the standard OpenAI request schema:
 
@@ -315,6 +317,43 @@ Google's response structure is complex, especially for thinking models. Two help
 | OPENAI | `Authorization: Bearer {key}` header |
 | ANTHROPIC | `x-api-key: {key}` header |
 | GOOGLE | `?key={key}` URL parameter |
+
+---
+
+## 6a. Cost Preview (`estimate_cost`)
+
+The MCP `estimate_cost` tool is a read-only sibling of `chat`. It runs steps 1–11 of the request flow (auth, model/provider allowlist, pricing lookup, input-token estimation) but skips reservation, decryption, and the upstream fetch — no budget is reserved, no `proxyRequestLogs` row is written, and no upstream tokens are spent.
+
+For each candidate it returns:
+- The estimated cost in USD-cents and the org's display currency
+- Whether the cost fits the caller's remaining budget
+- Up to three cheaper alternative models, drawn from the caller's allowlist and ranked by ascending cost-per-1M-input-tokens
+- Vision-capable models are filtered out of the alternatives list **unless** the prompt actually contains image input parts (so a text-only prompt does not get suggested an expensive multimodal model)
+
+The estimate uses `model_pricing.max_output_tokens` (added in V1.5.1) as an upper bound when the caller does not pass an explicit `max_tokens`, which keeps the preview honest for reasoning models that can otherwise inflate the worst-case projection.
+
+---
+
+## 6b. MCP Streaming
+
+When a client calls the MCP `chat` tool with a `_meta.progressToken` and the server has `MCP_STREAMING_ENABLED=true`, the proxy switches into incremental delivery mode:
+
+1. The HTTP call to the upstream provider is opened with `stream: true` regardless of what the client asked for.
+2. As tokens arrive, the MCP server emits `notifications/progress` messages keyed by the caller's `progressToken`, carrying the partial text and a running token count.
+3. The final `tools/call` response still carries the complete reply, the cost breakdown, and the updated budget snapshot — so non-streaming clients stay byte-compatible.
+4. Each streamed call is logged with `streamed=true` in the `mcp_audit_log` table (column added in V1.5.1) so we can tell streamed and non-streamed traffic apart in usage analytics.
+
+If the flag is off, or the client does not pass a `progressToken`, the tool falls back to a single non-streaming reply with `streamed=false` recorded.
+
+---
+
+## 6c. Budget Warning Surfaces
+
+V1.5.1 adds first-class budget warnings to both MCP envelopes and the dashboard:
+
+- The MCP `_meta.budget` block on every tool response (notably `my_status`, `my_budget`, `my_recent_usage`) carries an additive `warning` field with one of `low` (≥80% spent), `critical` (≥95% spent), or `exhausted` (100%).
+- The warning copy is branched by principal type (`team_admin`, `team_member`, `voucher_recipient`) so the suggested next step ("raise the cap from /dashboard/teams/:id", "ask your admin to top up", "ask the issuer for a new voucher") points to the correct surface.
+- The dashboard renders the same three states as a top-of-page banner on every authenticated route, recomputed against the freshest Redis counters. Recompute is tied to the same 60-second reconciliation cadence used for budget drift correction.
 
 ---
 

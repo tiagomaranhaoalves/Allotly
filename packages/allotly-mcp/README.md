@@ -15,9 +15,10 @@ Once connected, your assistant can call these Allotly tools:
 | Tool | What it does |
 | --- | --- |
 | `list_available_models` | Models your key is allowed to use, with pricing |
-| `chat` | Send a chat completion through Allotly's proxy |
+| `chat` | Send a chat completion through Allotly's proxy. Supports incremental token streaming via MCP `notifications/progress` when the host opts in with a `_meta.progressToken` and the server has `MCP_STREAMING_ENABLED=true` |
 | `compare_models` | Run the same prompt across models, compare cost & latency |
 | `recommend_model` | Suggest a cheaper model that fits your task |
+| `estimate_cost` | Read-only cost preview for a prompt — returns the estimated cost on your chosen model plus up to three cheaper alternatives that fit your remaining budget. No tokens spent, no budget reserved |
 | `voucher_info` | Inspect a voucher code (no auth needed) |
 | `my_budget` | Remaining budget on your key |
 | `my_status` | Health, key info, and recent activity |

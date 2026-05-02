@@ -85,7 +85,7 @@ const TOOLS: Tool[] = [
     name: "chat",
     category: "consumption",
     description:
-      "Send messages to any AI model your Allotly key allows. Returns the assistant's reply and your remaining budget. Supports system prompts, temperature, JSON mode, tool calling, vision input, and streaming. If you don't specify a model, Allotly picks a sensible default within your allowlist.",
+      "Send messages to any AI model your Allotly key allows. Returns the assistant's reply and your remaining budget. Supports system prompts, temperature, JSON mode, tool calling, vision input, and streaming. If you don't specify a model, Allotly picks a sensible default within your allowlist. When the host enables MCP streaming and the request includes a `_meta.progressToken`, the server emits `notifications/progress` with token deltas as the model generates — gated by the `MCP_STREAMING_ENABLED` server flag and recorded as `streamed=true` in `mcp_audit_log`.",
   },
   {
     name: "list_available_models",
@@ -104,6 +104,12 @@ const TOOLS: Tool[] = [
     category: "consumption",
     description:
       "Suggest the best model for a task given your remaining budget. Returns one recommended model with a short reason and 1–2 alternatives.",
+  },
+  {
+    name: "estimate_cost",
+    category: "consumption",
+    description:
+      "Read-only cost preview for a prompt before you spend a token. Returns the estimated cost on the requested model plus up to three cheaper alternatives that fit your remaining budget. Vision-capable models are filtered out unless the prompt actually contains image input. No budget is reserved and no upstream call is made.",
   },
   {
     name: "quickstart",

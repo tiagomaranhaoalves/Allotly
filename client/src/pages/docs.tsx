@@ -89,6 +89,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { id: "response-headers", title: "Response Headers" },
       { id: "error-codes", title: "Error Codes" },
       { id: "rate-limits", title: "Rate Limits" },
+      { id: "test-connection", title: "Test Connection" },
       { id: "streaming", title: "Streaming" },
     ],
   },
@@ -1030,6 +1031,25 @@ Authorization: Bearer allotly_sk_...`}</CodeBlock>
             indicating how many seconds to wait before retrying.
           </p>
 
+          <SubHeading id="test-connection" title="Test Connection" />
+          <p className="text-muted-foreground leading-relaxed mb-4">
+            Two endpoints let you smoke-test an Allotly key against a real provider before wiring it into your code. Both make a tiny chat call (≈10 output tokens) against a cheap model from your allowlist and return a structured envelope you can render directly in a UI.
+          </p>
+          <ul className="space-y-2 text-sm text-muted-foreground mb-4">
+            <li className="flex gap-2"><Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" /><span><code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">POST /api/v1/test-connection</code> — Bearer-authenticated. Use this from server-side code or CLI tools that already have an <code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">allotly_sk_</code> key.</span></li>
+            <li className="flex gap-2"><Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" /><span><code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">POST /api/v1/test-connection/session</code> — Cookie-authenticated. Used by the dashboard's "Test your key" button so members and admins can verify a key without copy-pasting it.</span></li>
+          </ul>
+          <p className="text-sm text-muted-foreground mb-4">
+            On success the response envelope contains <code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">model_used</code>, <code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">response_text</code>, <code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">cost.display</code> (already formatted in the org's currency), <code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">budget</code> (remaining + period end), and <code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">latency</code> in milliseconds. On failure it returns one of six branded codes —
+            <code className="px-1 py-0.5 mx-1 rounded-md bg-muted text-xs font-mono">no_models_allowed</code>,
+            <code className="px-1 py-0.5 mx-1 rounded-md bg-muted text-xs font-mono">no_provider_configured</code>,
+            <code className="px-1 py-0.5 mx-1 rounded-md bg-muted text-xs font-mono">budget_exhausted</code>,
+            <code className="px-1 py-0.5 mx-1 rounded-md bg-muted text-xs font-mono">key_revoked</code>,
+            <code className="px-1 py-0.5 mx-1 rounded-md bg-muted text-xs font-mono">upstream_error</code>, or
+            <code className="px-1 py-0.5 mx-1 rounded-md bg-muted text-xs font-mono">internal_error</code>
+            — each paired with a hint that branches on the caller's user_type (team_admin / team_member / voucher_recipient) so the recommended fix points to the right dashboard surface. Vouchers are auto-tested at redemption time using the same pipeline; the result is shown inline on the redemption page.
+          </p>
+
           <SubHeading id="streaming" title="Streaming" />
           <p className="text-muted-foreground leading-relaxed mb-4">
             The proxy supports Server-Sent Events (SSE) streaming for all providers. Set <code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">"stream": true</code> in your request:
@@ -1045,6 +1065,9 @@ Authorization: Bearer allotly_sk_...`}</CodeBlock>
           <p className="text-sm text-muted-foreground mb-4">
             Streaming responses return chunks in OpenAI's SSE format. Budget tracking for streaming requests uses
             the actual token count from the final chunk's usage data. Budget headers are included in the final SSE message.
+          </p>
+          <p className="text-sm text-muted-foreground mb-4">
+            <strong>MCP streaming.</strong> When you call the <code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">chat</code> tool over MCP, Allotly can also stream incrementally as the model generates. Pass a <code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">_meta.progressToken</code> on the tool call and the server emits <code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">notifications/progress</code> messages with token deltas, ending with the final <code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">tools/call</code> response. This is gated by the <code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">MCP_STREAMING_ENABLED</code> server flag — when off, the tool falls back to a single non-streaming reply. Each streamed call is recorded with <code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">streamed=true</code> in <code className="px-1 py-0.5 rounded-md bg-muted text-xs font-mono">mcp_audit_log</code> for observability.
           </p>
 
           <h4 className="text-base font-semibold mt-6 mb-3">Python Streaming Example</h4>
