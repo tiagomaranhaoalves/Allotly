@@ -179,6 +179,10 @@ async function runStreamingChat(
       });
     },
     (result) => {
+      // Final response shape MUST match the buffered (non-streaming) path
+      // exactly so downstream MCP clients see one canonical schema. Do not
+      // add `streamed:true` here — the streaming flag lives in the audit
+      // log, not in user-facing tool output.
       finalOut = {
         content: result.body?.choices?.[0]?.message?.content || "",
         ...(result.body?.choices?.[0]?.message?.tool_calls
@@ -193,7 +197,7 @@ async function runStreamingChat(
           cost_cents: result.costCents,
         },
         max_tokens_applied: result.maxTokensApplied,
-        _meta: { budget: result.budgetSnapshot, streamed: true },
+        _meta: { budget: result.budgetSnapshot },
       };
     },
     (e) => {
@@ -203,16 +207,30 @@ async function runStreamingChat(
 
   if (errOut) {
     const e: StreamErr = errOut;
-    throw mapProxyErrorToMcp({ status: e.status, errorBody: e.errorBody, budgetSnapshot: e.budgetSnapshot });
+    // Pass through the proxy's explicit MCP errorCode (e.g. -32099 for
+    // client_disconnected) so disconnect/abort semantics survive the
+    // round-trip from handler-streaming.ts to the MCP transport.
+    throw mapProxyErrorToMcp({
+      status: e.status,
+      errorBody: e.errorBody,
+      budgetSnapshot: e.budgetSnapshot,
+      errorCode: e.errorCode,
+    });
   }
   return finalOut;
 }
 
-export function mapProxyErrorToMcp(result: { status: number; errorBody?: any; budgetSnapshot: any }): McpToolError {
+export function mapProxyErrorToMcp(result: { status: number; errorBody?: any; budgetSnapshot: any; errorCode?: number }): McpToolError {
   const status = result.status;
   const code = result.errorBody?.code || "internal_error";
   const message = result.errorBody?.message || "Proxy returned an error";
 
+  // Client disconnect carries its own MCP code (-32099) and must NOT be
+  // bucketed as InvalidInput / RateLimited / etc. just because it
+  // happens to surface as an HTTP 499.
+  if (result.errorCode === -32099 || code === "client_disconnected") {
+    return new McpToolError("ClientDisconnected", message, { _meta: { budget: result.budgetSnapshot } });
+  }
   if (status === 401) return new McpToolError("Unauthorised", message);
   if (status === 402) return new McpToolError("BudgetExceeded", message, { _meta: { budget: result.budgetSnapshot } });
   if (status === 403 && code === "model_not_allowed") return new McpToolError("ModelNotAllowed", message);

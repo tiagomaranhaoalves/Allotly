@@ -15,6 +15,8 @@ import http from "http";
 import { mountMcp } from "../../server/lib/mcp/server";
 import { consumeSseUpstream } from "../../server/lib/proxy/upstream-stream";
 import { listTools } from "../../server/lib/mcp/tools";
+import { mapProxyErrorToMcp } from "../../server/lib/mcp/tools/consumption/chat";
+import { McpToolError } from "../../server/lib/mcp/errors";
 
 function makeApp() {
   const app = express();
@@ -272,5 +274,81 @@ describe("M4 — regression guarantees", () => {
       expect(r.headers["content-type"]).toMatch(/application\/json/);
       expect(r.body?.result?.tools).toHaveLength(13);
     } finally { server.close(); }
+  });
+});
+
+describe("M4 — error mapping", () => {
+  it("maps explicit -32099 errorCode to ClientDisconnected (not InvalidInput / ProviderError)", () => {
+    const e = mapProxyErrorToMcp({
+      status: 499,
+      errorBody: { code: "client_disconnected", message: "Client disconnected mid-stream" },
+      budgetSnapshot: { remaining_cents: 100, total_cents: 1000, currency: "usd", period_end: new Date().toISOString(), requests_remaining: 5, rate_limit_per_min: 20, concurrency_limit: 2, voucher_expires_at: null },
+      errorCode: -32099,
+    });
+    expect(e).toBeInstanceOf(McpToolError);
+    expect(e.code).toBe(-32099);
+    expect(e.name).toBe("ClientDisconnected");
+    // Must carry budget snapshot in _meta so the client can see how much was billed.
+    expect(e.data._meta?.budget?.remaining_cents).toBe(100);
+  });
+
+  it("falls back to ClientDisconnected when only the errorBody.code is set", () => {
+    const e = mapProxyErrorToMcp({
+      status: 499,
+      errorBody: { code: "client_disconnected", message: "Disconnected" },
+      budgetSnapshot: { remaining_cents: 50, total_cents: 1000, currency: "usd", period_end: new Date().toISOString(), requests_remaining: 5, rate_limit_per_min: 20, concurrency_limit: 2, voucher_expires_at: null },
+    });
+    expect(e.code).toBe(-32099);
+  });
+
+  it("does NOT remap legitimate 5xx provider errors as ClientDisconnected", () => {
+    const e = mapProxyErrorToMcp({
+      status: 502,
+      errorBody: { code: "provider_error", message: "upstream blew up" },
+      budgetSnapshot: null,
+    });
+    expect(e.code).toBe(-32030);
+    expect(e.name).toBe("ProviderError");
+  });
+
+  it("retains 402 BudgetExceeded mapping with budget _meta", () => {
+    const e = mapProxyErrorToMcp({
+      status: 402,
+      errorBody: { code: "insufficient_budget", message: "Out of budget" },
+      budgetSnapshot: { remaining_cents: 0, total_cents: 1000, currency: "usd", period_end: new Date().toISOString(), requests_remaining: 5, rate_limit_per_min: 20, concurrency_limit: 2, voucher_expires_at: null },
+    });
+    expect(e.code).toBe(-32020);
+    expect(e.name).toBe("BudgetExceeded");
+    expect(e.data._meta?.budget?.remaining_cents).toBe(0);
+  });
+});
+
+describe("M4 — final response shape parity", () => {
+  it("MCP_ERROR_CODES exposes ClientDisconnected for the new disconnect path", async () => {
+    const { MCP_ERROR_CODES } = await import("../../server/lib/mcp/errors");
+    expect(MCP_ERROR_CODES.ClientDisconnected).toBe(-32099);
+  });
+
+  it("chat tool source does NOT add a `streamed:true` flag to the final tool output", async () => {
+    // Static guard: the streaming branch's final result shape must match
+    // the buffered branch's shape exactly. The audit log is the only place
+    // that records the streaming flag (mcpAuditLog.streamed).
+    const fs = await import("fs/promises");
+    const src = await fs.readFile("server/lib/mcp/tools/consumption/chat.ts", "utf8");
+    // Strip line comments so the guard doesn't trip on the comment that
+    // explains why we removed the streamed flag.
+    const code = src
+      .split("\n")
+      .map(l => l.replace(/\/\/.*$/, ""))
+      .join("\n")
+      .replace(/\/\*[\s\S]*?\*\//g, "");
+    // No `_meta` ever surfaces a `streamed` key — the streaming flag lives
+    // in the audit log only.
+    expect(code).not.toMatch(/_meta\s*:\s*\{[^}]*streamed/);
+    expect(code).not.toMatch(/streamed\s*:\s*true/);
+    // Both branches build `_meta: { budget: ... }` — count occurrences to
+    // ensure parity (one for buffered, one for streaming).
+    const matches = code.match(/_meta:\s*\{\s*budget:/g) || [];
+    expect(matches.length).toBeGreaterThanOrEqual(2);
   });
 });

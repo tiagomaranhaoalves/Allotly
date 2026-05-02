@@ -10,6 +10,7 @@ export const MCP_ERROR_CODES = {
   ModelNotAllowed: -32015,
   BudgetExceeded: -32020,
   ProviderError: -32030,
+  ClientDisconnected: -32099,
   InvalidInput: -32100,
 } as const;
 
@@ -39,6 +40,7 @@ function defaultHint(code: McpErrorCode): string {
     case "ModelNotAllowed": return "Run list_available_models to see what your key allows.";
     case "BudgetExceeded": return "Run request_topup to ask the admin for more budget.";
     case "ProviderError": return "The upstream AI provider returned an error. Try again or use a different model.";
+    case "ClientDisconnected": return "The client disconnected before the response completed. Any work already done was billed; try again if you still need a result.";
     case "InvalidInput": return "Check the tool's input schema and retry.";
     default: return "See documentation.";
   }

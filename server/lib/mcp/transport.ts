@@ -404,16 +404,33 @@ async function handleStreamingChatToolsCall(req: JsonRpcRequest, authHeader: str
     recordAudit({ membershipId: principalMembershipId, toolName: "chat", inputHash, ok: true, errorCode: null, latencyMs: Date.now() - start, ...auditCols, streamed: true });
   } catch (toolErr: any) {
     const errCode = toolErr instanceof McpToolError ? toolErr.code : -32603;
-    recordAudit({ membershipId: principalMembershipId, toolName: "chat", inputHash, ok: false, errorCode: errCode, latencyMs: Date.now() - start, ...auditCols, streamed: true });
-    const errBody = toolErr instanceof McpToolError
-      ? err(id, toolErr.code, toolErr.message, toolErr.data)
-      : err(id, -32603, toolErr?.message || "Internal error");
+    recordAudit({ membershipId: principalMembershipId, toolName: "chat", inputHash, ok: false, errorCode: errCode, latencyMs: Date.now() - start, ...auditCols, streamed: headersCommitted });
+    const errMessage = toolErr instanceof McpToolError ? toolErr.message : (toolErr?.message || "Internal error");
+    const errData = toolErr instanceof McpToolError ? toolErr.data : undefined;
+    const errBody = err(id, errCode, errMessage, errData);
     if (headersCommitted) {
-      // Mid-stream failure — write the error as the final ndjson line so
-      // the client sees a coherent end-of-stream marker.
-      res.write(JSON.stringify(errBody) + "\n");
+      // Mid-stream failure: per MCP streaming spec, emit a FINAL
+      // notifications/progress carrying the error info before the
+      // tools/call error response. This guarantees clients that read
+      // ndjson chunk-by-chunk see the error association with the
+      // progressToken even before parsing the closing JSON-RPC error.
+      const errorProgress = {
+        jsonrpc: "2.0",
+        method: "notifications/progress",
+        params: {
+          progressToken,
+          progress: progressCount,
+          error: { code: errCode, message: errMessage, ...(errData ? { data: errData } : {}) },
+        },
+      };
+      try { res.write(JSON.stringify(errorProgress) + "\n"); } catch {}
+      try { res.write(JSON.stringify(errBody) + "\n"); } catch {}
       try { res.end(); } catch {}
     } else {
+      // Pre-stream failure (auth/validation/budget reject before any
+      // upstream output) — return a normal JSON-RPC error so callers
+      // don't get a one-line ndjson body for what is functionally a
+      // standard rejection.
       res.status(200).json(errBody);
     }
   } finally {
