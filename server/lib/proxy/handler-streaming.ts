@@ -257,7 +257,15 @@ export async function processChatCompletionStreaming(
     const connection = connections.find(c => c.provider === provider && c.status === "ACTIVE");
     if (!connection) {
       await releasePreUpstream();
-      return await emitErr(onError, createProxyError(502, "provider_not_configured", `Provider ${provider} is not configured`), membership, tier, false, -32030);
+      // Mirror handler.ts: distinguish between a provider that's
+      // configured but currently inactive (503 provider_unavailable —
+      // try again later / contact admin) vs one that was never set up
+      // (502 provider_not_configured — admin needs to add it).
+      const existsButInactive = connections.some(c => c.provider === provider);
+      const proxyErr = existsButInactive
+        ? createProxyError(503, "provider_unavailable", "The provider for this model is not currently available. Contact your admin.")
+        : createProxyError(502, "provider_not_configured", `Provider ${provider} is not configured for this organization`, "Contact your admin to add this provider.");
+      return await emitErr(onError, proxyErr, membership, tier, false, -32030);
     }
 
     let pricing: ModelPricing | null;
@@ -467,6 +475,30 @@ export async function processChatCompletionStreaming(
     const finalUsage = upstreamUsage as UpstreamUsage | null;
     const actualInputTokens = finalUsage?.prompt_tokens ?? inputTokens;
     const actualOutputTokens = finalUsage?.completion_tokens ?? outputTokensSoFar;
+
+    // Empty-response parity with handler.ts: if the model produced no
+    // output tokens AND no content (and no tool calls), refund the full
+    // reservation (including input cost) and surface 502/empty_response.
+    // This protects users from being charged input tokens when the model
+    // returned nothing actionable.
+    const hasToolCalls = toolCallsByIndex.size > 0;
+    const trimmedContent = typeof fullContent === "string" ? fullContent.trim() : "";
+    if (actualOutputTokens === 0 && !trimmedContent && !hasToolCalls) {
+      await refundBudget(membershipId, reservedCostCents);
+      reservedCostCents = 0;
+      // Match handler.ts: empty-response also releases rate-limit (it's
+      // treated as a non-billable failed call, not a successful run).
+      await releasePreUpstream();
+      return await emitErr(
+        onError,
+        createProxyError(502, "empty_response", "The model returned an empty response. No budget was charged. Try again or use a different model."),
+        membership,
+        tier,
+        emittedChunks,
+        -32030,
+      );
+    }
+
     const actualCostCents = estimateInputCostCents(actualInputTokens, pricing) + calculateOutputCostCents(actualOutputTokens, pricing);
     await adjustBudgetAfterResponse(membershipId, reservedCostCents, actualCostCents);
     reservedCostCents = 0;

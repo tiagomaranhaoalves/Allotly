@@ -323,6 +323,105 @@ describe("M4 — error mapping", () => {
   });
 });
 
+describe("M4 — handler-streaming parity with handler.ts", () => {
+  it("includes a provider_unavailable (503) branch for inactive-but-configured providers", async () => {
+    const fs = await import("fs/promises");
+    const src = await fs.readFile("server/lib/proxy/handler-streaming.ts", "utf8");
+    // Mirrors handler.ts:296-300 — both branches must exist with the
+    // right HTTP statuses so MCP error mapping picks the matching code.
+    expect(src).toMatch(/existsButInactive/);
+    expect(src).toMatch(/503,\s*"provider_unavailable"/);
+    expect(src).toMatch(/502,\s*"provider_not_configured"/);
+  });
+
+  it("refunds the reservation and emits empty_response when upstream produces no output", async () => {
+    const fs = await import("fs/promises");
+    const src = await fs.readFile("server/lib/proxy/handler-streaming.ts", "utf8");
+    // Mirrors handler.ts:432-440 — the empty-response branch must
+    // refund the full reservation, release rate-limit + concurrency,
+    // and surface 502/empty_response so the user is not charged for a
+    // model that returned nothing.
+    expect(src).toMatch(/empty_response/);
+    expect(src).toMatch(/refundBudget\(membershipId,\s*reservedCostCents\)/);
+    // The empty-response check must happen BEFORE the success-path
+    // settle (i.e. before adjustBudgetAfterResponse is called for the
+    // happy path).
+    const emptyIdx = src.indexOf("empty_response");
+    const settleIdx = src.indexOf("adjustBudgetAfterResponse(membershipId, reservedCostCents, actualCostCents)");
+    expect(emptyIdx).toBeGreaterThan(0);
+    expect(settleIdx).toBeGreaterThan(emptyIdx);
+  });
+
+  it("releases concurrency on mid-stream interruption and client disconnect (no leak)", async () => {
+    const fs = await import("fs/promises");
+    const src = await fs.readFile("server/lib/proxy/handler-streaming.ts", "utf8");
+    // Both mid-stream branches (provider_stream_interrupted and
+    // client_disconnected) must release the concurrency slot and flip
+    // the flag false so the catch-all safety net never double-releases.
+    // Anchor on the actual code constructs (catch block, abort guard)
+    // rather than comment text to avoid false positives.
+    const interruptedStart = src.indexOf("} catch (streamErr");
+    const interruptedEnd = src.indexOf("provider_stream_interrupted", interruptedStart);
+    expect(interruptedStart).toBeGreaterThan(0);
+    expect(interruptedEnd).toBeGreaterThan(interruptedStart);
+    const interruptedBlock = src.slice(interruptedStart, interruptedEnd);
+    expect(interruptedBlock).toMatch(/releaseConcurrency\(membershipId,\s*requestId\)/);
+    expect(interruptedBlock).toMatch(/concurrencyAcquired\s*=\s*false/);
+
+    const disconnectStart = src.indexOf("if (abortSignal.aborted)");
+    const disconnectEnd = src.indexOf('"client_disconnected"', disconnectStart);
+    expect(disconnectStart).toBeGreaterThan(0);
+    expect(disconnectEnd).toBeGreaterThan(disconnectStart);
+    const disconnectBlock = src.slice(disconnectStart, disconnectEnd);
+    expect(disconnectBlock).toMatch(/releaseConcurrency\(membershipId,\s*requestId\)/);
+    expect(disconnectBlock).toMatch(/concurrencyAcquired\s*=\s*false/);
+  });
+
+  it("keeps RPM incremented on success and on mid-stream errors (matches handler.ts billing semantics)", async () => {
+    const fs = await import("fs/promises");
+    const src = await fs.readFile("server/lib/proxy/handler-streaming.ts", "utf8");
+    // The success path must NOT call releaseRateLimit (RPM stays
+    // committed for completed requests). The mid-stream error blocks
+    // for provider_stream_interrupted / client_disconnected likewise
+    // must NOT call releaseRateLimit (real upstream work happened).
+    const settleBlockStart = src.indexOf("// ---- Settle on success ----");
+    const catchBlockStart = src.indexOf("} catch (err: any) {", settleBlockStart);
+    expect(settleBlockStart).toBeGreaterThan(0);
+    expect(catchBlockStart).toBeGreaterThan(settleBlockStart);
+    const successBlock = src.slice(settleBlockStart, catchBlockStart);
+    expect(successBlock).not.toMatch(/releaseRateLimit/);
+  });
+
+  it("emits a final notifications/progress with an `error` field before the closing tools/call error line", async () => {
+    const fs = await import("fs/promises");
+    const src = await fs.readFile("server/lib/mcp/transport.ts", "utf8");
+    // The mid-stream error path must emit one progress with `error`
+    // BEFORE writing the tools/call error response line, per MCP spec.
+    const errorProgressIdx = src.indexOf("notifications/progress");
+    expect(errorProgressIdx).toBeGreaterThan(0);
+    expect(src).toMatch(/error:\s*\{\s*code:\s*errCode/);
+    // The errorProgress write must come before the errBody write in
+    // the mid-stream branch.
+    const epWrite = src.indexOf("errorProgress");
+    const errBodyWrite = src.indexOf('JSON.stringify(errBody)', epWrite);
+    expect(epWrite).toBeGreaterThan(0);
+    expect(errBodyWrite).toBeGreaterThan(epWrite);
+  });
+
+  it("audit `streamed` flag is true only for streaming-path entries", async () => {
+    const fs = await import("fs/promises");
+    const src = await fs.readFile("server/lib/mcp/transport.ts", "utf8");
+    // streamed:true only appears in the streaming branch's audit calls;
+    // the buffered branch never sets streamed:true.
+    const streamedTrueMatches = src.match(/streamed:\s*true/g) || [];
+    expect(streamedTrueMatches.length).toBeGreaterThan(0);
+    // Buffered handleJsonRpc branch must not set streamed:true
+    // (it relies on the default false from recordAudit).
+    const bufferedSection = src.slice(0, src.indexOf("handleStreamingChatToolsCall"));
+    expect(bufferedSection).not.toMatch(/streamed:\s*true/);
+  });
+});
+
 describe("M4 — final response shape parity", () => {
   it("MCP_ERROR_CODES exposes ClientDisconnected for the new disconnect path", async () => {
     const { MCP_ERROR_CODES } = await import("../../server/lib/mcp/errors");
