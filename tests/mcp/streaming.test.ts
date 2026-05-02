@@ -355,26 +355,41 @@ describe("M4 — handler-streaming parity with handler.ts", () => {
   it("releases concurrency on mid-stream interruption and client disconnect (no leak)", async () => {
     const fs = await import("fs/promises");
     const src = await fs.readFile("server/lib/proxy/handler-streaming.ts", "utf8");
-    // Both mid-stream branches (provider_stream_interrupted and
-    // client_disconnected) must release the concurrency slot and flip
-    // the flag false so the catch-all safety net never double-releases.
-    // Anchor on the actual code constructs (catch block, abort guard)
-    // rather than comment text to avoid false positives.
-    const interruptedStart = src.indexOf("} catch (streamErr");
-    const interruptedEnd = src.indexOf("provider_stream_interrupted", interruptedStart);
-    expect(interruptedStart).toBeGreaterThan(0);
-    expect(interruptedEnd).toBeGreaterThan(interruptedStart);
-    const interruptedBlock = src.slice(interruptedStart, interruptedEnd);
-    expect(interruptedBlock).toMatch(/releaseConcurrency\(membershipId,\s*requestId\)/);
-    expect(interruptedBlock).toMatch(/concurrencyAcquired\s*=\s*false/);
+    // The shared mid-stream settlement helper must release the
+    // concurrency slot and flip the flag false so the catch-all safety
+    // net never double-releases. Both mid-stream paths (provider
+    // interrupt + client disconnect) route through this helper.
+    const helperStart = src.indexOf("settleMidStreamAndEmit = async");
+    expect(helperStart).toBeGreaterThan(0);
+    const helperEnd = src.indexOf("};", helperStart);
+    const helperBlock = src.slice(helperStart, helperEnd);
+    expect(helperBlock).toMatch(/releaseConcurrency\(membershipId,\s*requestId\)/);
+    expect(helperBlock).toMatch(/concurrencyAcquired\s*=\s*false/);
+    expect(helperBlock).toMatch(/adjustBudgetAfterResponse/);
 
-    const disconnectStart = src.indexOf("if (abortSignal.aborted)");
-    const disconnectEnd = src.indexOf('"client_disconnected"', disconnectStart);
-    expect(disconnectStart).toBeGreaterThan(0);
-    expect(disconnectEnd).toBeGreaterThan(disconnectStart);
-    const disconnectBlock = src.slice(disconnectStart, disconnectEnd);
-    expect(disconnectBlock).toMatch(/releaseConcurrency\(membershipId,\s*requestId\)/);
-    expect(disconnectBlock).toMatch(/concurrencyAcquired\s*=\s*false/);
+    // Both call sites must invoke the helper so neither path skips
+    // settlement.
+    const callSites = (src.match(/settleMidStreamAndEmit\(/g) || []).length;
+    expect(callSites).toBeGreaterThanOrEqual(3); // 1 def + 2 calls minimum
+  });
+
+  it("classifies client aborts deterministically as client_disconnected (-32099) even when the consumer throws", async () => {
+    const fs = await import("fs/promises");
+    const src = await fs.readFile("server/lib/proxy/handler-streaming.ts", "utf8");
+    // The catch block around consumeSseUpstream must check
+    // abortSignal.aborted FIRST and route to client_disconnected /
+    // -32099, otherwise an AbortError surfacing through the reader
+    // would be misclassified as provider_stream_interrupted.
+    const catchStart = src.indexOf("} catch (streamErr: any) {");
+    expect(catchStart).toBeGreaterThan(0);
+    // Anchor on the actual createProxyError call (not the keyword in
+    // the surrounding comment) to delimit the catch block.
+    const catchEnd = src.indexOf('createProxyError(502, "provider_stream_interrupted"', catchStart);
+    expect(catchEnd).toBeGreaterThan(catchStart);
+    const catchBlock = src.slice(catchStart, catchEnd);
+    expect(catchBlock).toMatch(/if\s*\(\s*abortSignal\.aborted\s*\)/);
+    expect(catchBlock).toMatch(/client_disconnected/);
+    expect(catchBlock).toMatch(/-32099/);
   });
 
   it("keeps RPM incremented on success and on mid-stream errors (matches handler.ts billing semantics)", async () => {

@@ -269,14 +269,14 @@ describe("processChatCompletionStreaming — behavioural accounting", () => {
     expect(onComplete).not.toHaveBeenCalled();
     expect(onError).toHaveBeenCalledTimes(1);
     const errArg = onError.mock.calls[0][0];
-    // Either client_disconnected (clean abort) or provider_stream_interrupted
-    // (depending on which code path the abort surfaced through). Both are
-    // mid-stream paths that MUST settle to actual-so-far and release
-    // concurrency only — they share the same accounting contract.
-    expect(["client_disconnected", "provider_stream_interrupted"]).toContain(errArg.errorBody.code);
-    if (errArg.errorBody.code === "client_disconnected") {
-      expect(errArg.errorCode).toBe(-32099);
-    }
+    // Client-initiated abort MUST be deterministically classified as
+    // client_disconnected (-32099) — never as provider_stream_interrupted.
+    // If the abort surfaces via a thrown reader error, the catch block
+    // must check abortSignal.aborted first and route to the disconnect
+    // branch, not the upstream-failure branch.
+    expect(errArg.errorBody.code).toBe("client_disconnected");
+    expect(errArg.status).toBe(499);
+    expect(errArg.errorCode).toBe(-32099);
     // Settled to actual-so-far (NOT a refund).
     expect(safeguardCalls.adjustBudgetAfterResponse).toHaveBeenCalledTimes(1);
     expect(safeguardCalls.refundBudget).not.toHaveBeenCalled();

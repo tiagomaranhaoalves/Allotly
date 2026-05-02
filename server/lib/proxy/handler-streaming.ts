@@ -439,41 +439,53 @@ export async function processChatCompletionStreaming(
       }
     };
 
+    // Helper: shared mid-stream settlement (used by both the
+    // client-disconnect and provider-interrupt branches). Settles to
+    // actual-so-far, releases the concurrency slot only (RPM stays —
+    // real upstream work was performed), and surfaces the right error.
+    const settleMidStreamAndEmit = async (proxyErr: ProxyError, errorCode: number) => {
+      const u = upstreamUsage as UpstreamUsage | null;
+      const actualOutput = u?.completion_tokens ?? outputTokensSoFar;
+      const actualInput = u?.prompt_tokens ?? inputTokens;
+      const actualCost = estimateInputCostCents(actualInput, pricing) + calculateOutputCostCents(actualOutput, pricing);
+      await adjustBudgetAfterResponse(membershipId, reservedCostCents, actualCost);
+      reservedCostCents = 0;
+      if (concurrencyAcquired) {
+        await releaseConcurrency(membershipId, requestId).catch(() => {});
+        concurrencyAcquired = false;
+      }
+      return await emitErr(onError, proxyErr, membership, tier, emittedChunks, errorCode);
+    };
+
     try {
       await consumeSseUpstream(providerResponse, { onData: processData }, { signal: abortSignal });
     } catch (streamErr: any) {
-      // Upstream disconnected mid-stream. Settle to what was actually
-      // produced so far, release the concurrency slot (RPM stays — real
-      // upstream work was performed). Failure to release the slot here
-      // would otherwise leak it indefinitely.
-      const u = upstreamUsage as UpstreamUsage | null;
-      const actualOutput = u?.completion_tokens ?? outputTokensSoFar;
-      const actualInput = u?.prompt_tokens ?? inputTokens;
-      const actualCost = estimateInputCostCents(actualInput, pricing) + calculateOutputCostCents(actualOutput, pricing);
-      await adjustBudgetAfterResponse(membershipId, reservedCostCents, actualCost);
-      reservedCostCents = 0;
-      if (concurrencyAcquired) {
-        await releaseConcurrency(membershipId, requestId).catch(() => {});
-        concurrencyAcquired = false;
+      // Disconnect classification MUST be deterministic per task spec:
+      // if the client aborted, ALWAYS route to client_disconnected /
+      // -32099 — even when the abort surfaces as a thrown reader error
+      // (e.g. AbortError, "aborted", or a controller.error from the
+      // SSE consumer). Only treat as provider_stream_interrupted when
+      // the abort signal is NOT set, meaning the upstream itself
+      // failed independently.
+      if (abortSignal.aborted) {
+        return await settleMidStreamAndEmit(
+          createProxyError(499, "client_disconnected", "Client disconnected mid-stream"),
+          -32099,
+        );
       }
-      return await emitErr(onError, createProxyError(502, "provider_stream_interrupted", `Upstream ${provider} stream interrupted: ${streamErr?.message || "unknown"}`), membership, tier, emittedChunks, -32030);
+      return await settleMidStreamAndEmit(
+        createProxyError(502, "provider_stream_interrupted", `Upstream ${provider} stream interrupted: ${streamErr?.message || "unknown"}`),
+        -32030,
+      );
     }
 
     if (abortSignal.aborted) {
-      // Client disconnected — settle to actual-so-far, release the slot,
-      // and audit -32099 client_disconnected per task spec. RPM stays
-      // incremented (the user's request did consume upstream resources).
-      const u = upstreamUsage as UpstreamUsage | null;
-      const actualOutput = u?.completion_tokens ?? outputTokensSoFar;
-      const actualInput = u?.prompt_tokens ?? inputTokens;
-      const actualCost = estimateInputCostCents(actualInput, pricing) + calculateOutputCostCents(actualOutput, pricing);
-      await adjustBudgetAfterResponse(membershipId, reservedCostCents, actualCost);
-      reservedCostCents = 0;
-      if (concurrencyAcquired) {
-        await releaseConcurrency(membershipId, requestId).catch(() => {});
-        concurrencyAcquired = false;
-      }
-      return await emitErr(onError, createProxyError(499, "client_disconnected", "Client disconnected mid-stream"), membership, tier, emittedChunks, -32099);
+      // Clean abort path (consumer noticed the signal between reads
+      // without throwing). Same client_disconnected contract as above.
+      return await settleMidStreamAndEmit(
+        createProxyError(499, "client_disconnected", "Client disconnected mid-stream"),
+        -32099,
+      );
     }
 
     // ---- Settle on success ----
