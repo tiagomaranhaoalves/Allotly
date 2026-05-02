@@ -52,13 +52,34 @@ interface FailureResponse {
 type TestResponse = SuccessResponse | FailureResponse;
 
 export interface TestKeyButtonProps {
-  /** Full plaintext key. The button is disabled when this is null/empty. */
+  /**
+   * Full plaintext key. When provided, the button calls
+   * `POST /api/v1/test-connection` with `Authorization: Bearer <key>`.
+   * For OAuth-only users with no pasteable key, leave this null and pass
+   * `membershipId` instead — the button will fall back to the session-cookie
+   * variant `POST /api/v1/test-connection/session`.
+   */
   testKey: string | null;
+  /**
+   * Membership the test should run against when `testKey` is null. Enables
+   * the "Test connection" button for OAuth-connected users who reach Allotly
+   * via Claude.ai / ChatGPT / Gemini and never paste a bearer token. The
+   * server validates that this membership belongs to the logged-in caller.
+   * If omitted but `useSession` is true, the server falls back to the
+   * caller's single membership.
+   */
+  membershipId?: string | null;
+  /**
+   * When true and `testKey` is null, fall back to the session-cookie variant
+   * (`POST /api/v1/test-connection/session`) instead of disabling the
+   * button. Pass alongside an optional `membershipId`.
+   */
+  useSession?: boolean;
   /** Heading rendered above the button. */
   heading: string;
   /** Optional subtitle describing what the test does. */
   subtitle?: string;
-  /** Optional banner shown when testKey is empty. */
+  /** Optional banner shown when neither testKey nor membershipId are set. */
   missingKeyMessage?: string;
   /**
    * When true, automatically run the test once as soon as a non-empty
@@ -83,6 +104,8 @@ function formatCost(cost: SuccessResponse["cost"]): string {
 
 export function TestKeyButton({
   testKey,
+  membershipId,
+  useSession,
   heading,
   subtitle,
   missingKeyMessage,
@@ -93,23 +116,35 @@ export function TestKeyButton({
   const [testing, setTesting] = useState(false);
   const [networkError, setNetworkError] = useState<string | null>(null);
 
-  const canTest = !!testKey && testKey.length > 0;
+  // A pasted bearer key takes precedence; the session-cookie variant only
+  // kicks in for OAuth-only users (no pasteable key) when the caller opts
+  // in via `useSession` or supplies an explicit `membershipId`.
+  const hasKey = !!testKey && testKey.length > 0;
+  const usingSession = !hasKey && (useSession === true || !!membershipId);
+  const canTest = hasKey || usingSession;
   const autoRanRef = useRef(false);
 
   async function runTest() {
-    if (!testKey) return;
+    if (!canTest) return;
     setTesting(true);
     setResult(null);
     setNetworkError(null);
     try {
-      const res = await fetch("/api/v1/test-connection", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${testKey}`,
-          "Content-Type": "application/json",
-        },
-        body: "{}",
-      });
+      const res = usingSession
+        ? await fetch("/api/v1/test-connection/session", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(membershipId ? { membershipId } : {}),
+          })
+        : await fetch("/api/v1/test-connection", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${testKey}`,
+              "Content-Type": "application/json",
+            },
+            body: "{}",
+          });
       let body: TestResponse | null = null;
       try {
         body = (await res.json()) as TestResponse;

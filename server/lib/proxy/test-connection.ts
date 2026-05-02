@@ -438,8 +438,6 @@ async function deriveAuthFailureContext(authHeader: string | undefined): Promise
 // =============================================================================
 
 export async function handleTestConnection(req: Request, res: Response): Promise<void> {
-  const startedAt = Date.now();
-
   // Same auth pipeline as /api/v1/chat/completions.
   const authResult = await authenticateKey(req.headers.authorization);
   if ("status" in authResult) {
@@ -451,6 +449,91 @@ export async function handleTestConnection(req: Request, res: Response): Promise
   }
 
   const { membership, userId, apiKeyId } = authResult;
+  await runTestConnection(res, membership, userId, apiKeyId);
+}
+
+/**
+ * Session-cookie variant: lets logged-in dashboard users (including those who
+ * reached Allotly via OAuth and have no pasteable API key) exercise the same
+ * "Test connection" sanity check.
+ *
+ * Auth model:
+ *   - Caller must be authenticated (route is mounted behind `requireAuth`).
+ *   - The selected `membershipId` must belong to the calling user. We do NOT
+ *     allow admins to test on behalf of other members from this endpoint —
+ *     that would muddy the budget/rate-limit envelope and isn't required by
+ *     the dashboard UI.
+ *   - If `membershipId` is omitted, we fall back to the caller's single
+ *     membership (matches the current dashboard model where each user has at
+ *     most one membership).
+ *
+ * The downstream code path (model selection, budget reservation, rate-limit,
+ * concurrency, error envelope) is identical to the API-key variant — same
+ * six error codes, same budget block, same UI hints.
+ */
+export async function handleTestConnectionSession(req: Request, res: Response): Promise<void> {
+  const sessionUserId = (req as any).session?.userId as string | undefined;
+  if (!sessionUserId) {
+    // Defensive — `requireAuth` should have rejected already.
+    sendFailure(res, 401, "unknown", "team_member", genericMessage("unknown"));
+    return;
+  }
+
+  const user = await storage.getUser(sessionUserId);
+  if (!user) {
+    sendFailure(res, 401, "unknown", "team_member", genericMessage("unknown"));
+    return;
+  }
+
+  const requestedMembershipId =
+    typeof req.body?.membershipId === "string" && req.body.membershipId.length > 0
+      ? (req.body.membershipId as string)
+      : null;
+
+  const membership = requestedMembershipId
+    ? await storage.getMembership(requestedMembershipId)
+    : await storage.getMembershipByUser(sessionUserId);
+
+  if (!membership || membership.userId !== sessionUserId) {
+    // Don't disclose existence — same shape as a generic auth failure.
+    const userType = membership ? getUserType(membership, user) : "team_member";
+    sendFailure(res, 403, "unknown", userType, genericMessage("unknown"));
+    return;
+  }
+
+  // Replicate the membership-status gates that `authenticateKey` enforces for
+  // API-key callers, mapped onto the six user-facing codes.
+  const userType = getUserType(membership, user);
+  if (membership.status === "SUSPENDED" || membership.status === "EXPIRED") {
+    sendFailure(res, 403, "unknown", userType, genericMessage("unknown"));
+    return;
+  }
+  if (new Date(membership.periodEnd) < new Date()) {
+    sendFailure(res, 403, "unknown", userType, genericMessage("unknown"));
+    return;
+  }
+
+  // Pick any active API key for this membership so usage logs / proxy logs
+  // attribute the test to a real key when one exists. OAuth-only members
+  // legitimately have none — `apiKeyId` is nullable in `processChatCompletion`.
+  const keys = await storage.getApiKeysByMembership(membership.id);
+  const activeKey = keys.find(k => k.status === "ACTIVE") || null;
+
+  await runTestConnection(res, membership, sessionUserId, activeKey?.id ?? null);
+}
+
+/**
+ * Shared post-auth core. Inputs are already trusted (membership belongs to
+ * userId; status gates already passed). Owns the budget envelope, model
+ * selection, rate-limit/concurrency, and the six-code error classifier.
+ */
+async function runTestConnection(
+  res: Response,
+  membership: TeamMembership,
+  userId: string,
+  apiKeyId: string | null,
+): Promise<void> {
+  const startedAt = Date.now();
 
   // Resolve org + user up-front so we can branch user-type / currency for
   // every code path (including the early no_providers / no_models exits).

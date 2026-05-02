@@ -95,6 +95,17 @@ export default function ConnectPage() {
             {t("connect.subtitle")}
           </p>
         </div>
+        {/*
+          OAuth-only users (Claude.ai / ChatGPT / Gemini) legitimately have no
+          stdio API key, so we still render the session-cookie test button so
+          they can validate their setup end-to-end.
+        */}
+        <TestKeyButton
+          testKey={null}
+          useSession
+          heading={t("testKey.heading")}
+          subtitle={t("testKey.subtitle")}
+        />
         <EmptyState
           icon={<KeyIcon className="w-10 h-10 text-muted-foreground" />}
           title={t("connect.noKeysState.title")}
@@ -123,8 +134,16 @@ export default function ConnectPage() {
         </p>
       </div>
 
+      {/*
+        OAuth users (Claude.ai / ChatGPT / Gemini) reach this page without a
+        pasteable bearer token, but they ARE logged in via session cookie.
+        `useSession` lets the button fall back to
+        `POST /api/v1/test-connection/session`, which authenticates by
+        cookie + the caller's membership and returns the same envelope.
+      */}
       <TestKeyButton
         testKey={testKey}
+        useSession
         heading={t("testKey.heading")}
         subtitle={t("testKey.subtitle")}
         missingKeyMessage={t("testKey.missingKey")}

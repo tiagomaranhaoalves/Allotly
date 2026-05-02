@@ -20,7 +20,7 @@ import { runRedisReconciliation } from "./lib/jobs/redis-reconciliation";
 import { runModelSync } from "./lib/jobs/model-sync";
 import { handleChatCompletion, handleListModels, handleKeyValidation } from "./lib/proxy/handler";
 import { handleMessages } from "./lib/proxy/handler-messages";
-import { handleTestConnection } from "./lib/proxy/test-connection";
+import { handleTestConnection, handleTestConnectionSession } from "./lib/proxy/test-connection";
 import { mountMcp } from "./lib/mcp/server";
 import { mountOAuth } from "./lib/oauth";
 import { redisSet, redisGet, redisDel, redisIncr, redisIncrBy, REDIS_KEYS } from "./lib/redis";
@@ -6140,6 +6140,9 @@ export async function registerRoutes(
   app.post("/api/v1/chat/completions", handleChatCompletion);
   app.post("/api/v1/messages", handleMessages);
   app.post("/api/v1/test-connection", handleTestConnection);
+  // Session-cookie variant for OAuth-only / dashboard users who have no
+  // pasteable bearer token. Same envelope, same six error codes.
+  app.post("/api/v1/test-connection/session", requireAuth, handleTestConnectionSession);
   app.get("/api/v1/models", handleListModels);
   app.get("/api/v1/keys/me", handleKeyValidation);
   app.get("/api/v1/health", (_req, res) => {
