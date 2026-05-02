@@ -524,7 +524,19 @@ export async function handleMessages(req: Request, res: Response) {
       effectiveMaxTokens ?? parsed.max_tokens,
       azureContext,
     );
-    translated.body = sanitizeProviderBody(translated.body, provider);
+    // Verbatim pass-through for Anthropic upstreams: forward the validated
+    // request body unchanged so unknown/future Anthropic-only fields are not
+    // silently dropped. Sanitization stays on for non-Anthropic providers
+    // because those upstreams reject unknown top-level keys.
+    if (provider === "ANTHROPIC") {
+      translated.body = {
+        ...parsed,
+        model: effectiveModel,
+        max_tokens: effectiveMaxTokens ?? parsed.max_tokens,
+      };
+    } else {
+      translated.body = sanitizeProviderBody(translated.body, provider);
+    }
     const authInfo = setProviderAuth(translated.headers, provider, adminApiKey, translated.url);
 
     // Surface dropped Anthropic-native fields when routing to non-Anthropic upstreams.
@@ -637,18 +649,28 @@ export async function handleMessages(req: Request, res: Response) {
       }
     } else {
       const responseBody = await readNonStreamingResponse(providerResponse);
-      const anthropicResponse = translateResponseToAnthropic(provider, responseBody, effectiveModel, translated.proxyStopSequences);
 
-      if (anthropicResponse.usage) {
-        actualInputTokens = anthropicResponse.usage.input_tokens || inputTokens;
-        actualOutputTokens = anthropicResponse.usage.output_tokens || 0;
+      // Verbatim pass-through for Anthropic upstreams: return the upstream
+      // JSON unchanged so unknown/future top-level fields survive end-to-end.
+      // Token accounting still uses the canonical `usage` shape that
+      // Anthropic always emits.
+      const isAnthropicPassthrough = provider === "ANTHROPIC";
+      const anthropicResponse = isAnthropicPassthrough
+        ? responseBody
+        : translateResponseToAnthropic(provider, responseBody, effectiveModel, translated.proxyStopSequences);
+
+      const usage = anthropicResponse?.usage;
+      if (usage) {
+        actualInputTokens = usage.input_tokens || inputTokens;
+        actualOutputTokens = usage.output_tokens || 0;
       }
 
       // Empty-response detection — text content blocks with no text and no tool_use.
-      const hasContent = Array.isArray(anthropicResponse.content) && anthropicResponse.content.some((b: any) => {
+      const hasContent = Array.isArray(anthropicResponse?.content) && anthropicResponse.content.some((b: any) => {
         if (!b || typeof b !== "object") return false;
         if (b.type === "tool_use") return true;
         if (b.type === "text") return typeof b.text === "string" && b.text.trim() !== "";
+        if (b.type === "thinking") return typeof b.thinking === "string" && b.thinking.trim() !== "";
         return false;
       });
       if (actualOutputTokens === 0 && !hasContent) {
