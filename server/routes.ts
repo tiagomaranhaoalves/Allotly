@@ -44,6 +44,7 @@ import { getBudgetWarning } from "./lib/mcp/budget-warnings";
 import { getCostPerModel, getTopSpenders, getSpendForecast, getAnomalies, getOptimizationRecommendations } from "./lib/analytics";
 import { loginLimiter, redeemLimiter, regenerateKeyLimiter, adminLoginLimiter, contactLimiter, signupLimiter, voucherValidateLimiter } from "./lib/rate-limiter";
 import { requireTurnstile } from "./lib/turnstile";
+import { createVoucherValidateHandler } from "./lib/voucher-validate";
 import crypto from "crypto";
 import { z } from "zod";
 import { cascadeDeleteOrganization, cascadeDeleteTeam, cascadeDeleteMember, cascadeDeleteVoucher } from "./lib/cascade-delete";
@@ -3829,37 +3830,11 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/vouchers/validate/:code", voucherValidateLimiter, async (req, res) => {
-    const NOT_USABLE = { message: "Voucher not found or no longer usable" };
-
-    const voucher = await storage.getVoucherByCode(req.params.code.toUpperCase());
-    if (!voucher) return res.status(404).json(NOT_USABLE);
-    if (voucher.status !== "ACTIVE") return res.status(404).json(NOT_USABLE);
-    if (new Date(voucher.expiresAt) < new Date()) return res.status(404).json(NOT_USABLE);
-    if (voucher.currentRedemptions >= voucher.maxRedemptions) return res.status(404).json(NOT_USABLE);
-
-    if (voucher.bundleId) {
-      const bundle = await storage.getVoucherBundle(voucher.bundleId);
-      if (!bundle || bundle.status !== "ACTIVE") return res.status(404).json(NOT_USABLE);
-      if (new Date(bundle.expiresAt) < new Date()) return res.status(404).json(NOT_USABLE);
-      if (bundle.usedRedemptions >= bundle.totalRedemptions) return res.status(404).json(NOT_USABLE);
-    }
-
-    const models = await storage.getModelPricing();
-    const allowedModels = models.filter(m => {
-      const allowedProviders = voucher.allowedProviders as string[];
-      return allowedProviders.includes(m.provider);
-    });
-
-    res.json({
-      code: voucher.code,
-      budgetCents: voucher.budgetCents,
-      allowedProviders: voucher.allowedProviders,
-      allowedModels: allowedModels.map(m => ({ modelId: m.modelId, displayName: m.displayName, provider: m.provider })),
-      expiresAt: voucher.expiresAt,
-      remainingRedemptions: voucher.maxRedemptions - voucher.currentRedemptions,
-    });
-  });
+  app.get(
+    "/api/vouchers/validate/:code",
+    voucherValidateLimiter,
+    createVoucherValidateHandler(storage),
+  );
 
   app.post("/api/vouchers/redeem", redeemLimiter, async (req, res) => {
     try {

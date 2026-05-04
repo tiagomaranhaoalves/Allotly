@@ -11,6 +11,7 @@ import { seedModelPricing } from './lib/seed-models';
 import { pool } from './db';
 import { assertSecretReady as assertOAuthSecretReady } from './lib/oauth/jwt';
 import { waitForRedisReady } from './lib/redis';
+import { warnIfTurnstileMissingAtStartup } from './lib/turnstile';
 
 if (process.env.REPLIT_DEPLOYMENT === "1") {
   assertOAuthSecretReady();
@@ -182,6 +183,8 @@ app.use((req, res, next) => {
     } catch (e: any) {
       console.error("[migration] azure api-version cleanup failed:", e.message);
     }
+
+    warnIfTurnstileMissingAtStartup();
 
     await initStripe();
     await seedModelPricing();

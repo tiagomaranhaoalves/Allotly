@@ -29,6 +29,17 @@ export function isTurnstileEnabled(): boolean {
   return Boolean(process.env.TURNSTILE_SECRET_KEY);
 }
 
+/**
+ * Eagerly emit the misconfiguration warning at server startup so operators
+ * notice the disabled-captcha state immediately, not on the first protected
+ * request. Safe to call multiple times — the warning is one-shot.
+ */
+export function warnIfTurnstileMissingAtStartup(): void {
+  if (!process.env.TURNSTILE_SECRET_KEY) {
+    emitStartupWarningOnce();
+  }
+}
+
 function pruneCache(): void {
   if (successCache.size <= SUCCESS_CACHE_MAX) return;
   const now = Date.now();
