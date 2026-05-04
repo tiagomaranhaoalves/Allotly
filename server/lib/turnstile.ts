@@ -27,10 +27,14 @@ function emitSplitKeyWarningOnce(): void {
   if (siteKeyWarningEmitted) return;
   siteKeyWarningEmitted = true;
   if (process.env.NODE_ENV === "production") {
-    console.warn(
-      "[turnstile] WARNING: TURNSTILE_SECRET_KEY is set but VITE_TURNSTILE_SITE_KEY is missing — " +
-        "the server will reject every request because the frontend cannot present a token. " +
-        "Set VITE_TURNSTILE_SITE_KEY at build time to match.",
+    // VITE_* vars are read at frontend BUILD time and may legitimately be absent
+    // from the server's runtime env (e.g. when frontend was built in a separate
+    // step). This is informational, not an alarm — only an issue if the deployed
+    // frontend bundle was also built without VITE_TURNSTILE_SITE_KEY.
+    console.log(
+      "[turnstile] note: TURNSTILE_SECRET_KEY is set but VITE_TURNSTILE_SITE_KEY is not present in the server runtime env. " +
+        "If the frontend bundle was also built without it, captcha will silently reject every request because the form has no widget. " +
+        "Confirm VITE_TURNSTILE_SITE_KEY was set at build time.",
     );
   }
 }
