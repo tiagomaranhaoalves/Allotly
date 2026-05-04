@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
+import { logBlocked } from "./rate-limiter";
 
 const VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 const VERIFY_TIMEOUT_MS = 5000;
@@ -8,6 +9,7 @@ const SUCCESS_CACHE_MAX = 1000;
 const successCache = new Map<string, number>();
 
 let startupWarningEmitted = false;
+let siteKeyWarningEmitted = false;
 function emitStartupWarningOnce(): void {
   if (startupWarningEmitted) return;
   startupWarningEmitted = true;
@@ -18,6 +20,18 @@ function emitStartupWarningOnce(): void {
     );
   } else {
     console.log("[turnstile] TURNSTILE_SECRET_KEY not set — captcha verification skipped (dev mode).");
+  }
+}
+
+function emitSplitKeyWarningOnce(): void {
+  if (siteKeyWarningEmitted) return;
+  siteKeyWarningEmitted = true;
+  if (process.env.NODE_ENV === "production") {
+    console.warn(
+      "[turnstile] WARNING: TURNSTILE_SECRET_KEY is set but VITE_TURNSTILE_SITE_KEY is missing — " +
+        "the server will reject every request because the frontend cannot present a token. " +
+        "Set VITE_TURNSTILE_SITE_KEY at build time to match.",
+    );
   }
 }
 
@@ -37,6 +51,12 @@ export function isTurnstileEnabled(): boolean {
 export function warnIfTurnstileMissingAtStartup(): void {
   if (!process.env.TURNSTILE_SECRET_KEY) {
     emitStartupWarningOnce();
+    return;
+  }
+  // Server secret is set; check the public site key too — split config will
+  // silently break every request because the frontend can't present a token.
+  if (!process.env.VITE_TURNSTILE_SITE_KEY) {
+    emitSplitKeyWarningOnce();
   }
 }
 
@@ -124,10 +144,7 @@ export function requireTurnstile(opts: RequireTurnstileOptions) {
       next();
       return;
     }
-    const ua = (req.headers["user-agent"] as string | undefined)?.slice(0, 80) || "unknown";
-    console.log(
-      `[abuse-protect] cause=CAPTCHA_FAILED route=${opts.route} ip=${ip} reason=${result.code} ua=${JSON.stringify(ua)}`,
-    );
+    logBlocked("CAPTCHA_FAILED", opts.route, req, { reason: result.code });
     res.status(400).json({
       message: "Captcha verification required. Please complete the challenge and try again.",
       code: "captcha_required",
@@ -138,4 +155,5 @@ export function requireTurnstile(opts: RequireTurnstileOptions) {
 export function _resetTurnstileForTests(): void {
   successCache.clear();
   startupWarningEmitted = false;
+  siteKeyWarningEmitted = false;
 }
