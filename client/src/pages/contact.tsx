@@ -5,11 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Mail, Headphones, Building2, Send, CheckCircle2 } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useTranslation } from "react-i18next";
+import { TurnstileWidget, isTurnstileConfigured } from "@/components/turnstile-widget";
 
 const contacts = [
   { id: "general", testSlug: "general-inquiries", icon: Mail, email: "hello@allotly.ai" },
@@ -20,10 +21,13 @@ const contacts = [
 export default function ContactPage() {
   const { t } = useTranslation();
   const [submitted, setSubmitted] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const { toast } = useToast();
+  const captchaRequired = isTurnstileConfigured();
+  const handleTurnstileVerify = useCallback((token: string | null) => setTurnstileToken(token), []);
 
   const contactMutation = useMutation({
-    mutationFn: async (data: { name: string; email: string; message: string }) => {
+    mutationFn: async (data: { name: string; email: string; message: string; turnstile_token?: string }) => {
       const res = await apiRequest("POST", "/api/contact", data);
       return res.json();
     },
@@ -32,6 +36,7 @@ export default function ContactPage() {
       toast({ title: t("pages.contact.toastSuccessTitle"), description: t("pages.contact.toastSuccessBody") });
     },
     onError: () => {
+      setTurnstileToken(null);
       toast({ title: t("pages.contact.toastErrorTitle"), description: t("pages.contact.toastErrorBody"), variant: "destructive" });
     },
   });
@@ -42,7 +47,11 @@ export default function ContactPage() {
     const name = (form.elements.namedItem("name") as HTMLInputElement).value;
     const email = (form.elements.namedItem("email") as HTMLInputElement).value;
     const message = (form.elements.namedItem("message") as HTMLTextAreaElement).value;
-    contactMutation.mutate({ name, email, message });
+    if (captchaRequired && !turnstileToken) {
+      toast({ title: t("pages.contact.toastErrorTitle"), description: "Please complete the captcha challenge.", variant: "destructive" });
+      return;
+    }
+    contactMutation.mutate({ name, email, message, ...(turnstileToken ? { turnstile_token: turnstileToken } : {}) });
   }
 
   return (
@@ -112,7 +121,15 @@ export default function ContactPage() {
                       <Label htmlFor="message">{t("pages.contact.messageLabel")}</Label>
                       <Textarea id="message" placeholder={t("pages.contact.messagePlaceholder")} className="resize-none min-h-[120px]" required data-testid="input-message" />
                     </div>
-                    <Button type="submit" className="w-full gap-2 bg-indigo-600 border-indigo-700 text-white" data-testid="button-send-message" disabled={contactMutation.isPending}>
+                    {captchaRequired && (
+                      <TurnstileWidget onVerify={handleTurnstileVerify} className="flex justify-center" />
+                    )}
+                    <Button
+                      type="submit"
+                      className="w-full gap-2 bg-indigo-600 border-indigo-700 text-white"
+                      data-testid="button-send-message"
+                      disabled={contactMutation.isPending || (captchaRequired && !turnstileToken)}
+                    >
                       <Send className="w-4 h-4" />
                       {contactMutation.isPending ? t("pages.contact.sendingButton") : t("pages.contact.sendButton")}
                     </Button>

@@ -42,7 +42,8 @@ import {
 import { runFxRefresh } from "./lib/jobs/fx-refresh";
 import { getBudgetWarning } from "./lib/mcp/budget-warnings";
 import { getCostPerModel, getTopSpenders, getSpendForecast, getAnomalies, getOptimizationRecommendations } from "./lib/analytics";
-import { loginLimiter, redeemLimiter, regenerateKeyLimiter, adminLoginLimiter } from "./lib/rate-limiter";
+import { loginLimiter, redeemLimiter, regenerateKeyLimiter, adminLoginLimiter, contactLimiter, signupLimiter, voucherValidateLimiter } from "./lib/rate-limiter";
+import { requireTurnstile } from "./lib/turnstile";
 import crypto from "crypto";
 import { z } from "zod";
 import { cascadeDeleteOrganization, cascadeDeleteTeam, cascadeDeleteMember, cascadeDeleteVoucher } from "./lib/cascade-delete";
@@ -87,11 +88,17 @@ export async function registerRoutes(
   setupAuth(app);
   mountOAuth(app);
 
-  app.post("/api/contact", async (req, res) => {
+  app.post("/api/contact", contactLimiter, requireTurnstile({ route: "/api/contact" }), async (req, res) => {
     try {
       const { name, email, message } = req.body;
       if (!name || !email || !message) {
         return res.status(400).json({ message: "All fields are required" });
+      }
+      if (typeof name !== "string" || typeof email !== "string" || typeof message !== "string") {
+        return res.status(400).json({ message: "Invalid field types" });
+      }
+      if (name.length > 200 || email.length > 320 || message.length > 5000) {
+        return res.status(400).json({ message: "Field too long" });
       }
       const html = `<div style="font-family:sans-serif;max-width:560px">
         <h2 style="color:#6366F1">New Contact Form Submission</h2>
@@ -108,7 +115,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/auth/signup", async (req, res) => {
+  app.post("/api/auth/signup", signupLimiter, requireTurnstile({ route: "/api/auth/signup" }), async (req, res) => {
     try {
       const data = signupSchema.parse(req.body);
       const normalizedEmail = data.email.toLowerCase().trim();
@@ -3822,35 +3829,20 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/vouchers/validate/:code", async (req, res) => {
+  app.get("/api/vouchers/validate/:code", voucherValidateLimiter, async (req, res) => {
+    const NOT_USABLE = { message: "Voucher not found or no longer usable" };
+
     const voucher = await storage.getVoucherByCode(req.params.code.toUpperCase());
-    if (!voucher) {
-      return res.status(404).json({ message: "Voucher not found" });
-    }
-
-    if (voucher.status !== "ACTIVE") {
-      return res.status(400).json({ message: `Voucher is ${voucher.status.toLowerCase()}` });
-    }
-
-    if (new Date(voucher.expiresAt) < new Date()) {
-      return res.status(400).json({ message: "Voucher has expired" });
-    }
-
-    if (voucher.currentRedemptions >= voucher.maxRedemptions) {
-      return res.status(400).json({ message: "Voucher is fully redeemed" });
-    }
+    if (!voucher) return res.status(404).json(NOT_USABLE);
+    if (voucher.status !== "ACTIVE") return res.status(404).json(NOT_USABLE);
+    if (new Date(voucher.expiresAt) < new Date()) return res.status(404).json(NOT_USABLE);
+    if (voucher.currentRedemptions >= voucher.maxRedemptions) return res.status(404).json(NOT_USABLE);
 
     if (voucher.bundleId) {
       const bundle = await storage.getVoucherBundle(voucher.bundleId);
-      if (!bundle || bundle.status !== "ACTIVE") {
-        return res.status(400).json({ message: "The bundle backing this voucher is no longer active" });
-      }
-      if (new Date(bundle.expiresAt) < new Date()) {
-        return res.status(400).json({ message: "The bundle backing this voucher has expired" });
-      }
-      if (bundle.usedRedemptions >= bundle.totalRedemptions) {
-        return res.status(400).json({ message: "The bundle's redemption pool is exhausted" });
-      }
+      if (!bundle || bundle.status !== "ACTIVE") return res.status(404).json(NOT_USABLE);
+      if (new Date(bundle.expiresAt) < new Date()) return res.status(404).json(NOT_USABLE);
+      if (bundle.usedRedemptions >= bundle.totalRedemptions) return res.status(404).json(NOT_USABLE);
     }
 
     const models = await storage.getModelPricing();

@@ -4,10 +4,11 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Link, useLocation } from "wouter";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowRight, Shield, Users, Ticket } from "lucide-react";
+import { TurnstileWidget, isTurnstileConfigured } from "@/components/turnstile-widget";
 
 export default function SignupPage() {
   const [name, setName] = useState("");
@@ -15,19 +16,29 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [orgName, setOrgName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const captchaRequired = isTurnstileConfigured();
+  const handleTurnstileVerify = useCallback((token: string | null) => setTurnstileToken(token), []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (captchaRequired && !turnstileToken) {
+      toast({ title: "Captcha required", description: "Please complete the captcha challenge.", variant: "destructive" });
+      return;
+    }
     setLoading(true);
     try {
-      await apiRequest("POST", "/api/auth/signup", { name, email, password, orgName });
+      const body: Record<string, unknown> = { name, email, password, orgName };
+      if (turnstileToken) body.turnstile_token = turnstileToken;
+      await apiRequest("POST", "/api/auth/signup", body);
       await new Promise(resolve => setTimeout(resolve, 100));
       await queryClient.invalidateQueries({ queryKey: ["/api/auth/session"] });
       await queryClient.refetchQueries({ queryKey: ["/api/auth/session"] });
       setLocation("/dashboard");
     } catch (err: any) {
+      setTurnstileToken(null);
       toast({ title: "Signup failed", description: err.message || "Something went wrong", variant: "destructive" });
     } finally {
       setLoading(false);
@@ -132,7 +143,15 @@ export default function SignupPage() {
                   data-testid="input-password"
                 />
               </div>
-              <Button type="submit" className="w-full h-11 font-semibold gap-2" disabled={loading} data-testid="button-submit-signup">
+              {captchaRequired && (
+                <TurnstileWidget onVerify={handleTurnstileVerify} className="flex justify-center" />
+              )}
+              <Button
+                type="submit"
+                className="w-full h-11 font-semibold gap-2"
+                disabled={loading || (captchaRequired && !turnstileToken)}
+                data-testid="button-submit-signup"
+              >
                 {loading ? "Creating account..." : <>Create account <ArrowRight className="w-4 h-4" /></>}
               </Button>
               <p className="text-xs text-muted-foreground text-center">
