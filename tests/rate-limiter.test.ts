@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import express from "express";
+import rateLimit from "express-rate-limit";
 import type { AddressInfo } from "net";
-import { contactLimiter, signupLimiter, voucherValidateLimiter } from "../server/lib/rate-limiter";
+import { contactLimiter, signupLimiter, voucherValidateLimiter, logBlocked } from "../server/lib/rate-limiter";
 
 function makeApp() {
   const app = express();
@@ -74,5 +75,38 @@ describe("Rate limiters for public endpoints", () => {
     const blocked = await hitWithStatus("/api/vouchers/validate/code-31", "GET");
     expect(blocked.status).toBe(429);
     expect(blocked.body?.message).toMatch(/voucher lookups/i);
+  });
+
+  it("counters reset after the window expires (proves window-reset behavior)", async () => {
+    const shortWindowApp = express();
+    shortWindowApp.set("trust proxy", 1);
+    const limiter = rateLimit({
+      windowMs: 250,
+      limit: 2,
+      standardHeaders: "draft-7",
+      legacyHeaders: false,
+      message: { message: "Too many requests" },
+      handler: (req, res) => {
+        logBlocked("RATE_LIMITED", "/probe", req);
+        res.status(429).json({ message: "Too many requests" });
+      },
+    });
+    shortWindowApp.get("/probe", limiter, (_req, res) => res.json({ ok: true }));
+    const probeServer = await new Promise<ReturnType<typeof shortWindowApp.listen>>(resolve => {
+      const s = shortWindowApp.listen(0, "127.0.0.1", () => resolve(s));
+    });
+    try {
+      const probePort = (probeServer.address() as AddressInfo).port;
+      const probeUrl = "http://127.0.0.1:" + probePort + "/probe";
+      expect((await fetch(probeUrl)).status).toBe(200);
+      expect((await fetch(probeUrl)).status).toBe(200);
+      expect((await fetch(probeUrl)).status).toBe(429);
+      await new Promise(resolve => setTimeout(resolve, 350));
+      expect((await fetch(probeUrl)).status).toBe(200);
+      expect((await fetch(probeUrl)).status).toBe(200);
+      expect((await fetch(probeUrl)).status).toBe(429);
+    } finally {
+      await new Promise<void>(resolve => probeServer.close(() => resolve()));
+    }
   });
 });

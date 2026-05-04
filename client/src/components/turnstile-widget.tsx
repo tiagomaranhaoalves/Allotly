@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 
 const SCRIPT_ID = "cf-turnstile-script";
 const SCRIPT_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
@@ -55,15 +55,36 @@ export interface TurnstileWidgetProps {
   theme?: "light" | "dark" | "auto";
 }
 
+export interface TurnstileWidgetHandle {
+  reset: () => void;
+}
+
 export function isTurnstileConfigured(): boolean {
   return Boolean(import.meta.env.VITE_TURNSTILE_SITE_KEY);
 }
 
-export function TurnstileWidget({ onVerify, className, theme = "auto" }: TurnstileWidgetProps) {
+export const TurnstileWidget = forwardRef<TurnstileWidgetHandle, TurnstileWidgetProps>(function TurnstileWidget(
+  { onVerify, className, theme = "auto" },
+  ref,
+) {
   const siteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useImperativeHandle(ref, () => ({
+    reset: () => {
+      if (widgetIdRef.current && typeof window !== "undefined" && window.turnstile) {
+        try {
+          window.turnstile.reset(widgetIdRef.current);
+          setError(null);
+          onVerify(null);
+        } catch {
+          // ignore
+        }
+      }
+    },
+  }), [onVerify]);
 
   useEffect(() => {
     if (!siteKey || !containerRef.current) return;
@@ -122,4 +143,4 @@ export function TurnstileWidget({ onVerify, className, theme = "auto" }: Turnsti
       )}
     </div>
   );
-}
+});

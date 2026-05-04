@@ -5,12 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Mail, Headphones, Building2, Send, CheckCircle2 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useTranslation } from "react-i18next";
-import { TurnstileWidget, isTurnstileConfigured } from "@/components/turnstile-widget";
+import { TurnstileWidget, isTurnstileConfigured, type TurnstileWidgetHandle } from "@/components/turnstile-widget";
 
 const contacts = [
   { id: "general", testSlug: "general-inquiries", icon: Mail, email: "hello@allotly.ai" },
@@ -22,6 +22,7 @@ export default function ContactPage() {
   const { t } = useTranslation();
   const [submitted, setSubmitted] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const turnstileRef = useRef<TurnstileWidgetHandle | null>(null);
   const { toast } = useToast();
   const captchaRequired = isTurnstileConfigured();
   const handleTurnstileVerify = useCallback((token: string | null) => setTurnstileToken(token), []);
@@ -37,6 +38,7 @@ export default function ContactPage() {
     },
     onError: () => {
       setTurnstileToken(null);
+      turnstileRef.current?.reset();
       toast({ title: t("pages.contact.toastErrorTitle"), description: t("pages.contact.toastErrorBody"), variant: "destructive" });
     },
   });
@@ -122,7 +124,7 @@ export default function ContactPage() {
                       <Textarea id="message" placeholder={t("pages.contact.messagePlaceholder")} className="resize-none min-h-[120px]" required data-testid="input-message" />
                     </div>
                     {captchaRequired && (
-                      <TurnstileWidget onVerify={handleTurnstileVerify} className="flex justify-center" />
+                      <TurnstileWidget ref={turnstileRef} onVerify={handleTurnstileVerify} className="flex justify-center" />
                     )}
                     <Button
                       type="submit"

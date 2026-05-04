@@ -4,11 +4,11 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Link, useLocation } from "wouter";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowRight, Shield, Users, Ticket } from "lucide-react";
-import { TurnstileWidget, isTurnstileConfigured } from "@/components/turnstile-widget";
+import { TurnstileWidget, isTurnstileConfigured, type TurnstileWidgetHandle } from "@/components/turnstile-widget";
 
 export default function SignupPage() {
   const [name, setName] = useState("");
@@ -17,6 +17,7 @@ export default function SignupPage() {
   const [orgName, setOrgName] = useState("");
   const [loading, setLoading] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const turnstileRef = useRef<TurnstileWidgetHandle | null>(null);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const captchaRequired = isTurnstileConfigured();
@@ -39,6 +40,7 @@ export default function SignupPage() {
       setLocation("/dashboard");
     } catch (err: any) {
       setTurnstileToken(null);
+      turnstileRef.current?.reset();
       toast({ title: "Signup failed", description: err.message || "Something went wrong", variant: "destructive" });
     } finally {
       setLoading(false);
@@ -144,7 +146,7 @@ export default function SignupPage() {
                 />
               </div>
               {captchaRequired && (
-                <TurnstileWidget onVerify={handleTurnstileVerify} className="flex justify-center" />
+                <TurnstileWidget ref={turnstileRef} onVerify={handleTurnstileVerify} className="flex justify-center" />
               )}
               <Button
                 type="submit"
