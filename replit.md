@@ -47,8 +47,9 @@ npm run db:push # Apply Drizzle ORM migrations
 *   `server/lib/oauth/consent-template.ts` - Consent page (renders membership picker for multi-team users)
 *   `client/src/hooks/use-active-membership.ts` - Shared selector for the active member dashboard membership
 *   `client/src/components/dashboard/membership-switcher.tsx` - Dashboard team switcher (multi-team users)
-*   `server/lib/vouchers/redeem-inline.ts` - Pure helper: voucher redemption side effects
+*   `server/lib/vouchers/redeem-inline.ts` - Voucher redemption side effects (atomic slot claim + compensation)
 *   `server/lib/auth/api-key-lookup.ts` - Validate-and-resolve `allotly_sk_…` keys (no Redis cache)
+*   `server/lib/members/create-member.ts` - Extracted POST /api/members handler (multi-team-aware invite check)
 *   `client/src/i18n/locales/` - i18n translation files
 *   `docs/release-checklist.md` - Release procedures
 *   `tests/e2e/` - Playwright end-to-end tests
@@ -59,6 +60,8 @@ npm run db:push # Apply Drizzle ORM migrations
 *   **Integer USD-Cents for Money:** All monetary values are handled internally as integer USD-cents to prevent floating-point errors. Display currency is a view-layer concern.
 *   **Encrypted AI Provider Keys:** AI provider API keys are AES-256-GCM encrypted, supporting rotation and real-time validation.
 *   **Robust Cascade Deletion:** Critical entity deletions (org, team, member, voucher) are atomic transactions with full cascade cleanup.
+*   **Atomic Voucher Slot Claim:** `redeemVoucherInline` claims a voucher slot via a single conditional UPDATE (`currentRedemptions < maxRedemptions AND status='ACTIVE'`) inside a transaction that also claims the parent bundle slot when present. The claim runs *before* user/membership/redemption-row creation; failures before the redemption row commits release the slot, failures after it commits intentionally retain the slot to prevent re-opening occupied capacity on retry. Prevents over-redemption under concurrent load (MCP retries, parallel `/oauth/authorize/credential` posts).
+*   **Multi-team Memberships:** A user can belong to multiple teams. `team_memberships` no longer has a UNIQUE constraint on `user_id`; uniqueness is enforced on the composite `(team_id, user_id)` to close the concurrent-invite race. `getMembershipByUser` returns the user's "primary" membership using status priority (ACTIVE > BUDGET_EXHAUSTED > SUSPENDED > other; ties by `updated_at DESC`); the same ordering drives the OAuth team picker and the dashboard switcher's default selection. Use `getMembershipsByUser` / `getMembershipByUserAndTeam` whenever a single team scope is required.
 *   **Branded Error Codes for Test-Your-Key:** User-facing errors from the `test-connection` endpoint are mapped to six branded codes with context-aware hints, abstracting upstream provider specifics.
 *   **Multi-membership member dashboard:** Users belonging to multiple teams see a switcher; selection lives in URL `?membership=` + sessionStorage. Member-facing endpoints (`/api/me/keys`, `/api/my-keys`, `/api/dashboard/member-overview`, `/api/members/me/welcome`) accept an optional `membershipId` (validated against ownership) and fall back to the legacy "primary" pick when omitted. New `/api/me/memberships` endpoint lists every membership the user holds. The OAuth consent page renders a `<select name="membership_id">` when the user has >1 eligible membership, and the consent handler re-validates the chosen id against an allow-list captured at `/oauth/authorize` time so a tampered POST can't bind a foreign membership.
 *   **Voucher-aware OAuth authorize:** Unauthenticated `/oauth/authorize` renders an in-flow 3-tab credential form (password / voucher / API key) instead of bouncing to `/login`. Synthetic voucher users are first-class OAuth subjects — security is enforced via membership status at the proxy, not via `isVoucherUser`. POST handler at `/oauth/authorize/credential`; CSS-only tabs (CSP `script-src 'none'`); generic error string only (no enumeration oracle); `oauth_continue` must be a relative `/oauth/authorize` path (open-redirect block). Failure auditing is two-tiered: attributable failures (known user/voucher/API key) write `audit_logs` rows with `action: oauth.credential_failed` and precise cause; inattributable failures (CSRF mismatch, unknown email, malformed key) fall back to server logs only — `audit_logs.actor_id` is a NOT NULL FK to `users.id`, so we never fabricate an actor.
@@ -89,6 +92,7 @@ npm run db:push # Apply Drizzle ORM migrations
 *   Ensure `TURNSTILE_SECRET_KEY` (server) and `VITE_TURNSTILE_SITE_KEY` (client build-time) are set for production to enable captcha protection on public endpoints.
 *   `max_tokens` and `max_completion_tokens` are mutually exclusive in forwarded API requests.
 *   Azure OpenAI requires deployment-to-model mappings and custom pricing; deployment names are URL-encoded in requests.
+*   Member-facing API endpoints (`/api/me/keys`, `/api/my-keys`, `/api/dashboard/member-overview`, `/api/members/me/welcome`, etc.) accept an optional `membershipId` query/body param. Always resolve it via `resolveOwnedMembership()` — an explicit but unowned id deliberately returns 404 (no silent fallback to the user's primary membership).
 
 ## Pointers
 
