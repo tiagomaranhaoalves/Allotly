@@ -89,6 +89,7 @@ npm run db:push # Apply Drizzle ORM migrations
 ## Gotchas
 
 *   Always run `npm run build` which includes `vitest run` before deployment; `SKIP_RELEASE_TESTS=1` is for local debugging only.
+*   Playwright runs three projects (chromium, firefox, webkit). The default chromium project runs the full e2e suite; firefox and webkit are filtered to specs tagged `@cross-browser` (currently `tests/e2e/oauth-consent.spec.ts`). The Replit dev container can run chromium + firefox but not webkit (bundled webkit needs `libjxl.so.0.8`, not in nixpkgs); use `PLAYWRIGHT_SKIP_WEBKIT=1 bash scripts/pre-release.sh` locally. CI must run `npx playwright install --with-deps` once at provisioning so all three engines work.
 *   Ensure `TURNSTILE_SECRET_KEY` (server) and `VITE_TURNSTILE_SITE_KEY` (client build-time) are set for production to enable captcha protection on public endpoints.
 *   `max_tokens` and `max_completion_tokens` are mutually exclusive in forwarded API requests.
 *   Azure OpenAI requires deployment-to-model mappings and custom pricing; deployment names are URL-encoded in requests.

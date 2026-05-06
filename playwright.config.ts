@@ -21,6 +21,22 @@ export default defineConfig({
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
     },
+    // Cross-browser projects exist specifically to catch the class of
+    // regression Task #61 introduced: the consent form's `decision` field
+    // disappeared in Firefox/Safari but worked in headless Chrome. Any spec
+    // tagged with `@cross-browser` runs in all three engines so we never
+    // ship that bug again. Other specs are filtered out at the project
+    // level via `grep` to keep the default suite fast.
+    {
+      name: "firefox",
+      use: { ...devices["Desktop Firefox"] },
+      grep: /@cross-browser/,
+    },
+    {
+      name: "webkit",
+      use: { ...devices["Desktop Safari"] },
+      grep: /@cross-browser/,
+    },
   ],
   webServer: process.env.PLAYWRIGHT_NO_WEB_SERVER
     ? undefined
