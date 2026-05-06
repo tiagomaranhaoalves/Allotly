@@ -66,17 +66,43 @@ async function logCredFailure(
 
 /**
  * `oauth_continue` MUST be a relative path on our origin pointing back at
- * /oauth/authorize. This blocks open-redirect via crafted hidden field.
+ * /oauth/authorize. This blocks open-redirect via crafted hidden field while
+ * allowing the legitimate form-rendered value (which includes nested
+ * `redirect_uri=https://...` inside the query string).
+ *
+ * Implementation: parse the value relative to a placeholder origin. If the
+ * parser interprets the value as same-origin (hostname unchanged) AND the
+ * pathname is exactly /oauth/authorize, it is safe. Anything else (absolute
+ * URL with a real host, protocol-relative `//evil.com/...`, traversal, etc.)
+ * either changes the hostname or moves the pathname off /oauth/authorize.
+ *
+ * The `\\` check stays because some browser/Node URL parsers disagree on
+ * whether backslash is a path separator; defensively reject it before parse.
+ *
+ * Hotfix history: the prior `value.includes("://")` blanket check rejected
+ * any real browser submission because the form embeds the original
+ * /oauth/authorize?...&redirect_uri=https://... URL verbatim and that string
+ * always contains `://` inside the query.
  */
 function isSafeContinue(value: unknown): value is string {
   if (typeof value !== "string") return false;
-  if (!value.startsWith("/oauth/authorize")) return false;
+  // Must be absolute-path-relative ("/oauth/authorize?..."). This single
+  // gate rejects every absolute URL form (`http://...`, `https://...`,
+  // `javascript:...`, and even the placeholder-origin shape
+  // `http://placeholder.local/oauth/authorize`) before we ever ask the
+  // URL parser what it thinks. Belt-and-suspenders with the hostname
+  // check below.
+  if (!value.startsWith("/")) return false;
   if (value.startsWith("//")) return false;
-  if (value.includes("://")) return false;
-  // Backslash defeats some URL-parser disagreements between Node and browsers
-  // (treated as path-separator by some clients). Reject defensively.
   if (value.includes("\\")) return false;
-  return true;
+  try {
+    const url = new URL(value, "http://placeholder.local");
+    if (url.hostname !== "placeholder.local") return false;
+    if (url.pathname !== "/oauth/authorize") return false;
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**

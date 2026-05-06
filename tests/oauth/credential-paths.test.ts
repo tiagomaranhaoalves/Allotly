@@ -604,4 +604,109 @@ describe("oauth credential POST /oauth/authorize/credential — three-path auth"
     expect(sess.orgId).toBeUndefined();
     expect(sess.orgRole).toBeUndefined();
   });
+
+  it("[14] regression: real-browser GET → POST round-trip with embedded redirect_uri=https:// is accepted by isSafeContinue", async () => {
+    // Drive the real production code path: render the form via authorizeHandler,
+    // pull the embedded oauth_continue + csrf out of the rendered HTML (DOM-
+    // decoding &amp; → &), then POST those values back to authorizeCredentialHandler.
+    // Pre-fix this returned 400 because the embedded URL contains
+    // `redirect_uri=https://...` which the old `value.includes("://")` check
+    // blanket-rejected.
+    //
+    // RFC 3986 allows reserved chars (`:`, `/`) in the query component without
+    // percent-encoding, and many real OAuth clients (Claude Desktop, MCP hosts,
+    // Cursor) send `redirect_uri=https://...` unencoded. We mirror that by
+    // setting originalUrl with literal `://` rather than going through
+    // URLSearchParams (which would percent-encode and mask the bug).
+    const rawOriginalUrl =
+      `/oauth/authorize?client_id=${registeredClientId}` +
+      `&redirect_uri=${TEST_REDIRECT_URI}` +
+      `&response_type=code&code_challenge=${pkceChallenge}` +
+      `&code_challenge_method=S256&scope=mcp&state=g14` +
+      `&resource=${MCP_AUDIENCE}`;
+    const sess: any = {};
+    const reqGet = mockReq({
+      query: {
+        client_id: registeredClientId,
+        redirect_uri: TEST_REDIRECT_URI,
+        response_type: "code",
+        code_challenge: pkceChallenge,
+        code_challenge_method: "S256",
+        scope: "mcp",
+        state: "g14",
+        resource: MCP_AUDIENCE,
+      },
+      session: sess,
+      originalUrl: rawOriginalUrl,
+    });
+    const resGet = mockRes();
+    await authorizeHandler(reqGet as any, resGet as any);
+    expect(resGet.statusCode).toBe(200);
+
+    const html = String(resGet.body);
+    const continueMatch = html.match(/name="oauth_continue"\s+value="([^"]+)"/);
+    const csrfMatch = html.match(/name="csrf"\s+value="([^"]+)"/);
+    expect(continueMatch).toBeTruthy();
+    expect(csrfMatch).toBeTruthy();
+    // DOM-decode the &amp; entities a real browser would unescape on submit.
+    const embeddedContinue = continueMatch![1].replace(/&amp;/g, "&");
+    const embeddedCsrf = csrfMatch![1];
+    // Sanity: this is exactly the failure shape — the value contains "://".
+    expect(embeddedContinue).toContain("redirect_uri=");
+    expect(embeddedContinue).toContain("://");
+
+    const reqPost = mockReq({
+      body: {
+        csrf: embeddedCsrf,
+        oauth_continue: embeddedContinue,
+        credential_type: "voucher",
+        code: "ALLOT-FAKE-FAKE-FAKE",
+      },
+      session: sess,
+    });
+    const resPost = mockRes();
+    await authorizeCredentialHandler(reqPost as any, resPost as any);
+    // Pre-fix: 400 "oauth_continue must be a /oauth/authorize URL on this origin".
+    // Post-fix: validator passes, credential validation runs, malformed voucher
+    // → 401 form re-render with the credential-error banner.
+    expect(resPost.statusCode).not.toBe(400);
+    expect(resPost.statusCode).toBe(401);
+    expect(String(resPost.body)).toContain('data-testid="credential-error"');
+    expect(sess.userId).toBeUndefined();
+  });
+
+  it("[15] regression: every previously-rejected oauth_continue shape still returns 400", async () => {
+    const stableCsrf = "csrf-15".padEnd(32, "0");
+    const badShapes: Array<unknown> = [
+      "https://evil.example.com/oauth/authorize",
+      "//evil.example.com/oauth/authorize",
+      "\\\\evil.example.com\\oauth\\authorize",
+      "/oauth/authorize/../foo",
+      "/login?next=/oauth/authorize",
+      "javascript:alert(1)",
+      "",
+      null,
+      // Defense in depth: an absolute URL whose hostname is exactly the
+      // placeholder origin used internally by the validator must not
+      // sneak through. Architect-flagged regression.
+      "http://placeholder.local/oauth/authorize",
+    ];
+    for (const evil of badShapes) {
+      const sess: any = { _oauthCsrf: stableCsrf };
+      const req = mockReq({
+        body: {
+          csrf: stableCsrf,
+          oauth_continue: evil,
+          credential_type: "password",
+          email: realUserEmail,
+          password: realUserPassword,
+        },
+        session: sess,
+      });
+      const res = mockRes();
+      await authorizeCredentialHandler(req as any, res as any);
+      expect(res.statusCode, `shape ${JSON.stringify(evil)} should be rejected with 400`).toBe(400);
+      expect(sess.userId).toBeUndefined();
+    }
+  });
 });
