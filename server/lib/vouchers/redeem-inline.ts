@@ -3,7 +3,14 @@ import { eq, and, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { storage } from "../../storage";
 import { voucherBundles } from "@shared/schema";
-import type { User, TeamMembership, Voucher } from "@shared/schema";
+import type {
+  User,
+  TeamMembership,
+  Voucher,
+  InsertUser,
+  InsertTeamMembership,
+  InsertAuditLog,
+} from "@shared/schema";
 import { hashPassword } from "../password";
 import { generateAllotlyKey } from "../keys";
 import { redisSet, redisGet, redisIncr, REDIS_KEYS } from "../redis";
@@ -37,6 +44,17 @@ export interface RedeemInlineFailure {
   ok: false;
   code: RedeemInlineFailureCode;
   message: string;
+  /**
+   * Set when the failure is attributable to a specific voucher we located
+   * (i.e. anything other than `voucher_invalid` for a non-existent code).
+   * Callers (e.g. the OAuth credential POST) use this to write a structured
+   * audit-log row for failed attempts without violating the audit_logs
+   * NOT NULL FK on `org_id` / `actor_id`. `actorId` is the voucher creator
+   * (team admin) — the closest "system actor" for an attributable failure.
+   */
+  orgId?: string;
+  voucherId?: string;
+  actorId?: string;
 }
 
 export type RedeemInlineResult = RedeemInlineSuccess | RedeemInlineFailure;
@@ -72,31 +90,40 @@ export async function redeemVoucherInline(input: RedeemInlineInput): Promise<Red
 
   const voucher = await storage.getVoucherByCode(code.toUpperCase());
   if (!voucher || voucher.status !== "ACTIVE") {
-    return { ok: false, code: "voucher_invalid", message: "Invalid or inactive voucher" };
+    // For an inactive (vs missing) voucher we *do* know the org — surface it
+    // so the caller can attribute an audit log row.
+    return {
+      ok: false,
+      code: "voucher_invalid",
+      message: "Invalid or inactive voucher",
+      orgId: voucher?.orgId,
+      voucherId: voucher?.id,
+      actorId: voucher?.createdById,
+    };
   }
 
   if (new Date(voucher.expiresAt) < new Date()) {
-    return { ok: false, code: "voucher_expired", message: "Voucher has expired" };
+    return { ok: false, code: "voucher_expired", message: "Voucher has expired", orgId: voucher.orgId, voucherId: voucher.id, actorId: voucher.createdById };
   }
 
   if (voucher.currentRedemptions >= voucher.maxRedemptions) {
-    return { ok: false, code: "voucher_fully_redeemed", message: "Voucher is fully redeemed" };
+    return { ok: false, code: "voucher_fully_redeemed", message: "Voucher is fully redeemed", orgId: voucher.orgId, voucherId: voucher.id, actorId: voucher.createdById };
   }
 
   const team = await storage.getTeam(voucher.teamId);
   if (!team) {
-    return { ok: false, code: "team_not_found", message: "Team not found" };
+    return { ok: false, code: "team_not_found", message: "Team not found", orgId: voucher.orgId, voucherId: voucher.id, actorId: voucher.createdById };
   }
 
   const memberCheck = await checkPlanLimit(voucher.orgId, "member", voucher.teamId);
   if (!memberCheck.allowed) {
-    return { ok: false, code: "member_limit", message: "This team has reached its member limit" };
+    return { ok: false, code: "member_limit", message: "This team has reached its member limit", orgId: voucher.orgId, voucherId: voucher.id, actorId: voucher.createdById };
   }
 
   const isSynthetic = Boolean(instant) || !email;
 
-  let userEmail = email;
-  let userPassword = password;
+  let userEmail: string;
+  let userPassword: string;
   if (isSynthetic) {
     // crypto.randomBytes (CSPRNG) — Math.random was the prior weakness; for
     // synthetic accounts the password is never shared but the email forms
@@ -104,33 +131,41 @@ export async function redeemVoucherInline(input: RedeemInlineInput): Promise<Red
     const rand = crypto.randomBytes(4).toString("hex");
     userEmail = `voucher-${code.slice(0, 8)}-${rand}@allotly.local`;
     userPassword = crypto.randomBytes(16).toString("base64url");
+  } else {
+    userEmail = email!;
+    userPassword = password || "changeme123";
   }
 
-  const passwordHash = await hashPassword(userPassword || "changeme123");
-  const voucherUser = await storage.createUser({
-    email: userEmail!,
+  const passwordHash = await hashPassword(userPassword);
+  const newUser: InsertUser = {
+    email: userEmail,
     name: name || "Voucher User",
     passwordHash,
     orgId: voucher.orgId,
     orgRole: "MEMBER",
     status: "ACTIVE",
     isVoucherUser: true,
-  } as any);
+  };
+  const voucherUser = await storage.createUser(newUser);
 
   const now = new Date();
-  const membership = await storage.createMembership({
+  const newMembership: InsertTeamMembership = {
     teamId: voucher.teamId,
     userId: voucherUser.id,
     accessType: "VOUCHER",
     monthlyBudgetCents: voucher.budgetCents,
-    allowedModels: voucher.allowedModels,
-    allowedProviders: voucher.allowedProviders,
+    // JSON columns: voucher.allowedModels is `unknown`, membership column
+    // accepts the same shape. Cast through unknown to satisfy drizzle-zod's
+    // inferred Json type without `any`.
+    allowedModels: voucher.allowedModels as InsertTeamMembership["allowedModels"],
+    allowedProviders: voucher.allowedProviders as InsertTeamMembership["allowedProviders"],
     currentPeriodSpendCents: 0,
     periodStart: now,
     periodEnd: new Date(voucher.expiresAt),
     status: "ACTIVE",
     voucherRedemptionId: voucher.id,
-  } as any);
+  };
+  const membership = await storage.createMembership(newMembership);
 
   await storage.createVoucherRedemption({ voucherId: voucher.id, userId: voucherUser.id });
   await storage.updateVoucher(voucher.id, { currentRedemptions: voucher.currentRedemptions + 1 });
@@ -158,7 +193,14 @@ export async function redeemVoucherInline(input: RedeemInlineInput): Promise<Red
         .returning();
 
       if (updated.length === 0) {
-        return { ok: false, code: "bundle_exhausted", message: "Bundle redemption pool is exhausted" };
+        return {
+          ok: false,
+          code: "bundle_exhausted",
+          message: "Bundle redemption pool is exhausted",
+          orgId: voucher.orgId,
+          voucherId: voucher.id,
+          actorId: voucher.createdById,
+        };
       }
 
       const bundleReqKey = REDIS_KEYS.bundleRequests(bundle.id);
@@ -181,21 +223,22 @@ export async function redeemVoucherInline(input: RedeemInlineInput): Promise<Red
     keyPrefix: prefix,
   });
 
-  await storage.createAuditLog({
+  const auditEntry: InsertAuditLog = {
     orgId: voucher.orgId,
     actorId: voucherUser.id,
     action: "voucher.redeemed",
     targetType: "voucher",
     targetId: voucher.id,
     metadata: { code: voucher.code, email: userEmail },
-  } as any);
+  };
+  await storage.createAuditLog(auditEntry);
 
   const teamAdmin = await storage.getUser(team.adminId);
   if (teamAdmin?.email) {
     const tmpl = emailTemplates.voucherRedeemed(
       teamAdmin.name || "Admin",
       voucher.code,
-      userEmail || "anonymous",
+      userEmail,
       team.name,
     );
     try { await sendEmail(teamAdmin.email, tmpl.subject, tmpl.html); } catch {}

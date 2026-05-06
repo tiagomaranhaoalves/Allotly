@@ -543,6 +543,37 @@ describe("oauth credential POST /oauth/authorize/credential — three-path auth"
     expect(String(resGet2.body)).not.toMatch(/claim-account/);
   });
 
+  it("[13a] credential failure for a known user writes a structured audit_logs row (precise reason in audit, generic message in HTTP body)", async () => {
+    const before = await db.select().from(auditLogs).where(eq(auditLogs.orgId, testOrgId));
+    const beforeFailedCount = before.filter((r) => r.action === "oauth.credential_failed").length;
+
+    const sess: any = { _oauthCsrf: "test-csrf-13a".padEnd(32, "0") };
+    const req = mockReq({
+      body: {
+        csrf: "test-csrf-13a".padEnd(32, "0"),
+        oauth_continue: oauthContinue,
+        credential_type: "password",
+        email: realUserEmail,
+        password: "WRONG-PASSWORD-AUDIT-TEST",
+      },
+      session: sess,
+    });
+    const res = mockRes();
+    await authorizeCredentialHandler(req as any, res as any);
+    expect(res.statusCode).toBe(401);
+
+    const after = await db.select().from(auditLogs).where(eq(auditLogs.orgId, testOrgId));
+    const afterFailed = after.filter((r) => r.action === "oauth.credential_failed");
+    expect(afterFailed.length).toBe(beforeFailedCount + 1);
+    const row = afterFailed[afterFailed.length - 1];
+    expect(row.actorId).toBe(realUserId);
+    expect(row.targetType).toBe("user");
+    expect(row.targetId).toBe(realUserId);
+    expect((row.metadata as any).cause).toBe("PASSWORD_MISMATCH");
+    // HTTP body still carries only the generic error.
+    expect(String(res.body)).not.toMatch(/PASSWORD_MISMATCH|wrong password/i);
+  });
+
   it("[13] stale session (userId points at a deleted user) re-renders the form and clears the dangling session keys", async () => {
     const sess: any = {
       userId: "non-existent-user-id-" + crypto.randomBytes(8).toString("hex"),

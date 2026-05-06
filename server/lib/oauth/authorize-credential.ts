@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import { db } from "../../db";
 import { oauthClients } from "@shared/schema";
+import type { InsertAuditLog } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { storage } from "../../storage";
 import { comparePasswords } from "../password";
@@ -12,12 +13,55 @@ import { loginLimiter, redeemLimiter } from "../rate-limiter";
 
 const GENERIC_ERROR = "We couldn't sign you in with those credentials. Please double-check and try again.";
 
-function logCredFailure(cause: string, ctx: Record<string, unknown> = {}): void {
+/**
+ * Failure-attribution context. When `orgId` is set we write a structured
+ * audit_logs row (action: oauth.credential_failed) so security operators can
+ * see precise reasons. When it isn't, we can't satisfy the NOT NULL FK on
+ * audit_logs.org_id and fall back to a server log only.
+ *
+ * The user-facing response is always the same generic error regardless — the
+ * audit log is the single source of truth for the precise reason.
+ */
+interface CredFailureAttribution {
+  orgId?: string;
+  actorId?: string;
+  targetType?: string;
+  targetId?: string;
+  metadata?: Record<string, unknown>;
+}
+
+async function logCredFailure(
+  cause: string,
+  ctx: Record<string, unknown> = {},
+  attribution?: CredFailureAttribution,
+): Promise<void> {
   const parts = [`cause=${cause}`];
   for (const [k, v] of Object.entries(ctx)) {
     if (v !== undefined && v !== null) parts.push(`${k}=${v}`);
   }
   console.log(`[oauth-credential] FAIL ${parts.join(" ")}`);
+
+  if (attribution?.orgId) {
+    try {
+      // audit_logs.actor_id is a NOT NULL FK to users.id — only write when
+      // attribution carries a real user (the offending user, the voucher
+      // creator, or the API-key owner). Without that we can't satisfy the FK
+      // and fall back to the server log line above.
+      if (!attribution.actorId) return;
+      const entry: InsertAuditLog = {
+        orgId: attribution.orgId,
+        actorId: attribution.actorId,
+        action: "oauth.credential_failed",
+        targetType: attribution.targetType ?? null,
+        targetId: attribution.targetId ?? null,
+        metadata: { cause, ...(attribution.metadata ?? {}) },
+      };
+      await storage.createAuditLog(entry);
+    } catch (e) {
+      // Audit-log write failures must never block the response path.
+      console.log(`[oauth-credential] audit_log write failed cause=${cause} err=${(e as Error).message}`);
+    }
+  }
 }
 
 /**
@@ -103,20 +147,20 @@ export async function authorizeCredentialHandler(req: Request, res: Response): P
   const sess = req.session as any;
 
   if (!isSafeContinue(oauthContinue)) {
-    logCredFailure("UNSAFE_CONTINUE", { value: typeof oauthContinue === "string" ? oauthContinue.slice(0, 80) : typeof oauthContinue });
+    await logCredFailure("UNSAFE_CONTINUE", { value: typeof oauthContinue === "string" ? oauthContinue.slice(0, 80) : typeof oauthContinue });
     res.status(400).type("text/plain").send("invalid_request: oauth_continue must be a /oauth/authorize URL on this origin");
     return;
   }
 
   const sessionCsrf = sess?._oauthCsrf as string | undefined;
   if (!sessionCsrf || !csrf || !timingSafeEqualString(csrf, sessionCsrf)) {
-    logCredFailure("CSRF_MISMATCH", { hasSessionCsrf: !!sessionCsrf, hasBodyCsrf: !!csrf });
+    await logCredFailure("CSRF_MISMATCH", { hasSessionCsrf: !!sessionCsrf, hasBodyCsrf: !!csrf });
     res.status(403).type("text/plain").send("csrf_mismatch");
     return;
   }
 
   if (credType !== "password" && credType !== "voucher" && credType !== "api_key") {
-    logCredFailure("UNKNOWN_CREDENTIAL_TYPE", { credType });
+    await logCredFailure("UNKNOWN_CREDENTIAL_TYPE", { credType });
     res.status(400).type("text/plain").send("invalid_request: unknown credential_type");
     return;
   }
@@ -127,13 +171,14 @@ export async function authorizeCredentialHandler(req: Request, res: Response): P
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
     const password = typeof body.password === "string" ? body.password : "";
     if (!email || !password) {
-      logCredFailure("PASSWORD_MISSING_FIELDS");
+      await logCredFailure("PASSWORD_MISSING_FIELDS");
       renderError({ res, csrfToken: sessionCsrf, oauthContinue, clientName, activeTab: "password", prefillEmail: email });
       return;
     }
     const user = await storage.getUserByEmail(email);
     if (!user || !user.passwordHash) {
-      logCredFailure("PASSWORD_USER_NOT_FOUND", { email });
+      // Inattributable: no org. Server log only.
+      await logCredFailure("PASSWORD_USER_NOT_FOUND", { email });
       renderError({ res, csrfToken: sessionCsrf, oauthContinue, clientName, activeTab: "password", prefillEmail: email });
       return;
     }
@@ -144,12 +189,20 @@ export async function authorizeCredentialHandler(req: Request, res: Response): P
       passwordOk = false;
     }
     if (!passwordOk) {
-      logCredFailure("PASSWORD_MISMATCH", { userId: user.id });
+      await logCredFailure(
+        "PASSWORD_MISMATCH",
+        { userId: user.id },
+        { orgId: user.orgId, actorId: user.id, targetType: "user", targetId: user.id, metadata: { email } },
+      );
       renderError({ res, csrfToken: sessionCsrf, oauthContinue, clientName, activeTab: "password", prefillEmail: email });
       return;
     }
     if (user.status !== "ACTIVE") {
-      logCredFailure("PASSWORD_USER_INACTIVE", { userId: user.id, status: user.status });
+      await logCredFailure(
+        "PASSWORD_USER_INACTIVE",
+        { userId: user.id, status: user.status },
+        { orgId: user.orgId, actorId: user.id, targetType: "user", targetId: user.id, metadata: { status: user.status } },
+      );
       renderError({ res, csrfToken: sessionCsrf, oauthContinue, clientName, activeTab: "password", prefillEmail: email });
       return;
     }
@@ -163,13 +216,22 @@ export async function authorizeCredentialHandler(req: Request, res: Response): P
   if (credType === "voucher") {
     const code = typeof body.code === "string" ? body.code.trim() : "";
     if (!code) {
-      logCredFailure("VOUCHER_MISSING_CODE");
+      await logCredFailure("VOUCHER_MISSING_CODE");
       renderError({ res, csrfToken: sessionCsrf, oauthContinue, clientName, activeTab: "voucher" });
       return;
     }
     const result = await redeemVoucherInline({ code, instant: true });
     if (!result.ok) {
-      logCredFailure("VOUCHER_REDEEM_FAILED", { code: result.code, message: result.message });
+      const attribution = result.orgId && result.actorId
+        ? {
+            orgId: result.orgId,
+            actorId: result.actorId, // voucher creator (team admin)
+            targetType: "voucher" as const,
+            targetId: result.voucherId,
+            metadata: { code: result.code, message: result.message },
+          }
+        : undefined;
+      await logCredFailure("VOUCHER_REDEEM_FAILED", { code: result.code, message: result.message }, attribution);
       renderError({ res, csrfToken: sessionCsrf, oauthContinue, clientName, activeTab: "voucher" });
       return;
     }
@@ -183,18 +245,31 @@ export async function authorizeCredentialHandler(req: Request, res: Response): P
   // credType === "api_key"
   const rawKey = typeof body.api_key === "string" ? body.api_key.trim() : "";
   if (!rawKey) {
-    logCredFailure("APIKEY_MISSING");
+    await logCredFailure("APIKEY_MISSING");
     renderError({ res, csrfToken: sessionCsrf, oauthContinue, clientName, activeTab: "api_key" });
     return;
   }
   const lookup = await lookupApiKey(rawKey);
   if (!lookup.ok) {
-    logCredFailure("APIKEY_LOOKUP_FAILED", { code: lookup.code });
+    const attribution = lookup.orgId && lookup.userId
+      ? {
+          orgId: lookup.orgId,
+          actorId: lookup.userId,
+          targetType: "allotly_api_key" as const,
+          targetId: lookup.apiKeyId,
+          metadata: { code: lookup.code },
+        }
+      : undefined;
+    await logCredFailure("APIKEY_LOOKUP_FAILED", { code: lookup.code }, attribution);
     renderError({ res, csrfToken: sessionCsrf, oauthContinue, clientName, activeTab: "api_key" });
     return;
   }
   if (lookup.user.status !== "ACTIVE") {
-    logCredFailure("APIKEY_USER_INACTIVE", { userId: lookup.user.id, status: lookup.user.status });
+    await logCredFailure(
+      "APIKEY_USER_INACTIVE",
+      { userId: lookup.user.id, status: lookup.user.status },
+      { orgId: lookup.user.orgId, actorId: lookup.user.id, targetType: "user", targetId: lookup.user.id, metadata: { status: lookup.user.status } },
+    );
     renderError({ res, csrfToken: sessionCsrf, oauthContinue, clientName, activeTab: "api_key" });
     return;
   }
