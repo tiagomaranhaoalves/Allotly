@@ -1,0 +1,130 @@
+# Replit Prompt — Investigate: "connection failed" after Allotly OAuth consent in Claude.ai
+
+A real user just hit a bug that prevents the entire Claude.ai → Allotly OAuth integration from completing. Need diagnostic + fix.
+
+## Symptom
+
+User flow:
+1. Open Claude.ai in an anonymous (incognito) window — no Allotly session present.
+2. Add Allotly as a custom connector → URL `https://allotly.ai/mcp`.
+3. Claude.ai redirects to `/oauth/authorize` → user lands on the consent screen *"Authorize Claude / Will be allowed to mcp + mcp:read / Will redirect to https://claude.ai/api/mcp/auth_callback"* (multi-team picker did NOT appear, even though this user has multiple memberships).
+4. User clicks **Authorize**.
+5. Browser redirects back to Claude.ai with `code=...&state=...`.
+6. **Claude.ai shows "connection failed"** — connector setup aborts.
+
+So Allotly's `/oauth/authorize` and `/oauth/consent` ran. Failure happened either at the `/oauth/token` exchange Claude.ai then performs, or at the first `/mcp` call Claude.ai makes with the issued bearer.
+
+The user is **`t.alves@jbs.cam.ac.uk` (Tiago Alves Judge)**. They have multiple `team_memberships` rows (a TEAM admin org plus at least one VOUCHER-type membership from earlier testing today). This is relevant because multi-team logic (Tasks #53/#54/#57) recently landed.
+
+## What this prompt asks for
+
+A short investigation that:
+1. **Inspects the Replit deployment logs** for the user's specific OAuth round-trip (the most recent within the last hour for this user). Find the trace ID for the `/oauth/authorize` GET → `/oauth/consent` POST → `/oauth/token` POST → `/mcp` POST sequence.
+2. **Identifies the precise failure point** — was it `/oauth/token` returning 4xx, or the first `/mcp` call? What was the error body / WWW-Authenticate header / log line?
+3. **Diagnoses the root cause** in code based on what the logs show, not speculation.
+4. **Proposes a fix** (or just the fix, if it's obvious and small). For multi-team correctness issues this is likely a one-function tweak in `consentHandler` or `getEligibleMembershipsForUser` in `server/lib/oauth/authorize.ts`, or in `tokenHandler` in `server/lib/oauth/token.ts`.
+
+## Likely culprits ranked
+
+In descending order of probability — start with #1, drop down only if logs disprove:
+
+### 1. Multi-team membership selection didn't bind correctly (most likely)
+
+`consentHandler` at `server/lib/oauth/authorize.ts:558-572`:
+
+```ts
+const requestedMembershipId = typeof body.membership_id === "string" ? body.membership_id : "";
+const allowed = pendingReq.allowedMembershipIds || [];
+let chosenMembershipId: string | null = null;
+if (requestedMembershipId && allowed.includes(requestedMembershipId)) {
+  chosenMembershipId = requestedMembershipId;
+} else if (allowed.length > 0) {
+  chosenMembershipId = allowed[0];   // ← fallback for legacy clients (no membership_id field)
+} else {
+  const fallback = await getActiveMembershipForUser(sess.userId);
+  chosenMembershipId = fallback?.id ?? null;
+}
+```
+
+**Hypothesis:** the consent screen didn't render a membership picker (the `consent-template.ts:49` shortcut: `if (memberships.length === 1) return single hidden input`). So `body.membership_id` is unset on POST. Falls into the `allowed[0]` branch. **`allowed[0]` may be the wrong membership** (e.g. a synthetic VOUCHER membership from today's earlier testing, whose budget is exhausted, or a membership whose org has no active provider connections, or a SUSPENDED/EXPIRED row that `getEligibleMembershipsForUser` shouldn't have included).
+
+The downstream `/oauth/token` would still succeed (it only checks the auth code, not the membership). But the **first `/mcp` call** fails because `safeguards.ts::authenticateKey` checks `membership.status` and rejects `BUDGET_EXHAUSTED` / `SUSPENDED` / `EXPIRED` / `period_expired`.
+
+If true, fix is in `getEligibleMembershipsForUser` — it must filter out memberships in those terminal states, AND must return the user's "primary" / TEAM-admin / most-recently-used membership first when the picker doesn't render. Currently it likely returns DB-natural order, which surfaces the oldest synthetic voucher membership at index 0.
+
+**Verification commands for the agent:**
+```sql
+SELECT m.id, m.access_type, m.status, m.period_end, t.name AS team_name, m.created_at
+FROM team_memberships m
+JOIN teams t ON t.id = m.team_id
+JOIN users u ON u.id = m.user_id
+WHERE u.email = 't.alves@jbs.cam.ac.uk'
+ORDER BY m.created_at;
+```
+
+If multiple rows are returned and the FIRST row by creation is a VOUCHER-type or non-ACTIVE membership, that's the bug.
+
+### 2. `/oauth/token` rejected the code
+
+Could be:
+- PKCE verifier mismatch (code_challenge stored at authorize time vs verifier presented at token time)
+- redirect_uri mismatch (consent stored vs Claude.ai presented)
+- code expired (TTL too short for some clock skew)
+- code reuse (the dual-submission revoke chain incorrectly fired)
+
+Look for `[oauth] token` log lines or `oauth_authorization_codes` row state changes around the failure timestamp.
+
+### 3. Token issued but `aud` mismatch on `/mcp`
+
+`/oauth/token` mints a JWT with `aud: pending.resource`. `/mcp` transport checks `claims.aud === MCP_AUDIENCE`. If the resource captured at authorize time differs from `MCP_AUDIENCE`, the first MCP call fails with 401 + `audience_mismatch`. Less likely (would have caught existing flows).
+
+### 4. CORS preflight
+
+If Claude.ai's first `/mcp` call comes from a browser fetch with an Origin we don't allow, CORS blocks it. Check the Origin header in the failing request — if it's anything other than `https://claude.ai`, `https://www.claude.ai`, etc., that's the cause. Easy to verify in the network panel.
+
+## Side task — UX wording fix (independent, ship together if convenient)
+
+The same user reported that on the credential form / consent flow, they perceived Allotly as "trying to redeem the voucher straight away." Root cause: the `mcp` scope description on the consent screen literally says "redeem vouchers".
+
+In `server/lib/oauth/consent-template.ts:26-29`:
+
+```ts
+// CURRENT (confusing — the user reads this as "Allotly is redeeming MY voucher right now")
+const SCOPE_LABELS: Record<string, string> = {
+  mcp: "Use Allotly tools (run AI calls, read budget, redeem vouchers within tool limits)",
+  "mcp:read": "Read-only: see your budget, status, and recent usage",
+};
+
+// REPLACE WITH
+const SCOPE_LABELS: Record<string, string> = {
+  mcp: "Run AI calls and Allotly MCP tools within the limits of this account.",
+  "mcp:read": "Read-only: see your budget, status, and recent usage.",
+};
+```
+
+3-line copy fix. No description-hash impact (this is the consent screen scope label, not the MCP tool description).
+
+## Out of scope
+
+- Any other OAuth or MCP code paths beyond the specific failure being investigated.
+- Any new feature.
+- Schema changes (none expected).
+- The `processChatCompletion` proxy hot path.
+- Pre-existing TS errors in `server/routes.ts`, `server/webhookHandlers.ts`, `server/lib/plan-limits.ts`, `server/lib/jobs/*`.
+
+## Done looks like
+
+A single end-of-task report that includes:
+
+1. **Diagnostic findings** — which step failed (token exchange / first MCP call / something else), what the logs say, and which DB rows confirm the hypothesis.
+2. **Root cause** — one-paragraph explanation.
+3. **Fix(es) shipped** — files modified, what changed.
+4. **Test added** — at minimum one new vitest case in `tests/oauth/credential-paths.test.ts` or `tests/oauth/active-membership.test.ts` that exercises the multi-team / membership-binding path that broke.
+5. **The scope wording fix shipped** (3 lines in `consent-template.ts`).
+6. **Live verification** — a curl repro of the previously-failing flow now succeeding, OR a manual verification that the affected user can complete the Claude.ai connector setup end-to-end after the fix.
+
+Push to GitHub via the Git pane after the report. Do **not** push automatically. Do **not** redeploy to production — the user will do that after reviewing.
+
+---
+
+Once Replit reports done and you redeploy, ping me and I'll re-run `bash scripts/prod-user-flow-smoke.sh` plus the auth'd phase with your key to confirm no regressions.
