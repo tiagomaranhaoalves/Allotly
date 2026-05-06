@@ -117,7 +117,7 @@ export function renderConsent(p: ConsentParams): string {
 <style>
 .allotly-spinner{animation:allotly-spin 0.8s linear infinite;transform-origin:center}
 @keyframes allotly-spin{to{transform:rotate(360deg)}}
-form[data-consent-form] button[disabled]{cursor:not-allowed}
+form[data-consent-form] button[aria-disabled="true"]{cursor:not-allowed}
 </style>
 </head>
 <body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
