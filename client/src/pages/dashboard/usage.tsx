@@ -9,13 +9,19 @@ import { Badge } from "@/components/ui/badge";
 import { Activity, Zap, DollarSign, Clock, Hash } from "lucide-react";
 import { formatUsdCents, normalizeCurrency } from "@/lib/currency";
 import { BudgetWarningBanner } from "@/components/dashboard/budget-warning-banner";
+import { MembershipSwitcher } from "@/components/dashboard/membership-switcher";
+import { useActiveMembership } from "@/hooks/use-active-membership";
 
 export default function UsagePage() {
   const { t } = useTranslation();
   const { user } = useAuth();
 
+  const { activeMembershipId } = useActiveMembership();
+  const overviewUrl = activeMembershipId
+    ? `/api/dashboard/member-overview?membershipId=${encodeURIComponent(activeMembershipId)}`
+    : "/api/dashboard/member-overview";
   const { data: overview, isLoading } = useQuery<any>({
-    queryKey: ["/api/dashboard/member-overview"],
+    queryKey: [overviewUrl],
   });
   const { data: org } = useQuery<any>({ queryKey: ["/api/org/settings"], staleTime: 60_000 });
   const { data: fx } = useQuery<any>({ queryKey: ["/api/fx-rates"], staleTime: 60 * 60_000 });
@@ -32,6 +38,7 @@ export default function UsagePage() {
         <p className="text-muted-foreground mt-1">{t("dashboard.usage.subtitle")}</p>
       </div>
 
+      <MembershipSwitcher />
       <BudgetWarningBanner />
 
       {isLoading ? (

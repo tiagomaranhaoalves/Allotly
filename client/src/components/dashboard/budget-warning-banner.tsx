@@ -5,6 +5,7 @@ import { AlertTriangle, AlertCircle, XCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useActiveMembership } from "@/hooks/use-active-membership";
 
 type WarningLevel = "low" | "critical" | "exhausted";
 type WarningBranch = "admin" | "member" | "voucher";
@@ -55,8 +56,12 @@ const LEVEL_STYLES: Record<WarningLevel, { className: string; Icon: typeof Alert
 
 export function BudgetWarningBanner() {
   const { t, i18n } = useTranslation();
+  const { activeMembershipId } = useActiveMembership();
+  const url = activeMembershipId
+    ? `/api/dashboard/member-overview?membershipId=${encodeURIComponent(activeMembershipId)}`
+    : "/api/dashboard/member-overview";
   const { data } = useQuery<MemberOverviewResponse>({
-    queryKey: ["/api/dashboard/member-overview"],
+    queryKey: [url],
   });
 
   // Banner is scoped to TEAM users (admins + members). Voucher recipients

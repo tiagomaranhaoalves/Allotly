@@ -1,5 +1,12 @@
 import crypto from "crypto";
 
+export interface ConsentMembershipOption {
+  id: string;
+  teamName: string;
+  accessType: string;
+  status: string;
+}
+
 export interface ConsentParams {
   authRequestId: string;
   csrfToken: string;
@@ -12,6 +19,13 @@ export interface ConsentParams {
   userEmail: string;
   /** Logged-in user's display name (optional). */
   userName?: string | null;
+  /**
+   * Eligible memberships the user can bind this token to. When length > 1 the
+   * consent page renders a `<select>` so the user picks; when length === 1
+   * we render a hidden input so the value is still posted (and the choice is
+   * still server-validated against the allow-list captured at /authorize).
+   */
+  memberships?: ConsentMembershipOption[];
 }
 
 function escape(s: string): string {
@@ -21,6 +35,26 @@ function escape(s: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+// Renders the membership-binding control inside the consent form. When the
+// user has exactly one eligible membership we emit a hidden input so the
+// value still posts (server re-validates against the allow-list captured at
+// /oauth/authorize). When >1 we emit a `<select>` so the user picks which
+// team's budget the issued token will draw from. The wrapping label/help
+// copy is rendered alongside this in the form template.
+function renderMembershipField(memberships: ConsentMembershipOption[]): string {
+  if (memberships.length === 0) return "";
+  if (memberships.length === 1) {
+    return `<input type="hidden" name="membership_id" value="${escape(memberships[0].id)}">`;
+  }
+  const opts = memberships
+    .map((m, i) => {
+      const label = `${m.teamName} (${m.accessType === "VOUCHER" ? "voucher" : "team"}${m.status !== "ACTIVE" ? " — " + m.status.toLowerCase() : ""})`;
+      return `<option value="${escape(m.id)}"${i === 0 ? " selected" : ""}>${escape(label)}</option>`;
+    })
+    .join("");
+  return `<select name="membership_id" data-testid="select-consent-membership" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#1e293b;font-size:13px">${opts}</select>`;
 }
 
 const SCOPE_LABELS: Record<string, string> = {
@@ -103,11 +137,14 @@ form[data-consent-form] button[disabled]{cursor:not-allowed}
 <div style="color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Will redirect to</div>
 <div style="color:#1e293b;font-size:12px;font-family:monospace;word-break:break-all" data-testid="consent-redirect-uri">${escape(p.redirectUri)}</div>
 </div>
-<form method="POST" action="${escape(p.approvePath)}" data-consent-form style="display:flex;gap:8px;margin:0">
+<form method="POST" action="${escape(p.approvePath)}" data-consent-form style="display:flex;flex-direction:column;gap:12px;margin:0">
 <input type="hidden" name="auth_request_id" value="${escape(p.authRequestId)}">
 <input type="hidden" name="csrf" value="${escape(p.csrfToken)}">
+${(p.memberships || []).length > 1 ? `<div><div style="color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Bind this access to</div>${renderMembershipField(p.memberships || [])}<div style="color:#64748b;font-size:11px;margin-top:6px">You belong to multiple teams. Calls made with this token will draw from the team you select.</div></div>` : renderMembershipField(p.memberships || [])}
+<div style="display:flex;gap:8px">
 <button type="submit" name="decision" value="deny" style="flex:1;padding:10px 16px;background:#fff;color:#475569;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer" data-testid="consent-deny">Deny</button>
 <button type="submit" name="decision" value="approve" style="flex:1;padding:10px 16px;background:#6366F1;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer" data-testid="consent-approve">Authorize</button>
+</div>
 </form>
 </div>
 <div style="text-align:center;margin-top:16px;color:#94a3b8;font-size:11px">

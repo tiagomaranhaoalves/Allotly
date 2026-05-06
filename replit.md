@@ -44,6 +44,9 @@ npm run db:push # Apply Drizzle ORM migrations
 *   `server/lib/turnstile.ts` - Turnstile captcha verification
 *   `server/lib/oauth/authorize-credential.ts` - In-flow OAuth credential POST (password / voucher / api_key)
 *   `server/lib/oauth/credential-form-template.ts` - CSS-only 3-tab credential form
+*   `server/lib/oauth/consent-template.ts` - Consent page (renders membership picker for multi-team users)
+*   `client/src/hooks/use-active-membership.ts` - Shared selector for the active member dashboard membership
+*   `client/src/components/dashboard/membership-switcher.tsx` - Dashboard team switcher (multi-team users)
 *   `server/lib/vouchers/redeem-inline.ts` - Pure helper: voucher redemption side effects
 *   `server/lib/auth/api-key-lookup.ts` - Validate-and-resolve `allotly_sk_…` keys (no Redis cache)
 *   `client/src/i18n/locales/` - i18n translation files
@@ -57,6 +60,7 @@ npm run db:push # Apply Drizzle ORM migrations
 *   **Encrypted AI Provider Keys:** AI provider API keys are AES-256-GCM encrypted, supporting rotation and real-time validation.
 *   **Robust Cascade Deletion:** Critical entity deletions (org, team, member, voucher) are atomic transactions with full cascade cleanup.
 *   **Branded Error Codes for Test-Your-Key:** User-facing errors from the `test-connection` endpoint are mapped to six branded codes with context-aware hints, abstracting upstream provider specifics.
+*   **Multi-membership member dashboard:** Users belonging to multiple teams see a switcher; selection lives in URL `?membership=` + sessionStorage. Member-facing endpoints (`/api/me/keys`, `/api/my-keys`, `/api/dashboard/member-overview`, `/api/members/me/welcome`) accept an optional `membershipId` (validated against ownership) and fall back to the legacy "primary" pick when omitted. New `/api/me/memberships` endpoint lists every membership the user holds. The OAuth consent page renders a `<select name="membership_id">` when the user has >1 eligible membership, and the consent handler re-validates the chosen id against an allow-list captured at `/oauth/authorize` time so a tampered POST can't bind a foreign membership.
 *   **Voucher-aware OAuth authorize:** Unauthenticated `/oauth/authorize` renders an in-flow 3-tab credential form (password / voucher / API key) instead of bouncing to `/login`. Synthetic voucher users are first-class OAuth subjects — security is enforced via membership status at the proxy, not via `isVoucherUser`. POST handler at `/oauth/authorize/credential`; CSS-only tabs (CSP `script-src 'none'`); generic error string only (no enumeration oracle); `oauth_continue` must be a relative `/oauth/authorize` path (open-redirect block). Failure auditing is two-tiered: attributable failures (known user/voucher/API key) write `audit_logs` rows with `action: oauth.credential_failed` and precise cause; inattributable failures (CSRF mismatch, unknown email, malformed key) fall back to server logs only — `audit_logs.actor_id` is a NOT NULL FK to `users.id`, so we never fabricate an actor.
 
 ## Product

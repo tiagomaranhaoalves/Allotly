@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, requireAuth, requireRole, requireAdmin } from "./auth";
 import { hashPassword, comparePasswords } from "./lib/password";
-import { signupSchema, loginSchema, voucherBundles, users as usersTable, allotlyApiKeys as allotlyApiKeysTable, teams, teamMemberships, proxyRequestLogs, usageSnapshots, budgetAlerts, vouchers, voucherRedemptions, providerConnections, auditLogs, platformAuditLogs, passwordResetTokens } from "@shared/schema";
+import { signupSchema, loginSchema, voucherBundles, users as usersTable, allotlyApiKeys as allotlyApiKeysTable, teams, teamMemberships, proxyRequestLogs, usageSnapshots, budgetAlerts, vouchers, voucherRedemptions, providerConnections, auditLogs, platformAuditLogs, passwordResetTokens, type AllotlyApiKey } from "@shared/schema";
 import { eq, and, sql, inArray, desc, gte, lte, like, count } from "drizzle-orm";
 import { db } from "./db";
 import { encryptProviderKey, decryptProviderKey } from "./lib/encryption";
@@ -50,6 +50,23 @@ import { createMemberHandler } from "./lib/members/create-member";
 import crypto from "crypto";
 import { z } from "zod";
 import { cascadeDeleteOrganization, cascadeDeleteTeam, cascadeDeleteMember, cascadeDeleteVoucher } from "./lib/cascade-delete";
+
+// Resolve which of the user's memberships a member-facing route should act on.
+// Multi-team users pass `?membershipId=...` to choose explicitly; we validate
+// ownership and return undefined (the route turns this into a 404) if the id
+// isn't owned by the caller — we never silently fall back to a different
+// membership when an explicit id was provided, since that would mask bugs and
+// risk operating on the wrong team. When no id is provided we fall back to
+// `getMembershipByUser` (highest-priority active row), preserving legacy
+// single-team behavior for clients that haven't been updated yet.
+async function resolveOwnedMembership(userId: string, requestedId: unknown) {
+  if (typeof requestedId === "string" && requestedId.length > 0) {
+    const m = await storage.getMembership(requestedId);
+    if (m && m.userId === userId) return m;
+    return undefined;
+  }
+  return storage.getMembershipByUser(userId);
+}
 
 const VOUCHER_LIMITS = {
   FREE: {
@@ -493,10 +510,13 @@ export async function registerRoutes(
       const user = await storage.getUser(req.session.userId!);
       if (!user || user.orgRole !== "MEMBER") return res.status(403).json({ message: "Forbidden" });
 
-      const membership = await storage.getMembershipByUser(user.id);
+      const membership = await resolveOwnedMembership(user.id, req.query.membershipId);
       if (!membership) return res.status(404).json({ message: "No membership found" });
 
-      const activeKey = await storage.getActiveKeyByUserId(user.id);
+      // Scope the welcome key prefix to the selected membership — `getActiveKeyByUserId`
+      // would otherwise return any key the user owns (potentially from a different team).
+      const membershipKeys = await storage.getApiKeysByMembership(membership.id);
+      const activeKey = membershipKeys.find((k) => k.status === "ACTIVE") || null;
       const team = await storage.getTeam(membership.teamId);
       const providerConnections = await storage.getProviderConnectionsByOrg(user.orgId);
       const allowedModels = membership.allowedModels as string[] | null;
@@ -2441,7 +2461,10 @@ export async function registerRoutes(
       const user = await storage.getUser(req.session.userId!);
       if (!user) return res.status(401).json({ message: "Unauthorized" });
 
-      const membership = await storage.getMembershipByUser(user.id);
+      // Multi-team users pass `membershipId` in the body so the new key is
+      // bound to the membership currently selected in the dashboard switcher,
+      // not the implicit "primary" one.
+      const membership = await resolveOwnedMembership(user.id, (req.body || {}).membershipId ?? req.query.membershipId);
       if (!membership) return res.status(404).json({ message: "No active membership found" });
       if (membership.status !== "ACTIVE") return res.status(400).json({ message: "Membership is not active" });
 
@@ -2523,7 +2546,7 @@ export async function registerRoutes(
       const user = await storage.getUser(req.session.userId!);
       if (!user) return res.status(401).json({ message: "Unauthorized" });
 
-      const membership = await storage.getMembershipByUser(user.id);
+      const membership = await resolveOwnedMembership(user.id, req.query.membershipId);
       if (!membership) return res.status(404).json({ message: "No active membership found" });
 
       const keys = await storage.getApiKeysByMembership(membership.id);
@@ -2553,11 +2576,19 @@ export async function registerRoutes(
       const user = await storage.getUser(req.session.userId!);
       if (!user) return res.status(401).json({ message: "Unauthorized" });
 
-      const membership = await storage.getMembershipByUser(user.id);
+      // Revocation is scoped to the membership the caller is actively viewing.
+      // The membership param is honored from query string OR request body so
+      // both fetch() callers and form submissions work identically.
+      const requestedMembershipId =
+        (req.query.membershipId as string | undefined) ??
+        (typeof req.body?.membershipId === "string" ? req.body.membershipId : undefined);
+      const membership = await resolveOwnedMembership(user.id, requestedMembershipId);
       if (!membership) return res.status(404).json({ message: "No active membership found" });
 
       const keys = await storage.getApiKeysByMembership(membership.id);
-      const key = keys.find(k => k.id === req.params.keyId && k.status === "ACTIVE");
+      const key: AllotlyApiKey | undefined = keys.find(
+        (k) => k.id === req.params.keyId && k.status === "ACTIVE",
+      );
       if (!key) return res.status(404).json({ message: "Key not found or already revoked" });
 
       await storage.updateAllotlyApiKey(key.id, { status: "REVOKED" });
@@ -4074,7 +4105,7 @@ export async function registerRoutes(
       const stats = await storage.getTeamDashboardStats(team.id);
       res.json(stats);
     } else {
-      const membership = await storage.getMembershipByUser(user.id);
+      const membership = await resolveOwnedMembership(user.id, req.query.membershipId);
       const budgetCents = membership?.monthlyBudgetCents || 0;
       const spendCents = membership?.currentPeriodSpendCents || 0;
       const org = await storage.getOrganization(user.orgId);
@@ -4094,7 +4125,8 @@ export async function registerRoutes(
   app.get("/api/dashboard/member-overview", requireAuth, async (req, res) => {
     const user = await storage.getUser(req.session.userId!);
     if (!user) return res.status(401).json({ message: "Unauthorized" });
-    const data = await storage.getMemberDashboardData(user.id);
+    const requestedMembershipId = typeof req.query.membershipId === "string" ? req.query.membershipId : undefined;
+    const data = await storage.getMemberDashboardData(user.id, requestedMembershipId);
     if (!data) return res.json({ membership: null });
     const org = await storage.getOrganization(user.orgId);
     const orgCurrency = getOrgCurrency(org);
@@ -4229,10 +4261,56 @@ export async function registerRoutes(
     });
   });
 
+  // List EVERY membership the signed-in user holds. Powers the dashboard
+   // membership switcher so multi-team users can pick which team's budget
+  // and keys they're viewing/managing. Cheap by design — no logs, no
+  // snapshots — call from auth-bootstrapped pages.
+  app.get("/api/me/memberships", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(401).json({ message: "Unauthorized" });
+      const memberships = await storage.getMembershipsByUser(user.id);
+      // Match the priority order used by `getMembershipByUser` so the
+      // first row clients see (and default to) is the same membership the
+      // server would have selected implicitly: ACTIVE first, then
+      // BUDGET_EXHAUSTED, SUSPENDED, then everything else; ties broken by
+      // updatedAt DESC.
+      const STATUS_PRIORITY: Record<string, number> = {
+        ACTIVE: 0,
+        BUDGET_EXHAUSTED: 1,
+        SUSPENDED: 2,
+      };
+      memberships.sort((a, b) => {
+        const ap = STATUS_PRIORITY[a.status] ?? 3;
+        const bp = STATUS_PRIORITY[b.status] ?? 3;
+        if (ap !== bp) return ap - bp;
+        const at = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+        const bt = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+        return bt - at;
+      });
+      const teams = await Promise.all(memberships.map(m => storage.getTeam(m.teamId)));
+      const result = memberships.map((m, i) => ({
+        id: m.id,
+        teamId: m.teamId,
+        teamName: teams[i]?.name || "Unknown",
+        accessType: m.accessType,
+        status: m.status,
+        monthlyBudgetCents: m.monthlyBudgetCents,
+        currentPeriodSpendCents: m.currentPeriodSpendCents,
+        periodEnd: m.periodEnd,
+        voucherExpiresAt: m.voucherExpiresAt,
+      }));
+      res.json(result);
+    } catch (e: any) {
+      console.error("List my memberships error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get("/api/my-keys", requireAuth, async (req, res) => {
     const user = await storage.getUser(req.session.userId!);
     if (!user) return res.status(401).json({ message: "Unauthorized" });
-    const membership = await storage.getMembershipByUser(user.id);
+    const membership = await resolveOwnedMembership(user.id, req.query.membershipId);
     if (!membership) return res.json([]);
     const keys = await storage.getApiKeysByMembership(membership.id);
     res.json(keys.map(k => ({

@@ -99,7 +99,10 @@ describe("V1.5.1 Piece 4: dashboard banner wiring", () => {
   });
 
   it("banner queries /api/dashboard/member-overview and renders nothing when warning is null", () => {
-    expect(bannerSrc).toMatch(/queryKey:\s*\[\s*["']\/api\/dashboard\/member-overview["']\s*\]/);
+    // Banner now builds a `?membershipId=` URL variant so the dashboard
+    // membership switcher can scope the warning to the chosen team. The
+    // endpoint string itself is still embedded literally.
+    expect(bannerSrc).toMatch(/["'`]\/api\/dashboard\/member-overview/);
     expect(bannerSrc).toMatch(/if\s*\(!warning\)\s*return\s+null/);
   });
 

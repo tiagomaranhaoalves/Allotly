@@ -7,6 +7,8 @@ import { EmptyState } from "@/components/brand/empty-state";
 import { PlugZap, Key as KeyIcon, Link2 } from "lucide-react";
 import { ConnectorGrid } from "@/components/connectors";
 import { TestKeyButton } from "@/components/redeem/test-key-button";
+import { useActiveMembership } from "@/hooks/use-active-membership";
+import { MembershipSwitcher } from "@/components/dashboard/membership-switcher";
 
 interface MyKey {
   id: string;
@@ -48,7 +50,11 @@ export default function ConnectPage() {
   const [, setLocation] = useLocation();
   const queryKeyId = useQueryParam("key");
 
-  const { data: keys, isLoading } = useQuery<MyKey[]>({ queryKey: ["/api/my-keys"] });
+  const { activeMembershipId } = useActiveMembership();
+  const keysUrl = activeMembershipId
+    ? `/api/my-keys?membershipId=${encodeURIComponent(activeMembershipId)}`
+    : "/api/my-keys";
+  const { data: keys, isLoading } = useQuery<MyKey[]>({ queryKey: [keysUrl] });
   const activeKeys = useMemo(
     () => (keys ?? []).filter((k) => k.status === "ACTIVE"),
     [keys],
@@ -95,6 +101,7 @@ export default function ConnectPage() {
             {t("connect.subtitle")}
           </p>
         </div>
+        <MembershipSwitcher />
         {/*
           OAuth-only users (Claude.ai / ChatGPT / Gemini) legitimately have no
           stdio API key, so we still render the session-cookie test button so
@@ -133,6 +140,8 @@ export default function ConnectPage() {
           {t("connect.subtitle")}
         </p>
       </div>
+
+      <MembershipSwitcher />
 
       {/*
         OAuth users (Claude.ai / ChatGPT / Gemini) reach this page without a

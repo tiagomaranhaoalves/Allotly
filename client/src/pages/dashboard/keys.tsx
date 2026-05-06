@@ -13,6 +13,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Key, Copy, Shield, Clock, Search, Trash2, AlertTriangle, Settings2, Swords, ExternalLink, PlugZap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { useActiveMembership } from "@/hooks/use-active-membership";
+import { MembershipSwitcher } from "@/components/dashboard/membership-switcher";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -489,8 +491,12 @@ function PersonalKeysView() {
   const { toast } = useToast();
   const { t } = useTranslation();
 
+  const { activeMembershipId } = useActiveMembership();
+  const keysUrl = activeMembershipId
+    ? `/api/my-keys?membershipId=${encodeURIComponent(activeMembershipId)}`
+    : "/api/my-keys";
   const { data: keys, isLoading } = useQuery<any[]>({
-    queryKey: ["/api/my-keys"],
+    queryKey: [keysUrl],
   });
 
   const copyToClipboard = (text: string) => {
@@ -504,6 +510,8 @@ function PersonalKeysView() {
         <h1 className="text-2xl font-bold tracking-tight" data-testid="text-keys-heading">{t("dashboard.keys.auditHeading")}</h1>
         <p className="text-muted-foreground mt-1">{t("dashboard.keys.personalSubheading")}</p>
       </div>
+
+      <MembershipSwitcher />
 
       <ArenaTestKeyCallout />
 

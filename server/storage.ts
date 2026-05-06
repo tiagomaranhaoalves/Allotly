@@ -119,7 +119,7 @@ export interface IStorage {
   getMemberDetailsForTeam(teamId: string): Promise<any[]>;
   getApiKeysByMembership(membershipId: string): Promise<AllotlyApiKey[]>;
   getRecentAlerts(orgId: string, limit?: number): Promise<any[]>;
-  getMemberDashboardData(userId: string): Promise<any>;
+  getMemberDashboardData(userId: string, membershipId?: string): Promise<any>;
   getVoucherById(id: string): Promise<Voucher | undefined>;
 
   createPasswordResetToken(data: { userId: string; tokenHash: string; expiresAt: Date }): Promise<any>;
@@ -707,8 +707,17 @@ export class DrizzleStorage implements IStorage {
     return allAlerts.slice(0, limit);
   }
 
-  async getMemberDashboardData(userId: string): Promise<any> {
-    const membership = await this.getMembershipByUser(userId);
+  async getMemberDashboardData(userId: string, membershipId?: string): Promise<any> {
+    let membership: TeamMembership | undefined;
+    if (membershipId) {
+      membership = await this.getMembership(membershipId);
+      // Reject memberships that don't belong to this user — caller passes the
+      // requested id straight from the query string, so we MUST verify the
+      // ownership here rather than trust the route layer.
+      if (!membership || membership.userId !== userId) return null;
+    } else {
+      membership = await this.getMembershipByUser(userId);
+    }
     if (!membership) return null;
 
     const user = await this.getUser(userId);

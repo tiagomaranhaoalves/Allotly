@@ -16,7 +16,10 @@ describe("/api/dashboard/member-overview includes display block", () => {
   });
 
   it("usage.tsx consumes overview.display.formatted into BudgetBar.serverFormatted", () => {
-    expect(usagePageSrc).toMatch(/queryKey:\s*\[\s*["']\/api\/dashboard\/member-overview["']\s*\]/);
+    // The queryKey is now built from a `?membershipId=` URL variant so the
+    // member-dashboard switcher can scope the request — the literal endpoint
+    // is still embedded as a string the variable assembles from.
+    expect(usagePageSrc).toMatch(/["'`]\/api\/dashboard\/member-overview/);
     expect(usagePageSrc).toMatch(/serverFormatted=\{[^}]*overview\?\.display\?\.formatted/);
   });
 });

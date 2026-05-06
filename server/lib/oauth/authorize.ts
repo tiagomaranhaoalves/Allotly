@@ -41,6 +41,12 @@ interface PendingAuthRequest {
   // The session-bound user that started this consent flow. consentHandler
   // refuses to mint a code if a different user is now logged in (RFC 6749 §10.12).
   userId: string;
+  // The membership ids the user can bind this OAuth token to. Captured at
+  // /oauth/authorize render time so a multi-team user picks one in consent
+  // and we can verify the choice on submit without re-querying. We persist
+  // it in pending-state (not the form) so a tampered POST can't bind a
+  // membership the user doesn't own.
+  allowedMembershipIds?: string[];
 }
 
 // Pending auth-requests live in Redis (not in-process memory) so that the
@@ -203,8 +209,27 @@ function safeRedirect(redirectUri: string, params: Record<string, string>): stri
 // Ties broken by `updatedAt DESC` so the most recently touched membership
 // wins. If the best row is still non-active we deny the same way as before.
 export async function getActiveMembershipForUser(userId: string): Promise<{ id: string } | null> {
+  const rows = await getEligibleMembershipsForUser(userId);
+  if (rows.length === 0) return null;
+  return { id: rows[0].id };
+}
+
+// Same status-priority order as `getActiveMembershipForUser`, but returns
+// every eligible row (filtering out EXPIRED/SUSPENDED). Used by the consent
+// flow so multi-team users get a picker showing every membership they can
+// bind the token to. The caller decides whether to render a `<select>` or
+// a single hidden input.
+export async function getEligibleMembershipsForUser(
+  userId: string,
+): Promise<Array<{ id: string; teamId: string; teamName: string; status: string; accessType: string }>> {
   const rows = await db
-    .select({ id: teamMemberships.id, status: teamMemberships.status })
+    .select({
+      id: teamMemberships.id,
+      teamId: teamMemberships.teamId,
+      status: teamMemberships.status,
+      accessType: teamMemberships.accessType,
+      updatedAt: teamMemberships.updatedAt,
+    })
     .from(teamMemberships)
     .where(eq(teamMemberships.userId, userId))
     .orderBy(
@@ -214,11 +239,19 @@ export async function getActiveMembershipForUser(userId: string): Promise<{ id: 
         ELSE 2
       END`,
       desc(teamMemberships.updatedAt),
-    )
-    .limit(1);
-  if (rows.length === 0) return null;
-  if (rows[0].status === "EXPIRED" || rows[0].status === "SUSPENDED") return null;
-  return { id: rows[0].id };
+    );
+  const eligible = rows.filter(r => r.status !== "EXPIRED" && r.status !== "SUSPENDED");
+  if (eligible.length === 0) return [];
+  // Hydrate team names. Most users have <5 memberships so the per-row fetch
+  // is fine; if this becomes a hot path, swap for a single inArray query.
+  const teams = await Promise.all(eligible.map(r => storage.getTeam(r.teamId)));
+  return eligible.map((r, i) => ({
+    id: r.id,
+    teamId: r.teamId,
+    teamName: teams[i]?.name || "Unknown team",
+    status: r.status,
+    accessType: r.accessType,
+  }));
 }
 
 export async function authorizeHandler(req: Request, res: Response): Promise<void> {
@@ -325,8 +358,8 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
   // through membership status (see safeguards.ts authenticateKey), so a
   // suspended/expired voucher cannot use the issued OAuth token.
 
-  const membership = await getActiveMembershipForUser(user.id);
-  if (!membership) {
+  const eligibleMemberships = await getEligibleMembershipsForUser(user.id);
+  if (eligibleMemberships.length === 0) {
     res.redirect(302, safeRedirect(redirectUri, { error: "access_denied", error_description: "no active membership", state }));
     return;
   }
@@ -342,6 +375,7 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
     codeChallenge,
     expiresAt: expiresAtMs,
     userId: user.id,
+    allowedMembershipIds: eligibleMemberships.map(m => m.id),
   });
 
   const authRequestId = signAuthRequestId(nonce, expiresAtMs, user.id, clientId);
@@ -356,6 +390,12 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
     approvePath: "/oauth/consent",
     userEmail: user.email,
     userName: user.name,
+    memberships: eligibleMemberships.map(m => ({
+      id: m.id,
+      teamName: m.teamName,
+      accessType: m.accessType,
+      status: m.status,
+    })),
   });
   // CSP form-action also gates redirect targets from form submissions
   // (CSP3 §form-action). Static 'self' would silently block the post-consent
@@ -511,11 +551,26 @@ export async function consentHandler(req: Request, res: Response): Promise<void>
     return;
   }
 
-  const membership = await getActiveMembershipForUser(sess.userId);
-  if (!membership) {
+  // Honor the membership the user picked in the consent form, but only if
+  // it appears in the allow-list we captured at /oauth/authorize render time.
+  // Falling back to the legacy "highest priority active" picker keeps older
+  // clients (no membership_id field) working unchanged.
+  const requestedMembershipId = typeof body.membership_id === "string" ? body.membership_id : "";
+  const allowed = pendingReq.allowedMembershipIds || [];
+  let chosenMembershipId: string | null = null;
+  if (requestedMembershipId && allowed.includes(requestedMembershipId)) {
+    chosenMembershipId = requestedMembershipId;
+  } else if (allowed.length > 0) {
+    chosenMembershipId = allowed[0];
+  } else {
+    const fallback = await getActiveMembershipForUser(sess.userId);
+    chosenMembershipId = fallback?.id ?? null;
+  }
+  if (!chosenMembershipId) {
     res.redirect(302, safeRedirect(pendingReq.redirectUri, { error: "access_denied", error_description: "no active membership", state: pendingReq.state }));
     return;
   }
+  const membership = { id: chosenMembershipId };
 
   const { code, codeHash } = newAuthorizationCode();
   await db.insert(oauthAuthorizationCodes).values({

@@ -31,6 +31,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient as qc } from "@/lib/queryClient";
 import { formatUsdCents, normalizeCurrency, type SupportedCurrency } from "@/lib/currency";
+import { useActiveMembership } from "@/hooks/use-active-membership";
+import { MembershipSwitcher } from "@/components/dashboard/membership-switcher";
 import { BudgetWarningBanner } from "@/components/dashboard/budget-warning-banner";
 
 /**
@@ -504,6 +506,7 @@ function TeamAdminOverview() {
 function ApiKeysManager({ data }: { data: any }) {
   const { t } = useTranslation();
   const { toast } = useToast();
+  const { activeMembershipId } = useActiveMembership();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [projectMode, setProjectMode] = useState<"existing" | "new" | "none">("none");
   const [selectedProjectId, setSelectedProjectId] = useState("");
@@ -512,12 +515,20 @@ function ApiKeysManager({ data }: { data: any }) {
 
   const createKeyMutation = useMutation({
     mutationFn: async (body: any) => {
-      const res = await apiRequest("POST", "/api/me/keys", body);
+      // Bind the new key to whichever membership the dashboard switcher
+      // currently has selected. Server still validates ownership.
+      const payload = activeMembershipId
+        ? { ...body, membershipId: activeMembershipId }
+        : body;
+      const res = await apiRequest("POST", "/api/me/keys", payload);
       return res.json();
     },
     onSuccess: (result: any) => {
-      qc.invalidateQueries({ queryKey: ["/api/dashboard/member-overview"] });
-      qc.invalidateQueries({ queryKey: ["/api/me/keys"] });
+      // Invalidate broadly so both the active and any cached "primary"-keyed
+      // entries refresh — `predicate` matches every variant.
+      qc.invalidateQueries({ predicate: (q) => typeof q.queryKey[0] === "string" && (q.queryKey[0] as string).startsWith("/api/dashboard/member-overview") });
+      qc.invalidateQueries({ predicate: (q) => typeof q.queryKey[0] === "string" && (q.queryKey[0] as string).startsWith("/api/me/keys") });
+      qc.invalidateQueries({ predicate: (q) => typeof q.queryKey[0] === "string" && (q.queryKey[0] as string).startsWith("/api/my-keys") });
       setNewKeyRevealed(result.apiKey);
       toast({ title: t("dashboard.overview.apiKeyCreatedToast"), description: result.projectName ? t("dashboard.overview.projectAssignedToast", { name: result.projectName }) : t("dashboard.overview.noProjectAssignedToast") });
     },
@@ -528,11 +539,15 @@ function ApiKeysManager({ data }: { data: any }) {
 
   const revokeKeyMutation = useMutation({
     mutationFn: async (keyId: string) => {
-      await apiRequest("DELETE", `/api/me/keys/${keyId}`);
+      const url = activeMembershipId
+        ? `/api/me/keys/${keyId}?membershipId=${encodeURIComponent(activeMembershipId)}`
+        : `/api/me/keys/${keyId}`;
+      await apiRequest("DELETE", url);
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/dashboard/member-overview"] });
-      qc.invalidateQueries({ queryKey: ["/api/me/keys"] });
+      qc.invalidateQueries({ predicate: (q) => typeof q.queryKey[0] === "string" && (q.queryKey[0] as string).startsWith("/api/dashboard/member-overview") });
+      qc.invalidateQueries({ predicate: (q) => typeof q.queryKey[0] === "string" && (q.queryKey[0] as string).startsWith("/api/me/keys") });
+      qc.invalidateQueries({ predicate: (q) => typeof q.queryKey[0] === "string" && (q.queryKey[0] as string).startsWith("/api/my-keys") });
       toast({ title: t("dashboard.overview.keyRevoked") });
     },
     onError: (err: any) => {
@@ -1000,7 +1015,14 @@ function DirectMemberOverview({ data }: { data: any }) {
 
 function MemberOverview() {
   const { t } = useTranslation();
-  const { data, isLoading } = useQuery<any>({ queryKey: ["/api/dashboard/member-overview"] });
+  const { activeMembershipId } = useActiveMembership();
+  // queryKey is built by the shared default queryFn (queryKey.join("/")), so
+  // we encode the membership filter into the URL itself. Different ids yield
+  // different cache entries — switching teams instantly hits the new query.
+  const overviewUrl = activeMembershipId
+    ? `/api/dashboard/member-overview?membershipId=${encodeURIComponent(activeMembershipId)}`
+    : "/api/dashboard/member-overview";
+  const { data, isLoading } = useQuery<any>({ queryKey: [overviewUrl] });
 
   if (isLoading) {
     return (
@@ -1027,10 +1049,20 @@ function MemberOverview() {
   }
 
   if (data.accessType === "VOUCHER") {
-    return <ProxyMemberOverview data={data} />;
+    return (
+      <>
+        <MembershipSwitcher />
+        <ProxyMemberOverview data={data} />
+      </>
+    );
   }
 
-  return <DirectMemberOverview data={data} />;
+  return (
+    <>
+      <MembershipSwitcher />
+      <DirectMemberOverview data={data} />
+    </>
+  );
 }
 
 export default function DashboardOverview() {
