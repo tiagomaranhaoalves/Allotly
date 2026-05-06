@@ -35,6 +35,8 @@ export interface IStorage {
   createMembership(membership: InsertTeamMembership): Promise<TeamMembership>;
   getMembership(id: string): Promise<TeamMembership | undefined>;
   getMembershipByUser(userId: string): Promise<TeamMembership | undefined>;
+  getMembershipsByUser(userId: string): Promise<TeamMembership[]>;
+  getMembershipByUserAndTeam(userId: string, teamId: string): Promise<TeamMembership | undefined>;
   getMembershipsByTeam(teamId: string): Promise<TeamMembership[]>;
   updateMembership(id: string, data: Partial<TeamMembership>): Promise<TeamMembership | undefined>;
 
@@ -209,8 +211,44 @@ export class DrizzleStorage implements IStorage {
     return result;
   }
 
+  // Picks the user's "primary" membership when several exist. Historically
+  // team_memberships.user_id was UNIQUE so this was an unordered LIMIT 1; now
+  // that a user can belong to more than one team (or accumulate EXPIRED rows
+  // alongside a fresh ACTIVE one) we apply the same status-priority +
+  // updatedAt ordering as OAuth's getActiveMembershipForUser. Callers that
+  // need to see *every* membership should use getMembershipsByUser; callers
+  // operating on a specific team should use getMembershipByUserAndTeam.
   async getMembershipByUser(userId: string): Promise<TeamMembership | undefined> {
-    const [result] = await db.select().from(teamMemberships).where(eq(teamMemberships.userId, userId));
+    const [result] = await db
+      .select()
+      .from(teamMemberships)
+      .where(eq(teamMemberships.userId, userId))
+      .orderBy(
+        sql`CASE
+          WHEN ${teamMemberships.status} = 'ACTIVE' THEN 0
+          WHEN ${teamMemberships.status} = 'BUDGET_EXHAUSTED' THEN 1
+          WHEN ${teamMemberships.status} = 'SUSPENDED' THEN 2
+          ELSE 3
+        END`,
+        desc(teamMemberships.updatedAt),
+      )
+      .limit(1);
+    return result;
+  }
+
+  async getMembershipsByUser(userId: string): Promise<TeamMembership[]> {
+    return db
+      .select()
+      .from(teamMemberships)
+      .where(eq(teamMemberships.userId, userId))
+      .orderBy(desc(teamMemberships.updatedAt));
+  }
+
+  async getMembershipByUserAndTeam(userId: string, teamId: string): Promise<TeamMembership | undefined> {
+    const [result] = await db
+      .select()
+      .from(teamMemberships)
+      .where(and(eq(teamMemberships.userId, userId), eq(teamMemberships.teamId, teamId)));
     return result;
   }
 

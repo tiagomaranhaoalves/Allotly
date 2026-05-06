@@ -23,9 +23,11 @@ interface ListRow {
   active_token_count: string;
 }
 
-// Returns membershipId, or null. When null, callers must check res.statusCode:
-//   401 → response already written; 200 → no membership, write empty result.
-async function resolveMembershipId(req: Request, res: Response): Promise<string | null> {
+// Returns the user's membership ids (could be more than one now that
+// team_memberships.user_id is no longer UNIQUE — a user may be on several
+// teams). When null, callers must check res.statusCode:
+//   401 → response already written; 200 → no memberships, write empty result.
+async function resolveMembershipIds(req: Request, res: Response): Promise<string[] | null> {
   const userId = (req.session as any)?.userId;
   if (!userId) {
     res.status(401).json({ error: "unauthorized", message: "Sign in to manage OAuth connections." });
@@ -36,15 +38,15 @@ async function resolveMembershipId(req: Request, res: Response): Promise<string 
     res.status(401).json({ error: "unauthorized", message: "Sign in to manage OAuth connections." });
     return null;
   }
-  const membership = await storage.getMembershipByUser(user.id);
-  if (!membership) return null;
-  return membership.id;
+  const memberships = await storage.getMembershipsByUser(user.id);
+  if (memberships.length === 0) return null;
+  return memberships.map((m) => m.id);
 }
 
 export async function listConnectionsHandler(req: Request, res: Response): Promise<void> {
   res.setHeader("Cache-Control", "no-store");
-  const membershipId = await resolveMembershipId(req, res);
-  if (membershipId === null) {
+  const membershipIds = await resolveMembershipIds(req, res);
+  if (membershipIds === null) {
     if (res.statusCode === 200) res.json({ connections: [] });
     return;
   }
@@ -58,11 +60,11 @@ export async function listConnectionsHandler(req: Request, res: Response): Promi
             COUNT(*)::text         AS active_token_count
        FROM oauth_tokens t
        JOIN oauth_clients c ON c.id = t.client_id
-      WHERE t.membership_id = $1
+      WHERE t.membership_id = ANY($1::varchar[])
         AND t.revoked_at IS NULL
    GROUP BY t.client_id, c.client_name
    ORDER BY MAX(t.issued_at) DESC`,
-    [membershipId],
+    [membershipIds],
   );
 
   const connections: ConnectionRow[] = result.rows.map((r) => {
@@ -89,8 +91,8 @@ export async function listConnectionsHandler(req: Request, res: Response): Promi
 
 export async function deleteConnectionHandler(req: Request, res: Response): Promise<void> {
   res.setHeader("Cache-Control", "no-store");
-  const membershipId = await resolveMembershipId(req, res);
-  if (membershipId === null) {
+  const membershipIds = await resolveMembershipIds(req, res);
+  if (membershipIds === null) {
     if (res.statusCode === 200) res.json({ revokedCount: 0 });
     return;
   }
@@ -101,18 +103,26 @@ export async function deleteConnectionHandler(req: Request, res: Response): Prom
     return;
   }
 
-  const revokedCount = await revokeAllTokensForClientMembership(clientId, membershipId);
-
-  recordAudit({
-    membershipId,
-    toolName: "oauth.revoke",
-    inputHash: hashInput({ clientId, revokedCount }),
-    ok: true,
-    errorCode: null,
-    latencyMs: 0,
-    clientId,
-    audience: null,
-  });
+  // Revoke this client's tokens across every membership the user holds — the
+  // OAuth "connection" is the (user, client) pair from the user's POV, even
+  // if the underlying tokens are scoped to a particular membership.
+  let revokedCount = 0;
+  for (const membershipId of membershipIds) {
+    const n = await revokeAllTokensForClientMembership(clientId, membershipId);
+    revokedCount += n;
+    if (n > 0) {
+      recordAudit({
+        membershipId,
+        toolName: "oauth.revoke",
+        inputHash: hashInput({ clientId, revokedCount: n }),
+        ok: true,
+        errorCode: null,
+        latencyMs: 0,
+        clientId,
+        audience: null,
+      });
+    }
+  }
 
   res.json({ revokedCount });
 }

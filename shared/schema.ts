@@ -105,7 +105,7 @@ export const teams = pgTable("teams", {
 export const teamMemberships = pgTable("team_memberships", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   teamId: varchar("team_id").notNull().references(() => teams.id),
-  userId: varchar("user_id").notNull().unique().references(() => users.id),
+  userId: varchar("user_id").notNull().references(() => users.id),
   accessType: accessTypeEnum("access_type").notNull(),
   monthlyBudgetCents: integer("monthly_budget_cents").notNull(),
   allowedModels: json("allowed_models"),
@@ -120,6 +120,17 @@ export const teamMemberships = pgTable("team_memberships", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [
   index("memberships_team_id_idx").on(table.teamId),
+  // Was the index backing the prior UNIQUE(user_id) constraint. The unique
+  // restriction blocked a single user from being on more than one team and
+  // also prevented an EXPIRED row from coexisting with a freshly issued
+  // ACTIVE one. The index itself is still essential — getMembershipByUser
+  // / getActiveMembershipForUser / cascade-delete-member all probe by
+  // user_id — so we keep a non-unique index in its place.
+  index("memberships_user_id_idx").on(table.userId),
+  // Per-team uniqueness still holds: a user may belong to many teams but
+  // only once per team. The invite handler also enforces this at the app
+  // level, but a DB constraint closes the concurrent-invite race window.
+  uniqueIndex("memberships_team_user_unique_idx").on(table.teamId, table.userId),
 ]);
 
 export const providerConnections = pgTable("provider_connections", {

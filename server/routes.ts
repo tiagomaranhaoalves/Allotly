@@ -1457,9 +1457,12 @@ export async function registerRoutes(
         if (existingUser.orgId !== user.orgId) {
           return res.status(400).json({ message: "This email belongs to a user in another organization" });
         }
-        const existingMembership = await storage.getMembershipByUser(existingUser.id);
+        // Multi-team users are allowed: only block when this user is already
+        // on the *target* team. A user can legitimately be on several teams
+        // within the same org (e.g. they were invited to a second team).
+        const existingMembership = await storage.getMembershipByUserAndTeam(existingUser.id, targetTeamId);
         if (existingMembership) {
-          return res.status(400).json({ message: "This user already has an active team membership" });
+          return res.status(400).json({ message: "This user is already a member of this team" });
         }
         memberUser = existingUser;
         isExistingUser = true;
@@ -5511,9 +5514,13 @@ export async function registerRoutes(
 
       await storage.updateUser(user.id, { status: "ACTIVE" } as any);
 
-      const membership = await storage.getMembershipByUser(user.id);
-      if (membership && membership.status === "SUSPENDED") {
-        await storage.updateMembership(membership.id, { status: "ACTIVE" });
+      // Reactivate every SUSPENDED membership the user holds — multi-team
+      // users may have multiple rows that were all suspended together.
+      const memberships = await storage.getMembershipsByUser(user.id);
+      for (const membership of memberships) {
+        if (membership.status === "SUSPENDED") {
+          await storage.updateMembership(membership.id, { status: "ACTIVE" });
+        }
       }
 
       await db.insert(platformAuditLogs).values({

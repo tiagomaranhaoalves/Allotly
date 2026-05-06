@@ -6,19 +6,11 @@
  * EXPIRED/SUSPENDED row first, OAuth denied access even though the user had
  * a perfectly valid ACTIVE membership elsewhere.
  *
- * `team_memberships.user_id` carries a UNIQUE constraint in the live schema,
- * which today blocks one user from holding multiple rows. To exercise the
- * ordering contract against the actual SQL (mocking the orderBy clause would
- * not validate semantics), we drop the constraint inside `beforeAll` and
- * restore it in `afterAll`. The constraint name (`team_memberships_user_id_unique`)
- * is the Drizzle-generated default for `.unique()` on a single column.
- *
- * Concurrency note: this file mutates the shared schema (DROP/ADD CONSTRAINT)
- * for the lifetime of the suite. To avoid two parallel test files trying to
- * mutate the same constraint at once — or one file re-adding it while the
- * other still has duplicate rows in flight — we hold a Postgres session-level
- * advisory lock for the entire test file. Any other test file that opts into
- * the same lock id will block until we finish.
+ * Until task #54 the live `team_memberships.user_id` carried a UNIQUE
+ * constraint that blocked the very scenario this file exercises. With the
+ * constraint dropped in the schema (and mirrored to the live DB via
+ * `drizzle-kit push`) we can now seed multiple membership rows for a single
+ * user directly — no DROP/ADD CONSTRAINT dance, no advisory lock required.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import crypto from "crypto";
@@ -30,30 +22,12 @@ import { storage } from "../../server/storage";
 import { hashPassword } from "../../server/lib/password";
 import { getActiveMembershipForUser } from "../../server/lib/oauth/authorize";
 
-const SCHEMA_LOCK_ID = 894531241; // arbitrary but stable; unique to this file
-
 const seedTag = `am-${Date.now()}-${crypto.randomBytes(2).toString("hex")}`;
 let testOrgId = "";
 let testUserId = "";
 const teamIds: string[] = [];
 const extraUserIds: string[] = [];
 const membershipIds: string[] = [];
-let droppedConstraint = false;
-let constraintName = "";
-let lockClient: import("pg").PoolClient | null = null;
-
-async function findUserIdUniqueConstraint(): Promise<string | null> {
-  const r = await pool.query(
-    `SELECT c.conname
-     FROM pg_constraint c
-     JOIN pg_class t ON c.conrelid = t.oid
-     WHERE t.relname = 'team_memberships'
-       AND c.contype = 'u'
-       AND pg_get_constraintdef(c.oid) = 'UNIQUE (user_id)'
-     LIMIT 1`,
-  );
-  return r.rows[0]?.conname ?? null;
-}
 
 async function insertMembership(opts: {
   teamId: string;
@@ -75,13 +49,6 @@ async function insertMembership(opts: {
 }
 
 beforeAll(async () => {
-  // Hold a session-level advisory lock for the whole file. The lock is
-  // bound to a single connection that we keep open until afterAll. Any
-  // parallel test runner that calls `pg_advisory_lock(SCHEMA_LOCK_ID)`
-  // will block until we release.
-  lockClient = await pool.connect();
-  await lockClient.query("SELECT pg_advisory_lock($1)", [SCHEMA_LOCK_ID]);
-
   const org = await storage.createOrganization({
     name: `active-membership-${seedTag}`,
     plan: "ENTERPRISE",
@@ -124,27 +91,11 @@ beforeAll(async () => {
     });
     teamIds.push(t.id);
   }
-
-  // Drop the UNIQUE(user_id) constraint so we can insert multiple memberships
-  // for the same user. Restored in afterAll.
-  constraintName = (await findUserIdUniqueConstraint()) ?? "";
-  if (constraintName) {
-    await pool.query(`ALTER TABLE team_memberships DROP CONSTRAINT "${constraintName}"`);
-    droppedConstraint = true;
-  }
 });
 
 afterAll(async () => {
   if (membershipIds.length > 0) {
     await db.delete(teamMemberships).where(inArray(teamMemberships.id, membershipIds));
-  }
-  if (droppedConstraint && constraintName) {
-    // Restore the UNIQUE constraint exactly as Drizzle declared it. We
-    // recreate it under the same name so future schema introspection is
-    // unchanged.
-    await pool.query(
-      `ALTER TABLE team_memberships ADD CONSTRAINT "${constraintName}" UNIQUE (user_id)`,
-    );
   }
   if (teamIds.length > 0) {
     await db.delete(teams).where(inArray(teams.id, teamIds));
@@ -157,11 +108,6 @@ afterAll(async () => {
   }
   if (testOrgId) {
     await db.delete(organizations).where(eq(organizations.id, testOrgId));
-  }
-  if (lockClient) {
-    await lockClient.query("SELECT pg_advisory_unlock($1)", [SCHEMA_LOCK_ID]);
-    lockClient.release();
-    lockClient = null;
   }
 });
 
