@@ -82,7 +82,27 @@ const SCOPE_LABELS: Record<string, string> = {
  * `CONSENT_SCRIPT_CSP_SOURCE` so authorize.ts can pin it in the CSP
  * `script-src` directive.
  */
-const CONSENT_INLINE_SCRIPT = `(function(){var f=document.querySelector('form[data-consent-form]');if(!f)return;var a=f.querySelector('[data-testid="consent-approve"]');var d=f.querySelector('[data-testid="consent-deny"]');var last=null;if(a)a.addEventListener('click',function(){last=a;});if(d)d.addEventListener('click',function(){last=d;});var sent=false;var spin='<svg class="allotly-spinner" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" style="vertical-align:middle;margin-right:6px;display:inline-block"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-dasharray="28" stroke-dashoffset="20"></circle></svg>';f.addEventListener('submit',function(e){if(sent){e.preventDefault();return;}sent=true;var b=e.submitter||last||a;var deny=b&&b.value==='deny';var label=deny?'Cancelling\\u2026':'Authorizing\\u2026';if(a){a.disabled=true;a.style.opacity='0.7';a.style.cursor='not-allowed';}if(d){d.disabled=true;d.style.opacity='0.7';d.style.cursor='not-allowed';}if(b){b.innerHTML=spin+label;}});})();`;
+// IMPORTANT: Do NOT set `button.disabled = true` on either submit button
+// inside this `submit` event handler — that is the bug task #61 fixes.
+// In Firefox, Safari, and some Chromium configurations the form's "entry
+// list" is finalized AFTER `submit` handlers run, so a submitter button
+// that becomes disabled mid-handler is stripped from the POST body. That
+// took the `name="decision"` value with it, the server returned 400
+// MISSING_FIELDS, and Claude.ai's connector setup aborted with
+// "connection failed" for every real user.
+//
+// The fix is to leave buttons enabled (so the submitter is always included
+// in the entry list) and signal "submitting" purely visually + with a
+// `sent` flag double-submit guard:
+//   - `f.style.pointerEvents='none'` blocks mouse re-clicks on the form,
+//   - `aria-disabled="true"` informs assistive tech,
+//   - opacity/cursor convey the disabled look,
+//   - the `sent` flag short-circuits any keyboard-driven re-submit.
+//
+// Buttons keep their native `name="decision" value="approve|deny"` so the
+// no-JS path (CSP failure, blocked extension, strict browser) still posts
+// a valid `decision`. JS is enhancement-only.
+const CONSENT_INLINE_SCRIPT = `(function(){var f=document.querySelector('form[data-consent-form]');if(!f)return;var a=f.querySelector('[data-testid="consent-approve"]');var d=f.querySelector('[data-testid="consent-deny"]');var sent=false;var spin='<svg class="allotly-spinner" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" style="vertical-align:middle;margin-right:6px;display:inline-block"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-dasharray="28" stroke-dashoffset="20"></circle></svg>';f.addEventListener('submit',function(e){if(sent){e.preventDefault();return;}sent=true;var b=e.submitter;f.style.pointerEvents='none';if(a){a.style.opacity='0.7';a.style.cursor='not-allowed';a.setAttribute('aria-disabled','true');}if(d){d.style.opacity='0.7';d.style.cursor='not-allowed';d.setAttribute('aria-disabled','true');}if(b){b.innerHTML=spin+(b.value==='deny'?'Cancelling\\u2026':'Authorizing\\u2026');}});})();`;
 
 /**
  * CSP `script-src` source for the inline consent-button script. The full
