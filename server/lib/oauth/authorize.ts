@@ -7,6 +7,7 @@ import { storage } from "../../storage";
 import { newAuthorizationCode } from "./pkce";
 import { MCP_AUDIENCE, SUPPORTED_SCOPES, parseScopeString } from "./scopes";
 import { renderConsent, CONSENT_SCRIPT_CSP_SOURCE } from "./consent-template";
+import { renderCredentialFormForRequest } from "./authorize-credential";
 import { redisSet, redisGetDel, redisKeys, redisDel } from "../redis";
 
 // 10 min: gives MCP clients (Claude Desktop, Cursor, etc.) and slow human
@@ -268,20 +269,38 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
   }
 
   const sess = req.session as any;
+  // No session — render the in-flow credential form (3 tabs: Account /
+  // Voucher code / API key) instead of bouncing to /login. Voucher recipients
+  // and API-key holders can complete the OAuth handshake without an account.
   if (!sess?.userId) {
-    const next = req.originalUrl;
-    res.redirect(302, `/login?next=${escapeQuery(next)}`);
+    const csrfToken = newCsrfToken(req);
+    await renderCredentialFormForRequest(req, res, {
+      csrfToken,
+      oauthContinue: req.originalUrl,
+      clientName: c.clientName,
+    });
     return;
   }
   const user = await storage.getUser(sess.userId);
   if (!user) {
-    res.redirect(302, `/login?next=${escapeQuery(req.originalUrl)}`);
+    // Stale session — same render, but also clear the dangling session keys so
+    // a successful credential POST replaces them cleanly.
+    sess.userId = undefined;
+    sess.orgId = undefined;
+    sess.orgRole = undefined;
+    const csrfToken = newCsrfToken(req);
+    await renderCredentialFormForRequest(req, res, {
+      csrfToken,
+      oauthContinue: req.originalUrl,
+      clientName: c.clientName,
+    });
     return;
   }
-  if (user.isVoucherUser) {
-    res.redirect(302, `/oauth/claim-account?next=${escapeQuery(req.originalUrl)}`);
-    return;
-  }
+  // NOTE: prior code rejected `user.isVoucherUser` here and bounced to
+  // /oauth/claim-account. That gate is intentionally removed: synthetic voucher
+  // users are first-class OAuth subjects. The proxy still gates every API call
+  // through membership status (see safeguards.ts authenticateKey), so a
+  // suspended/expired voucher cannot use the issued OAuth token.
 
   const membership = await getActiveMembershipForUser(user.id);
   if (!membership) {

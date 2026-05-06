@@ -42,6 +42,10 @@ npm run db:push # Apply Drizzle ORM migrations
 *   `server/lib/currency.ts` - Server-side currency conversion logic
 *   `client/src/lib/currency.ts` - Frontend currency conversion logic
 *   `server/lib/turnstile.ts` - Turnstile captcha verification
+*   `server/lib/oauth/authorize-credential.ts` - In-flow OAuth credential POST (password / voucher / api_key)
+*   `server/lib/oauth/credential-form-template.ts` - CSS-only 3-tab credential form
+*   `server/lib/vouchers/redeem-inline.ts` - Pure helper: voucher redemption side effects
+*   `server/lib/auth/api-key-lookup.ts` - Validate-and-resolve `allotly_sk_…` keys (no Redis cache)
 *   `client/src/i18n/locales/` - i18n translation files
 *   `docs/release-checklist.md` - Release procedures
 *   `tests/e2e/` - Playwright end-to-end tests
@@ -53,6 +57,7 @@ npm run db:push # Apply Drizzle ORM migrations
 *   **Encrypted AI Provider Keys:** AI provider API keys are AES-256-GCM encrypted, supporting rotation and real-time validation.
 *   **Robust Cascade Deletion:** Critical entity deletions (org, team, member, voucher) are atomic transactions with full cascade cleanup.
 *   **Branded Error Codes for Test-Your-Key:** User-facing errors from the `test-connection` endpoint are mapped to six branded codes with context-aware hints, abstracting upstream provider specifics.
+*   **Voucher-aware OAuth authorize:** Unauthenticated `/oauth/authorize` renders an in-flow 3-tab credential form (password / voucher / API key) instead of bouncing to `/login`. Synthetic voucher users are first-class OAuth subjects — security is enforced via membership status at the proxy, not via `isVoucherUser`. POST handler at `/oauth/authorize/credential`; CSS-only tabs (CSP `script-src 'none'`); generic error string only (no enumeration oracle); `oauth_continue` must be a relative `/oauth/authorize` path (open-redirect block).
 
 ## Product
 

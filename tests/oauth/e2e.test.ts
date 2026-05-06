@@ -234,32 +234,42 @@ describe("oauth e2e: authorize + consent", () => {
     });
     const res = mockRes();
     await authorizeHandler(req as any, res as any);
-    expect(res.statusCode).toBe(302);
-    expect(res.redirected).toMatch(/\/login\?next=/);
+    expect(res.statusCode).toBe(200);
+    // The form posts to the new in-flow credential endpoint (no /login bounce).
+    expect(String(res.body)).toMatch(/action="\/oauth\/authorize\/credential"/);
+    expect(String(res.body)).toMatch(/data-testid="tab-voucher"/);
+    expect(String(res.body)).toMatch(/data-testid="tab-api-key"/);
   });
 
-  it("[4] GET /oauth/authorize with a voucher-only user redirects to /oauth/claim-account", async () => {
-    // Flip the seeded user to voucherUser temporarily
+  it("[4] GET /oauth/authorize with a synthetic voucher user reaches the consent screen (regression: no /oauth/claim-account bounce)", async () => {
+    // Flip the seeded user to voucherUser temporarily — the previous behavior
+    // bounced these users to /oauth/claim-account, blocking the OAuth handshake
+    // entirely. Synthetic voucher users are now first-class OAuth subjects;
+    // membership status is the security boundary, not the isVoucherUser flag.
     await storage.updateUser(testUserId, { isVoucherUser: true } as any);
-    const req = mockReq({
-      query: {
-        client_id: registeredClientId,
-        redirect_uri: TEST_REDIRECT_URI,
-        response_type: "code",
-        code_challenge: pkceChallenge,
-        code_challenge_method: "S256",
-        scope: "mcp",
-        state: "s2",
-        resource: MCP_AUDIENCE,
-      },
-      session: { userId: testUserId },
-      originalUrl: "/oauth/authorize?...",
-    });
-    const res = mockRes();
-    await authorizeHandler(req as any, res as any);
-    expect(res.statusCode).toBe(302);
-    expect(res.redirected).toMatch(/\/oauth\/claim-account/);
-    await storage.updateUser(testUserId, { isVoucherUser: false } as any);
+    try {
+      const req = mockReq({
+        query: {
+          client_id: registeredClientId,
+          redirect_uri: TEST_REDIRECT_URI,
+          response_type: "code",
+          code_challenge: pkceChallenge,
+          code_challenge_method: "S256",
+          scope: "mcp",
+          state: "s2",
+          resource: MCP_AUDIENCE,
+        },
+        session: { userId: testUserId },
+        originalUrl: "/oauth/authorize?...",
+      });
+      const res = mockRes();
+      await authorizeHandler(req as any, res as any);
+      expect(res.statusCode).toBe(200);
+      expect(String(res.body)).toContain('data-testid="consent-client-name"');
+      expect(String(res.body || "")).not.toMatch(/claim-account/);
+    } finally {
+      await storage.updateUser(testUserId, { isVoucherUser: false } as any);
+    }
   });
 
   it("[5] GET /oauth/authorize with a real user renders the consent screen and shows the user email", async () => {

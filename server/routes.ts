@@ -45,6 +45,7 @@ import { getCostPerModel, getTopSpenders, getSpendForecast, getAnomalies, getOpt
 import { loginLimiter, redeemLimiter, regenerateKeyLimiter, adminLoginLimiter, contactLimiter, signupLimiter, voucherValidateLimiter } from "./lib/rate-limiter";
 import { requireTurnstile } from "./lib/turnstile";
 import { createVoucherValidateHandler } from "./lib/voucher-validate";
+import { redeemVoucherInline } from "./lib/vouchers/redeem-inline";
 import crypto from "crypto";
 import { z } from "zod";
 import { cascadeDeleteOrganization, cascadeDeleteTeam, cascadeDeleteMember, cascadeDeleteVoucher } from "./lib/cascade-delete";
@@ -3847,150 +3848,30 @@ export async function registerRoutes(
       });
       const parsed = redeemSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
-      const { code, email, name, password, instant } = parsed.data;
 
-      const voucher = await storage.getVoucherByCode(code.toUpperCase());
-      if (!voucher || voucher.status !== "ACTIVE") {
-        return res.status(400).json({ message: "Invalid or inactive voucher" });
+      const result = await redeemVoucherInline(parsed.data);
+      if (!result.ok) {
+        const status = result.code === "team_not_found" ? 500 : 400;
+        return res.status(status).json({ message: result.message });
       }
 
-      if (new Date(voucher.expiresAt) < new Date()) {
-        return res.status(400).json({ message: "Voucher has expired" });
-      }
-
-      if (voucher.currentRedemptions >= voucher.maxRedemptions) {
-        return res.status(400).json({ message: "Voucher is fully redeemed" });
-      }
-
-      const team = await storage.getTeam(voucher.teamId);
-      if (!team) return res.status(500).json({ message: "Team not found" });
-
-      const memberCheck = await checkPlanLimit(voucher.orgId, "member", voucher.teamId);
-      if (!memberCheck.allowed) {
-        return res.status(400).json({ message: "This team has reached its member limit" });
-      }
-
-      let userEmail = email;
-      let userPassword = password;
-      if (instant || !email) {
-        const rand = Math.random().toString(36).slice(2, 8);
-        userEmail = `voucher-${code.slice(0, 8)}-${rand}@allotly.local`;
-        userPassword = Math.random().toString(36).slice(2, 14);
-      }
-
-      const passwordHash = await hashPassword(userPassword || "changeme123");
-      const voucherUser = await storage.createUser({
-        email: userEmail,
-        name: name || "Voucher User",
-        passwordHash,
-        orgId: voucher.orgId,
-        orgRole: "MEMBER",
-        status: "ACTIVE",
-        isVoucherUser: true,
-      });
-
-      const now = new Date();
-      const membership = await storage.createMembership({
-        teamId: voucher.teamId,
-        userId: voucherUser.id,
-        accessType: "VOUCHER",
-        monthlyBudgetCents: voucher.budgetCents,
-        allowedModels: voucher.allowedModels,
-        allowedProviders: voucher.allowedProviders,
-        currentPeriodSpendCents: 0,
-        periodStart: now,
-        periodEnd: new Date(voucher.expiresAt),
-        status: "ACTIVE",
-        voucherRedemptionId: voucher.id,
-      });
-
-      await storage.createVoucherRedemption({ voucherId: voucher.id, userId: voucherUser.id });
-      await storage.updateVoucher(voucher.id, { currentRedemptions: voucher.currentRedemptions + 1 });
-
-      if (voucher.currentRedemptions + 1 >= voucher.maxRedemptions) {
-        await storage.updateVoucher(voucher.id, { status: "FULLY_REDEEMED" });
-      }
-
-      if (voucher.bundleId) {
-        const bundle = await storage.getVoucherBundle(voucher.bundleId);
-        if (bundle) {
-          const updated = await db.update(voucherBundles)
-            .set({
-              usedRedemptions: sql`${voucherBundles.usedRedemptions} + 1`,
-              status: sql`CASE WHEN ${voucherBundles.usedRedemptions} + 1 >= ${voucherBundles.totalRedemptions} THEN 'EXHAUSTED' ELSE ${voucherBundles.status} END`,
-              updatedAt: new Date(),
-            })
-            .where(
-              and(
-                eq(voucherBundles.id, bundle.id),
-                sql`${voucherBundles.usedRedemptions} < ${voucherBundles.totalRedemptions}`,
-                eq(voucherBundles.status, "ACTIVE")
-              )
-            )
-            .returning();
-
-          if (updated.length === 0) {
-            return res.status(400).json({ message: "Bundle redemption pool is exhausted" });
-          }
-
-          const bundleReqKey = REDIS_KEYS.bundleRequests(bundle.id);
-          const existingReqs = await redisGet(bundleReqKey);
-          if (existingReqs === null) {
-            await redisSet(bundleReqKey, String(bundle.usedProxyRequests));
-          }
-
-          await redisIncr(REDIS_KEYS.bundleRedemptions(bundle.id));
-        }
-      }
-
-      await redisSet(REDIS_KEYS.budget(membership.id), String(voucher.budgetCents));
-
-      const { key, hash, prefix } = generateAllotlyKey();
-      await storage.createAllotlyApiKey({
-        userId: voucherUser.id,
-        membershipId: membership.id,
-        keyHash: hash,
-        keyPrefix: prefix,
-      });
-
-      await storage.createAuditLog({
-        orgId: voucher.orgId,
-        actorId: voucherUser.id,
-        action: "voucher.redeemed",
-        targetType: "voucher",
-        targetId: voucher.id,
-        metadata: { code: voucher.code, email: userEmail },
-      });
-
-      const teamAdmin = await storage.getUser(team.adminId);
-      if (teamAdmin?.email) {
-        const tmpl = emailTemplates.voucherRedeemed(
-          teamAdmin.name || "Admin",
-          voucher.code,
-          userEmail || "anonymous",
-          team.name
-        );
-        try { await sendEmail(teamAdmin.email, tmpl.subject, tmpl.html); } catch {}
-      }
-
-      const models = await storage.getModelPricing();
-      const allowedProviders = voucher.allowedProviders as string[];
-      const availableModels = models.filter(m => allowedProviders.includes(m.provider));
-
-      if (!instant && email) {
-        req.session.userId = voucherUser.id;
-        req.session.orgId = voucher.orgId;
-        req.session.orgRole = "MEMBER";
+      // Only set the session for non-synthetic redemptions (user provided
+      // their own email). Synthetic /api/vouchers/redeem callers stay
+      // anonymous and get back the API key to use directly.
+      if (result.hasAccount) {
+        req.session.userId = result.user.id;
+        req.session.orgId = result.user.orgId;
+        req.session.orgRole = result.user.orgRole;
       }
 
       res.json({
-        apiKey: key,
-        keyPrefix: prefix,
-        budgetCents: voucher.budgetCents,
-        expiresAt: voucher.expiresAt,
-        models: availableModels.map(m => ({ modelId: m.modelId, displayName: m.displayName, provider: m.provider })),
-        baseUrl: "/api/v1",
-        hasAccount: !instant && !!email,
+        apiKey: result.apiKey,
+        keyPrefix: result.keyPrefix,
+        budgetCents: result.budgetCents,
+        expiresAt: result.expiresAt,
+        models: result.models,
+        baseUrl: result.baseUrl,
+        hasAccount: result.hasAccount,
       });
     } catch (e: any) {
       console.error("Voucher redeem error:", e);
