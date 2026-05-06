@@ -1,20 +1,24 @@
 import { describe, it, expect } from "vitest";
-import { renderConsent } from "../../server/lib/oauth/consent-template";
+import {
+  renderConsent,
+  type ConsentParams,
+} from "../../server/lib/oauth/consent-template";
 
-const baseParams = {
-  clientName: "Claude.ai",
-  userEmail: "user@example.com",
-  userName: "Real User",
-  scopes: ["mcp"],
-  redirectUri: "https://claude.ai/api/mcp/callback",
-  approvePath: "/oauth/consent",
+const baseParams: ConsentParams = {
   authRequestId: "auth_req_abc",
   csrfToken: "csrf_token_xyz",
+  clientName: "Claude.ai",
+  scopes: ["mcp"],
+  redirectUri: "https://claude.ai/api/mcp/callback",
+  resource: "https://allotly.example/mcp",
+  approvePath: "/oauth/consent",
+  userEmail: "user@example.com",
+  userName: "Real User",
   memberships: [],
 };
 
 describe("consent template — `decision` survives submit (task #61 regression)", () => {
-  const html = renderConsent(baseParams as any);
+  const html = renderConsent(baseParams);
 
   it("submit buttons carry `name=\"decision\"` so the no-JS / native-form path still works", () => {
     // Critical no-JS fallback. If the inline script is blocked (CSP failure,
