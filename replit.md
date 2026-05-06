@@ -1,68 +1,90 @@
-# Allotly — The AI Spend Control Plane
+# Allotly
 
-## Overview
-Allotly is a SaaS platform designed for managing and distributing AI API access with real-time budget controls. It operates on a unified v4 proxy architecture, routing both team and voucher-based access through a single, thin proxy layer. The platform aims to provide an "allotly_sk_" key to every user, eliminating the need for provider Admin API provisioning or usage polling by performing all metering per-request at the proxy. Key features include monthly resetting budgets for teams and fixed, expiring budgets for vouchers. The project envisions significant market potential in controlled AI resource allocation, targeting businesses and organizations that need granular control over their AI API spending.
+Allotly is a SaaS platform for managing and distributing AI API access with real-time budget controls.
 
-## User Preferences
+## Run & Operate
+
+```bash
+npm install
+npm run build
+npm start
+npm run typecheck
+npm run db:generate # Generate Drizzle ORM migrations
+npm run db:push # Apply Drizzle ORM migrations
+```
+
+**Required Environment Variables:**
+
+*   `DATABASE_URL`
+*   `RESEND_API_KEY`
+*   `STRIPE_SECRET_KEY`
+*   `ALLOTLY_SECRET_KEY`
+*   `TURNSTILE_SECRET_KEY` (production)
+*   `VITE_TURNSTILE_SITE_KEY` (production, build-time)
+*   `MCP_STREAMING_ENABLED` (optional)
+
+## Stack
+
+*   **Frontend:** React 18, Vite, wouter, TanStack Query v5, Shadcn/ui, Tailwind CSS, Recharts
+*   **Backend:** Express.js, express-session, connect-pg-simple
+*   **Database:** PostgreSQL (Drizzle ORM)
+*   **Payments:** Stripe
+*   **Email:** Resend
+*   **Cache/Realtime:** Redis (with in-memory fallback)
+*   **Authentication:** Session-based (scrypt for passwords)
+*   **i18n:** react-i18next (`en`, `es`, `pt-BR` locales)
+
+## Where things live
+
+*   `client/` - Frontend application source
+*   `server/` - Backend application source
+*   `db/schema.ts` - Database schema definition
+*   `server/lib/currency.ts` - Server-side currency conversion logic
+*   `client/src/lib/currency.ts` - Frontend currency conversion logic
+*   `server/lib/turnstile.ts` - Turnstile captcha verification
+*   `client/src/i18n/locales/` - i18n translation files
+*   `docs/release-checklist.md` - Release procedures
+*   `tests/e2e/` - Playwright end-to-end tests
+
+## Architecture decisions
+
+*   **Unified v4 Proxy:** All AI API requests (team/voucher) route through a single proxy for centralized, real-time metering and budget enforcement.
+*   **Integer USD-Cents for Money:** All monetary values are handled internally as integer USD-cents to prevent floating-point errors. Display currency is a view-layer concern.
+*   **Encrypted AI Provider Keys:** AI provider API keys are AES-256-GCM encrypted, supporting rotation and real-time validation.
+*   **Robust Cascade Deletion:** Critical entity deletions (org, team, member, voucher) are atomic transactions with full cascade cleanup.
+*   **Branded Error Codes for Test-Your-Key:** User-facing errors from the `test-connection` endpoint are mapped to six branded codes with context-aware hints, abstracting upstream provider specifics.
+
+## Product
+
+*   Real-time AI API budget enforcement for teams and vouchers.
+*   Unified proxy for all AI API requests.
+*   Configurable tiered rate and concurrency limiting.
+*   Comprehensive CRUD for organizations, teams, members, vouchers, and providers.
+*   Audit logging with detailed metadata and change diffs.
+*   Multi-currency display options per organization.
+*   Dynamic AI model discovery per provider key.
+*   Project-level API key management for granular usage tracking.
+*   Abuse protection for public endpoints using rate limits and captchas.
+
+## User preferences
+
 - Detailed explanations preferred
 - Iterative development
 - Ask before making major changes
 - Do not make changes to the folder `Z`
 - Do not make changes to the file `Y`
 
-## System Architecture
-Allotly employs a robust architecture with a focus on real-time budget enforcement and secure API management.
+## Gotchas
 
-**UI/UX Decisions:**
-- **Design System**: Primary color: Indigo #6366F1, Secondary: Cyan #06B6D4. Provider-specific colors for OpenAI (green #10A37F), Anthropic (amber #D4A574), Google (blue #4285F4), Azure OpenAI (blue #0078D4).
-- **Dark Mode**: Uses a dark palette for background (`#111827`), card/sidebar (`#1E293B`), hover states (`#334155`), and neutral borders (`Neutral 700`).
-- **Fonts**: Inter for UI elements and JetBrains Mono for code displays.
-- **Monetary Values**: All money is handled internally in integer USD-cents to prevent floating-point inaccuracies. Wire formats (DB rows, webhook payloads, MCP `currency: "usd"` literal) stay USD-only; per-org display currency is an additive view layer.
-- **Multi-currency Display (V1.5.0 M3a)**: Organizations select a display currency (USD/GBP/EUR/BRL) via `PATCH /api/org/settings { currency }`. Internal accounting and webhook payloads remain USD-cents — only the dashboard rendering and outbound voucher emails reformat. FX rates are refreshed daily at 03:00 UTC from `exchangerate.host` into the `fx_rates` table (PK on currency code), with hard-coded fallback rates (GBP=0.79/EUR=0.92/BRL=5.20) seeded only when the table is empty so live rows are never clobbered. Server module `server/lib/currency.ts` (1h in-memory rate cache) and frontend mirror `client/src/lib/currency.ts` share the same conversion + Intl formatting logic. MCP `BudgetSnapshot` carries an optional additive `display` block (currency, fx_rate, fx_as_of, formatted strings, minor_units) so MCP clients can render in the org's currency without doing FX themselves. Endpoints: `GET /api/fx-rates` (any auth), `POST /api/fx-rates/refresh` (ROOT_ADMIN, manual trigger).
+*   Always run `npm run build` which includes `vitest run` before deployment; `SKIP_RELEASE_TESTS=1` is for local debugging only.
+*   Ensure `TURNSTILE_SECRET_KEY` (server) and `VITE_TURNSTILE_SITE_KEY` (client build-time) are set for production to enable captcha protection on public endpoints.
+*   `max_tokens` and `max_completion_tokens` are mutually exclusive in forwarded API requests.
+*   Azure OpenAI requires deployment-to-model mappings and custom pricing; deployment names are URL-encoded in requests.
 
-**Technical Implementations & System Design Choices:**
-- **Unified v4 Proxy**: A single proxy endpoint (`/api/v1/chat/completions`) handles all AI API requests for both TEAM and VOUCHER access types, centralizing metering and control without reliance on external provider mechanisms. Non-POST methods return 405 JSON; unknown `/api/v1/` paths return 404 JSON. Request parameters are sanitized per-provider (whitelist-based) before forwarding upstream.
-- **Real-time Budget Enforcement**: The proxy reserves budget before forwarding requests and refunds any overage after the response. Alerts are triggered at 80%, 90%, and 100% budget utilization.
-- **Pricing Formula**: `costCents = ceil(tokens * pricePerMTok / 1_000_000)` calculates costs based on tokens and a configurable price per million tokens.
-- **API Key Management**: AI provider API keys are encrypted using AES-256-GCM. The system includes functionality for key rotation, immediate validation, and connection testing to ensure provider health.
-- **Rate & Concurrency Limiting**: Tiered limits are implemented: Free (20rpm/2conc), Team-TEAM (60rpm/5conc), Team-VOUCHER (30rpm/2conc), and Enterprise (120rpm/10conc). Rate limit checks happen early (DDoS protection), but bundle pool checks are deferred until after all proxy validation passes — only fully-validated requests reaching upstream count against the user's quota.
-- **Plan Limits**: Configurable limits for various features (Teams, Team Admins, Members/Team, Providers, Vouchers, Data Retention) are defined and enforced per plan (FREE, TEAM, ENTERPRISE).
-- **Entity Management**: Comprehensive CRUD operations for core entities (Organization, Team, Member, Voucher, Provider) with detailed audit logging.
-- **Cascade Delete**: Robust cascade deletion logic ensures complete cleanup across all related entities when an organization, team, member, or voucher is deleted. These operations are wrapped in DB transactions for atomicity.
-- **Member Operations**: Supports member transfers (intra-org and cross-org), role changes, bulk suspension/reactivation/deletion, and invite resending.
-- **Voucher Lifecycle**: Includes bulk creation, extension, top-up, enhanced revocation (affecting redeemed vouchers), and CSV export for comprehensive voucher management.
-- **Budget Management**: Features manual budget reset and credit functionalities for members, with corresponding audit logs.
-- **Audit Log UI**: Enhanced audit logs with expandable metadata, human-readable action labels, categorized filters, and change diff views.
-- **Email Service**: Uses a consistent `sendEmail` signature with positional arguments `(to, subject, html)`.
-- **Organization Settings**: `settings` JSONB column on `organizations` table stores `notifications` (budgetAlerts, spendAnomalies, providerKeyIssues, voucherRedemptions, memberInvitesAccepted) and `defaults` (defaultBudgetCents, defaultAllowedModels, defaultVoucherExpiryDays). PATCH `/api/org/settings` deep-merges nested JSON.
-- **Danger Zone**: `POST /api/org/revoke-all-keys` (requires `confirmText: "REVOKE ALL"`) and `POST /api/org/disconnect-all-providers` (requires `confirmName` matching org name). Both cascade-clear Redis caches and create audit logs.
-- **Data Exports**: `GET /api/export/usage` and `GET /api/export/members` return CSV files with formula-injection-safe escaping. Available to ROOT_ADMIN and TEAM_ADMIN (scoped to their teams).
-- **Bulk Add Members**: `POST /api/teams/:teamId/bulk-add-members` accepts up to 200 members with email, optional name, optional budgetCents. Creates user, membership, API key, and sends invite email per member.
-- **Cleanup Utilities**: `POST /api/admin/cleanup/:type` supports `expired-vouchers`, `revoked-keys`, `orphans`, `redis-reconcile`. ROOT_ADMIN only.
-- **Admin Control Center**: Expanded with 8 tabs (Overview, Organizations, Users, API Keys, Proxy Stats, Providers, Vouchers, Audit Logs). Backend routes include: hard/soft delete user (frees email via tombstone prefix), reactivate, transfer between orgs (moveHistory updates membership in-place to preserve FK integrity), delete org (cascade), org drill-down, platform-wide keys/revoke, audit logs, proxy stats, providers, vouchers/void. Hard-delete guards against users who are team admins and nullifies voucher ownership. Transfer with `moveHistory=true` updates the existing membership row (preserving the same ID) rather than delete+create, to avoid FK constraint violations on `proxyRequestLogs`/`usageSnapshots`/`budgetAlerts`.
-- **Test-Your-Key (V1.5.1)**: Two endpoints expose a structured smoke test against a real provider — `POST /api/v1/test-connection` (Bearer-authenticated for SDK/CLI use) and `POST /api/v1/test-connection/session` (cookie-authenticated, used by the dashboard's "Test your key" button so users never copy-paste their key). Both wrap `processChatCompletion` with a locked prompt (`"Reply with the single word 'ok' and nothing else."`, `max_tokens=5`, `temperature=0`) against the cheapest active model in the caller's allowlist via the full proxy pipeline. Success envelope: `success: true`, `user_type`, `model_used`, `response_text`, `cost_usd_cents`, `cost` (`usd_cents` + `display`), `budget` (`remaining_usd_cents`, `total_usd_cents`, `display`), `latency_ms`. Failure envelope: `success: false`, `user_type`, `error: { code, message, hint }` where `code` is one of six branded values — `no_providers_active`, `no_models_in_tier`, `budget_exhausted`, `rate_limited`, `provider_error`, `unknown` — each paired with a hint that branches on `user_type` (`team_admin` / `team_member` / `voucher_recipient`) so the suggested fix points to the right dashboard surface (e.g. team admin sees "Update [allowed-models list] at /dashboard/teams"; voucher recipient sees "Run `request_topup` from your AI client, or contact the issuing admin"). The internal `classifyError` maps every safeguard code onto exactly one of the six — the original code never leaks, and provider names / upstream payloads are stripped from user-facing strings. Short-circuit paths (no providers, no models, pre-call exhaustion) still consume a rate-limit slot so the endpoint can't be used to probe org state. Voucher redemption auto-invokes the session endpoint and renders the result inline on the redeem page so recipients never get a "looks fine but doesn't work" key.
-- **Connector Grid (V1.5.1)**: The "Where to use your key" docs section is backed by an 8-connector grid covering Claude Desktop, Cursor, Claude Code, VS Code, Continue, LangChain, OpenAI SDK, and the OpenAI-compatible cURL fallback. Each tile carries a copy-paste config snippet that already substitutes the user's preferred base URL.
-- **MCP Estimate Cost (V1.5.1)**: New read-only `estimate_cost` MCP tool. Runs auth + allowlist + pricing lookup + input-token estimation but skips budget reservation and the upstream call. Returns the estimated cost on the requested model plus up to three cheaper alternatives drawn from the caller's allowlist (ranked by ascending cost). Vision-capable models are filtered out of the alternatives unless the prompt contains image input parts. Uses the new `model_pricing.max_output_tokens` column as the worst-case upper bound when the caller does not pass `max_tokens`.
-- **Budget Warning Surfaces (V1.5.1)**: MCP `_meta.budget` blocks on `my_status`, `my_budget`, and `my_recent_usage` carry an additive `warning` field with one of `low` (≥80% spent), `critical` (≥95%), or `exhausted` (100%). Warning copy branches by principal type (admin / member / voucher recipient × low / critical / exhausted = 9 distinct hints) so the suggested next step always points to a surface the principal can actually act on. The dashboard renders the same three states as a top-of-page banner on every authenticated route, recomputed on the same 60-second cadence as the Redis reconciliation job.
-- **MCP Streaming (M4)**: When a client calls the `chat` tool with `_meta.progressToken` and the server has `MCP_STREAMING_ENABLED=true`, the proxy opens the upstream call in stream mode and emits `notifications/progress` messages keyed by that token as tokens arrive. The final `tools/call` response still carries the complete reply, cost breakdown, and budget snapshot, so non-streaming clients stay byte-compatible. Streamed calls are recorded with `streamed=true` in the new `mcp_audit_log.streamed` column for traffic analytics. New env var: `MCP_STREAMING_ENABLED` (default off).
-- **V1.5.1 Schema Additions**: Two new columns — `model_pricing.max_output_tokens` (used by `estimate_cost` worst-case projections and by `clampMaxTokens` to cap reasoning-model cost reservations) and `mcp_audit_log.streamed` (boolean flag distinguishing streamed from one-shot MCP `chat` calls in usage analytics).
-- **Public Endpoint Abuse Protection (Task #48)**: The three unauthenticated cost-bearing endpoints (`POST /api/contact`, `POST /api/auth/signup`, `GET /api/vouchers/validate/:code`) are gated by per-IP rate limits and (where applicable) a Cloudflare Turnstile captcha. Limits: contact 3/hr, signup 5/hr, voucher-validate 30/hr — all using `express-rate-limit` with custom 429 handlers that emit `[abuse-protect] cause=RATE_LIMITED` log lines. Captcha gate runs BEFORE any side effects (email send, DB write, Redis write, session creation) on contact + signup; voucher-validate is rate-limit-only because it's called by partner integrations. The captcha verifier (`server/lib/turnstile.ts`) skips cleanly when `TURNSTILE_SECRET_KEY` is unset (so dev + test work without configuration) and emits a one-time startup warning if running in production without it. Voucher-validate also collapses every non-success branch (not found, status, expiry, fully-redeemed, bundle inactive/expired/exhausted) to a single uniform `404 { message: "Voucher not found or no longer usable" }` envelope so it can no longer be used as a status oracle. Required env vars: `TURNSTILE_SECRET_KEY` (server runtime, required in production) and `VITE_TURNSTILE_SITE_KEY` (consumed by Vite at frontend BUILD time and baked into the client bundle, required in production). Both must be set in the env at the time the production build is created so the server-side verifier and the client-side widget agree on the same Turnstile pair; the server emits an informational note at startup if it sees the secret without the public key in its own runtime env, but that note is a hint (the public key is build-time and may legitimately be absent from the server runtime env). Optional tuning: `CONTACT_RATE_LIMIT_PER_HOUR` and `SIGNUP_RATE_LIMIT_PER_HOUR`.
-- **Project Keys**: Team-level `projects` table allows admins to create named projects. Users self-serve API keys (up to 10 per membership) via `POST /api/me/keys`, optionally assigning each key to a project (existing or new). All project keys share the parent membership's budget, rate limits, and model restrictions. Proxy logger records `apiKeyId` on every request for per-project usage tracking. `proxyRequestLogs.apiKeyId` links to `allotlyApiKeys.id`; `allotlyApiKeys.projectId` links to `projects.id`. Admin Keys page shows project column. Member dashboard shows per-project usage breakdown and multi-key management UI. Usage CSV export includes a `project` column. Routes: `GET/POST /api/teams/:teamId/projects`, `PATCH/DELETE /api/projects/:id`, `GET/POST /api/me/keys`, `DELETE /api/me/keys/:keyId`.
+## Pointers
 
-## Release Testing
-- **Pre-build vitest gate**: `script/build.ts` runs `vitest run` (all `tests/**/*.test.ts`, including the arena session reducer suite) as the first step of `npm run build`. Replit deployments invoke `npm run build`, so a failing vitest aborts publish. Set `SKIP_RELEASE_TESTS=1` only for local debugging — never for a real release.
-- **Pre-release Playwright walk**: `tests/e2e/arena-flow.spec.ts` covers the arena setup → round → vote → results flow via `playwright.config.ts`. `tests/e2e/budget-warning-banner.spec.ts` (added V1.5.1) covers the dashboard's low/critical/exhausted budget banner across admin, member, and voucher principals. Run `bash scripts/pre-release.sh` (vitest + e2e) before publishing. The release checklist lives in `docs/release-checklist.md`.
-
-## External Dependencies
-- **Frontend**: React 18, Vite, wouter (routing), TanStack Query v5, Shadcn/ui, Tailwind CSS, Recharts.
-- **Backend**: Express.js, express-session, connect-pg-simple.
-- **Database**: PostgreSQL via Drizzle ORM.
-- **Payments**: Stripe (for subscriptions and one-time payments) integrated via `stripe-replit-sync`.
-- **Email**: Resend for email delivery, with `allotly.ai` as the verified domain and `hello@allotly.ai` as the sender. Fallback to `onboarding@resend.dev` if the domain is not verified.
-- **AI Providers**: OpenAI, Anthropic, Google, and Azure OpenAI are integrated for AI model access. Google adapter uses `v1beta` API (required for `systemInstruction` support), filters out thinking/reasoning parts from Gemini 2.5 responses, and forwards `stop` → `stopSequences` in `generationConfig`. Provider parameter sanitization strips unknown keys before forwarding to prevent upstream rejections. Azure OpenAI uses `api-key` + `Ocp-Apim-Subscription-Key` headers, supports v1 and legacy endpoint modes, and requires deployment-to-model mappings with custom pricing. Deployment names can match real model names (e.g., gpt-4.1-nano). Routing priority: Azure deployments checked first (exact name match), then prefix-based routing (gpt→OpenAI, claude→Anthropic, gemini→Google). Azure errors are sanitized — raw upstream error bodies are never forwarded to users. Deployment names are URL-encoded in outbound requests.
-- **Dynamic Model Discovery**: `GET /api/providers/:id/models` queries each provider's live API using the connected API key to discover available models. The allowlist shows only models the key can actually access (not a static seed list). For Azure, returns configured deployment mappings. Stale allowlist entries (models no longer available) are filtered out on the frontend. Google API uses header-based auth (`x-goog-api-key`). Anthropic uses paginated fetching.
-- **Token Cap Handling**: `max_tokens` and `max_completion_tokens` are mutually exclusive in the forwarded body (never both). Reasoning models (o1/o3/o4/gpt-5) always use `max_completion_tokens`. Non-reasoning preserves whichever field the client sent. When client sends no cap and budget doesn't require clamping, no cap field is injected (provider decides its default). Budget estimation uses 4096 as fallback for cost reservation only. `clampMaxTokens` returns `undefined` when no cap needed.
-- **Upstream Error Types**: `upstream_quota_exhausted` for Azure APIM 403 quota/capacity messages (distinct from `upstream_auth_failed`). Friendly message names Azure subscription quota and recommends contacting tenant admin.
-- **Cache/Realtime**: Redis is used for budget counters, concurrency control, and rate limiting, with an in-memory Map fallback.
-- **Authentication**: Session-based authentication using scrypt for password hashing.
-- **Internationalization (i18n)**: react-i18next with locales `en`, `es`, and `pt-BR` stored in `client/src/i18n/locales/*.json`. Language preference persists in `localStorage` under key `allotly-lang` (detection order: localStorage → navigator). All public pages — landing, about, careers, contact, privacy, terms, security — use `useTranslation()` and namespace their copy under the top-level `pages.{about|careers|contact|privacy|terms|security}` JSON key. Exception: `/mcp/docs`, `/dpa`, and `/subprocessors` are intentionally English-only (legal/integration-doc precedent — only their footer link labels are i18n'd as `footer.dpa` and `footer.subprocessors`). Static arrays (principle/value/contact/architecture cards, encryption/compliance/infrastructure items) keep icons in code and look up titles/descriptions by stable string id (e.g., `pages.about.principles.dataPath.title`). Bullet lists with bold labels split into `label`/`text` keys rendered as `<strong>{label}</strong>{text}`. `data-testid` values use locale-independent English-derived slugs so test selectors remain stable across language switches.
+*   [Drizzle ORM Documentation](https://orm.drizzle.team/docs/overview)
+*   [Stripe API Documentation](https://stripe.com/docs/api)
+*   [Resend API Documentation](https://resend.com/docs)
+*   [Cloudflare Turnstile Documentation](https://developers.cloudflare.com/turnstile/)
+*   [React-i18next Documentation](https://react.i18next.com/)

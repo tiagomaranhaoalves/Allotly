@@ -1,0 +1,377 @@
+# Replit Prompt — Voucher-aware OAuth authorization (complete)
+
+You are extending `/oauth/authorize` so voucher recipients and API-key holders can complete the OAuth handshake without an email+password account. Today an unauthenticated user landing on `/oauth/authorize` is redirected to `/login` (dead end for voucher recipients), and a synthetic voucher user with an active session is redirected to `/oauth/claim-account` (forces a "claim" detour). Both gates come down. The MCP transport's three-bearer-kinds auth (api key / voucher / OAuth) is unchanged.
+
+This is **production-grade work** — security-critical, no schema changes, no refactor of unrelated files. **All locked decisions below are non-negotiable. One end-of-task report.**
+
+---
+
+## Recommended execution
+
+**Single phase** is appropriate — the change is cohesive (one feature, one auth surface, ~700 lines) and splitting it across phases creates dependency churn. If your planner insists on splitting, do this order: (1) `redeem-inline` helper + `/api/vouchers/redeem` refactor, (2) `api-key-lookup` helper, (3) credential form template, (4) credential POST handler, (5) `authorize.ts` no-session render + claim-account gate removal, (6) connector copy update, (7) tests. Each step depends on the prior.
+
+**No DB migration. No `db:push`.** This was the brief's biggest over-specification.
+
+---
+
+## Cross-cutting locked decisions (read first)
+
+1. **No schema changes.** Do not add `is_anonymous`. Do not make email nullable. Do not create a partial unique index. The codebase already has `users.isVoucherUser: boolean` (`shared/schema.ts:84`) and synthetic voucher users are already minted with `voucher-{code}-{rand}@allotly.local` emails by the existing `/api/vouchers/redeem` flow.
+2. **No edits to `processChatCompletion`** or any proxy handler.
+3. **No edits to OAuth token, consent, register, revoke handlers.** Only `/oauth/authorize` GET and a new POST `/oauth/authorize/credential`.
+4. **Voucher recipients are a spectrum**, not a single type:
+   - Synthetic voucher user (`isVoucherUser=true`, `@allotly.local` email, random unrecoverable password)
+   - Real-account voucher user (regular email + password, also has voucher membership via `claim-from-voucher` or having redeemed with their own email)
+   - Tests must cover both kinds. All three credential paths (password / voucher / api_key) must resolve to the **same `User` row** when they belong to the same person.
+5. **Currency / display helpers** are at `server/lib/currency.ts` (`convertFromUsdCents`, `formatMoney`, `buildDisplayBlock`, `getOrgCurrency`) — no surface in this task uses them; mention only if you find a place that needs them.
+6. **All existing 700+ tests must pass unchanged.**
+7. **Pre-existing TS errors** in `server/routes.ts`, `server/webhookHandlers.ts`, `server/lib/plan-limits.ts`, `server/lib/jobs/*` are out of scope.
+8. **CSRF token** is already on the session as `_oauthCsrf` — see `authorize.ts::newCsrfToken`. Reuse it for the credential form. Mint a fresh one if absent.
+9. **Existing rate limiters** (`redeemLimiter`, `loginLimiter` in `server/lib/rate-limiter.ts`) are reused, not replaced.
+
+---
+
+## Architecture
+
+```
+GET /oauth/authorize  (no session OR stale session)
+  └─ render credential form HTML  →  POST /oauth/authorize/credential
+                                       ├─ password path  → comparePasswords  →  set session
+                                       ├─ voucher path   → redeemVoucherInline (instant: true)  →  set session
+                                       └─ api_key path   → lookupApiKey  →  set session
+                                       └─ on success → 302 → /oauth/authorize?<original query>
+                                       └─ on failure → 200 + same form + generic error
+GET /oauth/authorize  (session is now set — including synthetic voucher users)
+  └─ existing OAuth flow continues normally — no claim-account redirect
+```
+
+---
+
+## Files to create
+
+### 1. `server/lib/vouchers/redeem-inline.ts`
+
+Extract the entire body of `POST /api/vouchers/redeem` (currently `server/routes.ts:3840-4000`) into a pure helper:
+
+```ts
+export interface RedeemInlineInput {
+  code: string;        // ALLOT-XXXX-XXXX-XXXX, case-insensitive (normalised internally)
+  email?: string;
+  name?: string;
+  password?: string;
+  instant?: boolean;   // when true OR email missing → synthetic user with @allotly.local email
+}
+
+export type RedeemInlineErrorCode =
+  | 'invalid_voucher' | 'voucher_expired' | 'fully_redeemed'
+  | 'team_not_found' | 'plan_limit' | 'bundle_exhausted' | 'internal_error';
+
+export type RedeemInlineOutcome =
+  | { ok: true; user: User; membership: TeamMembership; voucher: Voucher; team: Team;
+      apiKey: string; keyPrefix: string; isSynthetic: boolean }
+  | { ok: false; code: RedeemInlineErrorCode; message: string };
+
+export async function redeemVoucherInline(input: RedeemInlineInput): Promise<RedeemInlineOutcome>;
+```
+
+The helper must replicate the existing endpoint's side-effects exactly:
+- Validate voucher (ACTIVE, not expired, not fully redeemed)
+- Look up `team`, run `checkPlanLimit(orgId, "member", teamId)`
+- Mint synthetic email `voucher-{code8}-{rand6}@allotly.local` and 32-hex random password when `instant || !email`. Use `crypto.randomBytes(...)` (NOT `Math.random()`) for both — same behaviour, slightly stronger entropy.
+- `storage.createUser({...isVoucherUser: true})`
+- `storage.createMembership({accessType: 'VOUCHER', voucherRedemptionId: voucher.id, periodStart: now, periodEnd: voucher.expiresAt, status: 'ACTIVE'})`
+- `storage.createVoucherRedemption(...)` and `storage.updateVoucher(...)` to bump `currentRedemptions`; flip status to `FULLY_REDEEMED` if capacity reached
+- For bundle-backed vouchers, atomic CAS `db.update(voucherBundles)...returning()` checking `usedRedemptions < totalRedemptions` AND `status = 'ACTIVE'`. Empty result → return `bundle_exhausted` outcome. Otherwise prime `REDIS_KEYS.bundleRequests(bundle.id)` if absent and `redisIncr(REDIS_KEYS.bundleRedemptions(bundle.id))`.
+- `redisSet(REDIS_KEYS.budget(membership.id), String(voucher.budgetCents))`
+- `generateAllotlyKey()` → `storage.createAllotlyApiKey(...)`
+- `storage.createAuditLog({action: 'voucher.redeemed', metadata: {code, email, isSynthetic}})`
+- Best-effort send `emailTemplates.voucherRedeemed(...)` to `team.adminId`'s user email (wrap in try/catch — do NOT fail the redemption on email error).
+
+The helper does NOT touch `req.session`.
+
+### 2. Refactor `POST /api/vouchers/redeem` in `server/routes.ts`
+
+Delegate to `redeemVoucherInline`. Map the outcome back to the existing wire format **exactly**:
+- `outcome.ok === false`:
+  - `outcome.code === 'team_not_found'` → HTTP 500 with `{message: outcome.message}`
+  - all other failure codes → HTTP 400 with `{message: outcome.message}`
+- `outcome.ok === true`: HTTP 200 with the existing JSON shape:
+  ```ts
+  {
+    apiKey: outcome.apiKey,
+    keyPrefix: outcome.keyPrefix,
+    budgetCents: outcome.voucher.budgetCents,
+    expiresAt: outcome.voucher.expiresAt,
+    models: <existing logic — filter pricing by allowedProviders>,
+    baseUrl: "/api/v1",
+    hasAccount: !outcome.isSynthetic,
+  }
+  ```
+  Set `req.session.userId/orgId/orgRole` only when `!outcome.isSynthetic` — preserves historic behaviour.
+
+### 3. `server/lib/auth/api-key-lookup.ts`
+
+Pure validate-and-resolve helper for `allotly_sk_…` keys. No HTTP coupling, no Redis caching (this runs at most a handful of times per OAuth login; the proxy hot path keeps its existing cache).
+
+```ts
+export type ApiKeyLookupErrorCode =
+  | 'invalid_format' | 'not_found' | 'revoked' | 'membership_missing'
+  | 'budget_exhausted' | 'suspended' | 'expired' | 'period_expired';
+
+export type ApiKeyLookupOutcome =
+  | { ok: true; user: User; membership: TeamMembership; apiKey: AllotlyApiKey }
+  | { ok: false; code: ApiKeyLookupErrorCode };
+
+export async function lookupApiKey(plaintext: string): Promise<ApiKeyLookupOutcome>;
+```
+
+Validation order, mirroring `server/lib/proxy/safeguards.ts::authenticateKey`:
+1. Format regex `/^allotly_sk_[a-zA-Z0-9_-]{16,}$/` after trim
+2. SHA-256 hex of the trimmed plaintext → `storage.getApiKeyByHash`
+3. `apiKey.status === 'ACTIVE'` else `revoked`
+4. `storage.getMembership(apiKey.membershipId)` else `membership_missing`
+5. `membership.status` checks: `BUDGET_EXHAUSTED | SUSPENDED | EXPIRED`
+6. `new Date(membership.periodEnd) < new Date()` → `period_expired`
+7. `storage.getUser(apiKey.userId)` else `not_found`
+
+### 4. `server/lib/oauth/credential-form-template.ts`
+
+Server-rendered HTML for the 3-tab credential form. **CSS-only tabs via radio inputs** — no JavaScript, so the page CSP is `script-src 'none'` (no inline-script SHA pinning). Visual style mirrors `consent-template.ts` (purple `#6366F1` logo box, white card, 480px max-width, mobile-responsive).
+
+```ts
+export interface CredentialFormParams {
+  oauthContinue: string;     // /oauth/authorize?<original query> — caller validates safety
+  csrfToken: string;
+  clientName: string;        // shown for context
+  errorMessage?: string;     // optional inline banner
+  activeTab?: 'password' | 'voucher' | 'api_key';
+}
+
+export function renderCredentialForm(p: CredentialFormParams): string;
+```
+
+Three tabs in this order:
+- **Account** (default active when none specified) — fields: email + password → `credential_type=password`
+- **Voucher code** — single text field, placeholder `ALLOT-XXXX-XXXX-XXXX`, HTML `pattern` attribute `[Aa][Ll][Ll][Oo][Tt]-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}` for client-side feedback → `credential_type=voucher`
+- **API key** — single password-type field, placeholder `allotly_sk_…` → `credential_type=api_key`
+
+Each tab is its own `<form>` action `/oauth/authorize/credential` with hidden `csrf` and `oauth_continue`. Header text:
+> *"<clientName> wants to access your Allotly account. Recipients of voucher codes or API keys can sign in without creating an account."*
+
+`data-testid` attributes on every interactive element (`tab-password`, `tab-voucher`, `tab-api_key`, `form-password`, `form-voucher`, `form-api_key`, `input-email`, `input-password`, `input-voucher`, `input-api_key`, `submit-password`, `submit-voucher`, `submit-api_key`, `credential-error`, `credential-heading`).
+
+CSS-only show/hide (no JS):
+```css
+.allotly-tabs input[type=radio]{position:absolute;opacity:0;pointer-events:none}
+.allotly-tabs .tab-panel{display:none}
+.allotly-tabs #tab-password:checked ~ #panel-password,
+.allotly-tabs #tab-voucher:checked ~ #panel-voucher,
+.allotly-tabs #tab-api_key:checked ~ #panel-api_key{display:block}
+.allotly-tabs input[name=tab]:checked + label.tab-button{background:#fff;color:#1e293b}
+```
+
+### 5. `server/lib/oauth/authorize-credential.ts`
+
+POST handler. **One generic error message** for ALL failure modes (no enumeration aid in user-visible body — audit log captures the precise reason):
+> *"Invalid credential. Check your code, key, or password and try again."*
+
+Exception: CSRF mismatch → "Your session expired. Please try again." Open-redirect attempt → "This sign-in link is missing context. Start over from the application that sent you here."
+
+Validation order:
+1. Validate `oauth_continue`: must start with `/oauth/authorize`, must NOT contain `://`, must NOT start with `//`. On failure render form with "missing context" error.
+2. Mint `req.session._oauthCsrf` if absent (using `crypto.randomBytes(16).toString('hex')`).
+3. Validate `csrf` matches `req.session._oauthCsrf` via `crypto.timingSafeEqual`. On mismatch render "session expired" form.
+4. Switch on `credential_type`:
+   - **`password`**: `storage.getUserByEmail(email.toLowerCase())` → `comparePasswords(password, user.passwordHash)` → set `session.userId/orgId/orgRole`; best-effort `storage.updateUser(user.id, {lastLoginAt: new Date()})`.
+   - **`voucher`**: regex `^ALLOT-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$` after trim+upper → `redeemVoucherInline({code, instant: true})` → set `session.userId = outcome.user.id`, `session.orgId = outcome.voucher.orgId`, `session.orgRole = "MEMBER"`.
+   - **`api_key`**: regex `^allotly_sk_[a-zA-Z0-9_-]{16,}$` after trim → `lookupApiKey(...)` → set `session.userId/orgId/orgRole` from the resolved user.
+5. On success: `storage.createAuditLog({action: 'oauth.credential.granted', metadata: {credentialType, voucherId?, apiKeyId?, synthetic?}})` then `res.redirect(302, oauth_continue)`.
+6. On any failure (after CSRF passes): re-render the form with the generic error and the previously-active tab preserved. Audit log row with `action: 'oauth.credential.rejected'` (best-effort; do not block).
+
+Render uses `Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'none'; img-src 'self'; form-action 'self'`. Status 200 (UI page that re-asks for credentials, not a protocol error). `Cache-Control: no-store`.
+
+### 6. `tests/oauth/credential-paths.test.ts`
+
+Real-DB fixture pattern — mirror `tests/oauth/pending-redis.test.ts` for setup/teardown. Create one TEAM org with a real user (admin), one active voucher with `maxRedemptions: 3`, one expired voucher, one revoked API key, one active API key for the real user.
+
+Cover at minimum these 13 cases:
+
+1. Voucher path: unredeemed voucher → 302 redirect to `oauth_continue`, session set, audit row records `credentialType: 'voucher'`
+2. Voucher path: expired voucher → 200 with form re-rendered, generic error; the word "expired" must NOT appear in the body
+3. Voucher path: malformed code → generic error
+4. API key path: valid TEAM admin key → 302, session set with admin's `orgRole`
+5. API key path: revoked key → generic error
+6. API key path: malformed format → generic error
+7. Password path: valid email+password → 302, session set
+8. Password path: wrong password → generic error
+9. CSRF mismatch → "session expired" message, no session
+10. Open-redirect protection: `oauth_continue=https://evil.example.com` → "missing context" error, no session even when api_key was valid
+11. `GET /oauth/authorize` with NO session → renders credential form (HTTP 200), NOT a redirect to `/login`. Body contains `data-testid="tab-voucher"` and `data-testid="tab-api_key"`.
+12. **Regression: synthetic voucher user with active session is allowed through OAuth** (NOT redirected to `/oauth/claim-account`). Reuse the synthetic user created in test [1]. Call `authorizeHandler` with their session. Expect HTTP 200 with the consent screen body. Body must NOT match `/claim-account/`.
+13. **Real-account voucher user resolves correctly via API key path**: redeem with email+password (not synthetic) → real User row → that real user also has an `allotly_sk_…` key → submit api_key credential → 302 + session set to the real user's id (not a synthetic clone).
+
+---
+
+## Files to modify
+
+### `server/lib/oauth/authorize.ts`
+
+**Two surgical changes inside `authorizeHandler`** — both are at the existing session-check block.
+
+**A. Replace the no-session redirect to `/login`** (currently the block that does `res.redirect(302, "/login?next=...")` when `!sess?.userId`):
+
+```ts
+if (!sess?.userId) {
+  if (!sess._oauthCsrf) sess._oauthCsrf = crypto.randomBytes(16).toString("hex");
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'none'; img-src 'self'; form-action 'self'",
+  );
+  res.type("text/html").send(renderCredentialForm({
+    oauthContinue: req.originalUrl,
+    csrfToken: sess._oauthCsrf,
+    clientName: c.clientName,
+  }));
+  return;
+}
+```
+
+Apply the same pattern when `storage.getUser(sess.userId)` returns null (stale session): drop `sess.userId/orgId/orgRole` and re-render the credential form instead of redirecting to `/login`.
+
+**B. Remove the voucher-user → claim-account gate**. Delete:
+
+```ts
+if (user.isVoucherUser) {
+  res.redirect(302, `/oauth/claim-account?next=${escapeQuery(req.originalUrl)}`);
+  return;
+}
+```
+
+Replace with a comment block explaining why it is safe to remove:
+> *"Voucher recipients (synthetic @allotly.local users created at voucher redemption) used to be redirected to /oauth/claim-account here. That gate is removed: synthetic voucher users may now complete OAuth and obtain tokens. The tokens authenticate but never grant budget — the proxy's membership-status checks gate every call against the underlying voucher's BUDGET_EXHAUSTED / SUSPENDED / EXPIRED state, so a token whose voucher expires becomes inert without needing token-level revocation."*
+
+Add the import:
+```ts
+import { renderCredentialForm } from "./credential-form-template";
+```
+
+### `server/lib/oauth/index.ts`
+
+Mount the new POST route with rate limiting. The middleware picks the right limiter based on `credential_type`:
+
+```ts
+import type { Request, Response, NextFunction } from "express";
+import { redeemLimiter, loginLimiter } from "../rate-limiter";
+import { authorizeCredentialHandler } from "./authorize-credential";
+
+function credentialRateLimiter(req: Request, res: Response, next: NextFunction): void {
+  const t = req.body?.credential_type;
+  if (t === "voucher" || t === "api_key") return redeemLimiter(req, res, next);
+  return loginLimiter(req, res, next);
+}
+
+// inside mountOAuth(app):
+app.post("/oauth/authorize/credential", credentialRateLimiter, authorizeCredentialHandler);
+```
+
+Update the `console.log("[oauth] mounted ...")` line to include `/oauth/authorize/credential`.
+
+### `shared/connector-snippets.ts`
+
+Update the **last step** of `OAUTH_CONNECTORS[].steps` for Claude.ai, ChatGPT, and Gemini cards. Replace the existing wording with:
+
+> *"When Allotly asks how to sign in, choose 'Voucher code' and paste your code, or 'API key' and paste the key shown above. No account needed."*
+
+Keep the other steps unchanged.
+
+---
+
+## Out of scope — DO NOT TOUCH
+
+- `processChatCompletion` and any proxy handler
+- OAuth token, consent, register, revoke handlers (only `authorize.ts` and the new `authorize-credential.ts`)
+- DB schema (no `is_anonymous`, no nullable email, no partial index, no `db:push`)
+- Webhook payloads
+- Existing 700+ tests (must pass unchanged)
+- Pre-existing TS errors in `server/routes.ts`, `webhookHandlers.ts`, `lib/plan-limits.ts`, `lib/jobs/*`
+- The npm `@allotly/mcp` bridge package
+- LLM-based `recommend_model` (deferred)
+- Email templates (the existing `emailTemplates.voucherRedeemed` is reused as-is)
+- The 8-connector grid layout on `/redeem` (Piece 2 from V1.5.1 already shipped this; just the snippet copy changes)
+
+---
+
+## Acceptance checklist
+
+```bash
+npm run check      # tsc + description-hash verification
+npx vitest run     # full test suite, all green
+npm run build      # esbuild bundle
+```
+
+Live preview verification:
+
+```bash
+# 1. Credential form renders for unauthenticated user (no /login redirect)
+curl -s -i 'https://<dev>/oauth/authorize?client_id=<existing-DCR-id>&response_type=code&redirect_uri=https://example.com/cb&code_challenge=abc&code_challenge_method=S256&scope=mcp&state=test&resource=https://allotly.ai/mcp' | head -20
+# expect HTTP 200 with HTML containing data-testid="tab-voucher"
+
+# 2. Open in browser, paste a fresh test voucher code into the Voucher tab,
+# submit, confirm 302 → consent screen → click Authorize → Claude.ai gets a
+# code and exchanges for a token → call my_status from a chat → response
+# contains a real budget snapshot.
+
+# 3. Open in another browser, paste an allotly_sk_ key into the API key tab,
+# repeat. Confirm same end-to-end flow.
+
+# 4. Open with a synthetic voucher user's session cookie set, hit
+# /oauth/authorize directly — should land on the consent screen, NOT redirect
+# to /oauth/claim-account.
+
+# 5. Existing /api/vouchers/redeem flow on /redeem — paste any unredeemed
+# voucher, redeem in instant mode, confirm same JSON wire format as before
+# (apiKey, keyPrefix, budgetCents, expiresAt, models, baseUrl, hasAccount).
+```
+
+---
+
+## Final report format
+
+One end-of-task message:
+
+## Summary
+- Voucher path on `/oauth/authorize`: ✅ / partial / blocked
+- API key path on `/oauth/authorize`: ✅ / partial / blocked
+- Synthetic voucher users now complete OAuth (claim-account gate removed): ✅
+- `/api/vouchers/redeem` refactored to use shared helper, wire format preserved: ✅
+- Total tests: `<n> passed`, `<m>` new
+- Build: success
+- DB migrations: **none** (confirms cross-cutting decision #1)
+
+## Files
+**Created:** paths only
+**Modified:** paths only
+
+## Live verification curl outputs
+For the credential-form render and one successful end-to-end via voucher and via API key.
+
+## Anything blocked or deferred
+If a piece couldn't be completed, state which and why. Do not silently drop scope.
+
+Push to GitHub via the Git pane after the report. Do **not** push automatically. Do **not** redeploy to production — the user will do that after reviewing.
+
+---
+
+**My recommended sequence for you (Tiago) once you paste this into Replit:**
+
+1. Reset my local commit so it doesn't get in the way:
+   ```bash
+   cd "/Users/tiagomaranhaoalves/Desktop/Tiago - Desktop/Claude Code/allotly"
+   git reset --hard origin/main
+   ```
+2. Paste the prompt above into Replit Agent.
+3. When Replit produces phase outputs (single phase or multiple), paste each to me and I'll audit against the locked decisions.
+4. After Replit pushes to GitHub, I pull, do the diff audit, and you redeploy to prod.
+5. Post-redeploy: open Claude.ai in incognito → add Allotly connector → paste a fresh voucher code in the form → confirm end-to-end works.
+
+Want me to do the `git reset --hard origin/main` now to clear the path?
