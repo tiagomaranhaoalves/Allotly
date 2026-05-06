@@ -58,8 +58,8 @@ function renderMembershipField(memberships: ConsentMembershipOption[]): string {
 }
 
 const SCOPE_LABELS: Record<string, string> = {
-  mcp: "Use Allotly tools (run AI calls, read budget, redeem vouchers within tool limits)",
-  "mcp:read": "Read-only: see your budget, status, and recent usage",
+  mcp: "Run AI calls and MCP tools through Allotly within the limits of this account.",
+  "mcp:read": "Read-only: see your budget, status, and recent usage.",
 };
 
 /**
