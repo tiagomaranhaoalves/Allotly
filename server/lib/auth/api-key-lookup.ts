@@ -68,13 +68,13 @@ export async function lookupApiKey(rawKey: string): Promise<ApiKeyLookupResult> 
     return { ok: false, code: "no_membership", orgId: userForAttribution?.orgId, userId: apiKey.userId, apiKeyId: apiKey.id };
   }
 
-  if (membership.status === "SUSPENDED") {
-    return { ok: false, code: "membership_suspended", orgId: userForAttribution?.orgId, userId: apiKey.userId, apiKeyId: apiKey.id };
-  }
-  // Mirror proxy/safeguards.ts: BUDGET_EXHAUSTED is a distinct membership
-  // state and must block credential acceptance just like SUSPENDED/EXPIRED.
+  // Order mirrors proxy/safeguards.ts authenticateKey exactly:
+  // BUDGET_EXHAUSTED → SUSPENDED → EXPIRED → period_expired.
   if (membership.status === "BUDGET_EXHAUSTED") {
     return { ok: false, code: "membership_budget_exhausted", orgId: userForAttribution?.orgId, userId: apiKey.userId, apiKeyId: apiKey.id };
+  }
+  if (membership.status === "SUSPENDED") {
+    return { ok: false, code: "membership_suspended", orgId: userForAttribution?.orgId, userId: apiKey.userId, apiKeyId: apiKey.id };
   }
   if (membership.status === "EXPIRED") {
     return { ok: false, code: "membership_expired", orgId: userForAttribution?.orgId, userId: apiKey.userId, apiKeyId: apiKey.id };
