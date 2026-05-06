@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 import crypto from "crypto";
 import { db } from "../../db";
 import { oauthClients, oauthAuthorizationCodes, teamMemberships } from "@shared/schema";
-import { eq, and, gt } from "drizzle-orm";
+import { eq, and, gt, sql, desc } from "drizzle-orm";
 import { storage } from "../../storage";
 import { newAuthorizationCode } from "./pkce";
 import { MCP_AUDIENCE, SUPPORTED_SCOPES, parseScopeString } from "./scopes";
@@ -187,11 +187,34 @@ function safeRedirect(redirectUri: string, params: Record<string, string>): stri
   return url.toString();
 }
 
-async function getActiveMembershipForUser(userId: string): Promise<{ id: string } | null> {
+// Exported for unit tests. Picks the user's most appropriate membership for
+// an OAuth handshake. Historically this returned an unordered LIMIT 1, which
+// could deny access if Postgres happened to surface an EXPIRED/SUSPENDED row
+// before a perfectly valid ACTIVE one.
+//
+// The fix imposes an explicit status-priority order:
+//   0 = ACTIVE            (preferred — fully usable right now)
+//   1 = BUDGET_EXHAUSTED  (usable fallback — proxy gates per-call, but the
+//                          handshake itself is fine; pick this only if no
+//                          ACTIVE row exists)
+//   2 = EXPIRED / SUSPENDED (deny — kept only so an empty ACTIVE set can
+//                          fall through to the final non-active guard
+//                          without a second query)
+// Ties broken by `updatedAt DESC` so the most recently touched membership
+// wins. If the best row is still non-active we deny the same way as before.
+export async function getActiveMembershipForUser(userId: string): Promise<{ id: string } | null> {
   const rows = await db
     .select({ id: teamMemberships.id, status: teamMemberships.status })
     .from(teamMemberships)
     .where(eq(teamMemberships.userId, userId))
+    .orderBy(
+      sql`CASE
+        WHEN ${teamMemberships.status} = 'ACTIVE' THEN 0
+        WHEN ${teamMemberships.status} = 'BUDGET_EXHAUSTED' THEN 1
+        ELSE 2
+      END`,
+      desc(teamMemberships.updatedAt),
+    )
     .limit(1);
   if (rows.length === 0) return null;
   if (rows[0].status === "EXPIRED" || rows[0].status === "SUSPENDED") return null;
