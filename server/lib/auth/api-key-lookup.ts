@@ -41,6 +41,13 @@ export type ApiKeyLookupResult = ApiKeyLookupSuccess | ApiKeyLookupFailure;
  * Mirrors the validation order in `authenticateKey` (proxy/safeguards.ts) so
  * a key that works against the proxy also works against /oauth/authorize.
  *
+ * Deliberately does NOT check `user.status` — the proxy doesn't either, and
+ * the admin-side "create user + copy key" workflow distributes keys to users
+ * who may never accept their email invite (status stays INVITED). Both
+ * surfaces trust the key + membership status as the credential. The OAuth
+ * credential handler (`oauth/authorize-credential.ts`) inherits this trust
+ * model and must not layer an extra `user.status` gate on top.
+ *
  * No Redis caching: this is a cold path (only hit when an unauthenticated
  * user is starting an OAuth handshake), and skipping the cache keeps the
  * surface for stale-cache surprises smaller.

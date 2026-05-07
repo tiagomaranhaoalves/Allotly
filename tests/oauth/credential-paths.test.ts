@@ -675,6 +675,107 @@ describe("oauth credential POST /oauth/authorize/credential — three-path auth"
     expect(sess.userId).toBeUndefined();
   });
 
+  it("[16] api_key path accepts an INVITED user (admin pre-distributed key, user never opened invite email)", async () => {
+    // Regression for Task #64. The admin "create user + copy key" workflow
+    // hands keys to users out-of-band. Those users stay status=INVITED until
+    // they accept the email and set a password — which they may never do if
+    // they only ever use the API/MCP. The proxy (`safeguards.ts`) accepts
+    // these keys for direct API calls; OAuth must do the same.
+    const invitedUserEmail = `cred-invited-${seedTag}@allotly.local`;
+    const invitedUserPassword = "invited-user-real-password-123";
+    // We deliberately seed a real passwordHash so the password-path sentinel
+    // below actually exercises the `user.status !== "ACTIVE"` guard
+    // (PASSWORD_USER_INACTIVE) rather than short-circuiting on
+    // PASSWORD_USER_NOT_FOUND when the hash is null.
+    const invitedPasswordHash = await hashPassword(invitedUserPassword);
+    const invitedUser = await storage.createUser({
+      email: invitedUserEmail,
+      name: "Invited Cred User",
+      passwordHash: invitedPasswordHash,
+      orgId: testOrgId,
+      orgRole: "MEMBER",
+      status: "INVITED",
+      isVoucherUser: false,
+    } as any);
+    createdSyntheticUserIds.push(invitedUser.id);
+    // Sanity: status must actually be INVITED (createUser default may differ).
+    await db.update(users).set({ status: "INVITED" }).where(eq(users.id, invitedUser.id));
+
+    const now = new Date();
+    const periodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const invitedMembership = await storage.createMembership({
+      teamId: testTeamId,
+      userId: invitedUser.id,
+      accessType: "TEAM",
+      monthlyBudgetCents: 50_000,
+      allowedModels: null,
+      allowedProviders: null,
+      currentPeriodSpendCents: 0,
+      periodStart: now,
+      periodEnd,
+      status: "ACTIVE",
+    } as any);
+    createdMembershipIds.push(invitedMembership.id);
+
+    const k = generateAllotlyKey();
+    const invitedKeyRow = await storage.createAllotlyApiKey({
+      userId: invitedUser.id,
+      membershipId: invitedMembership.id,
+      keyHash: k.hash,
+      keyPrefix: k.prefix,
+    });
+    createdApiKeyIds.push(invitedKeyRow.id);
+
+    const sess: any = { _oauthCsrf: "test-csrf-16".padEnd(32, "0") };
+    const req = mockReq({
+      body: {
+        csrf: "test-csrf-16".padEnd(32, "0"),
+        oauth_continue: oauthContinue,
+        credential_type: "api_key",
+        api_key: k.key,
+      },
+      session: sess,
+    });
+    const res = mockRes();
+    await authorizeCredentialHandler(req as any, res as any);
+    expect(res.statusCode).toBe(302);
+    expect(res.redirected).toBe(oauthContinue);
+    expect(sess.userId).toBe(invitedUser.id);
+    expect(sess.orgId).toBe(testOrgId);
+    expect(sess.orgRole).toBe("MEMBER");
+
+    // Regression sentinel: password path must STILL reject INVITED users
+    // even when the password is correct. The user has a real passwordHash
+    // (seeded above), so the only thing blocking login is the
+    // `user.status !== "ACTIVE"` guard at line 226 of authorize-credential.ts.
+    // If a future contributor accidentally drops that guard too, this test
+    // catches it.
+    const beforePwd = await db.select().from(auditLogs).where(eq(auditLogs.orgId, testOrgId));
+    const beforePwdFailedCount = beforePwd.filter((r) => r.action === "oauth.credential_failed").length;
+    const sessPwd: any = { _oauthCsrf: "test-csrf-16b".padEnd(32, "0") };
+    const reqPwd = mockReq({
+      body: {
+        csrf: "test-csrf-16b".padEnd(32, "0"),
+        oauth_continue: oauthContinue,
+        credential_type: "password",
+        email: invitedUserEmail,
+        password: invitedUserPassword,
+      },
+      session: sessPwd,
+    });
+    const resPwd = mockRes();
+    await authorizeCredentialHandler(reqPwd as any, resPwd as any);
+    expect(resPwd.statusCode).toBe(401);
+    expect(sessPwd.userId).toBeUndefined();
+    // Confirm the rejection actually came from the status guard, not from
+    // PASSWORD_USER_NOT_FOUND or PASSWORD_MISMATCH.
+    const afterPwd = await db.select().from(auditLogs).where(eq(auditLogs.orgId, testOrgId));
+    const afterPwdFailed = afterPwd.filter((r) => r.action === "oauth.credential_failed");
+    expect(afterPwdFailed.length).toBe(beforePwdFailedCount + 1);
+    const lastFailure = afterPwdFailed[afterPwdFailed.length - 1];
+    expect((lastFailure.metadata as any).cause).toBe("PASSWORD_USER_INACTIVE");
+  });
+
   it("[15] regression: every previously-rejected oauth_continue shape still returns 400", async () => {
     const stableCsrf = "csrf-15".padEnd(32, "0");
     const badShapes: Array<unknown> = [

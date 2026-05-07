@@ -290,15 +290,14 @@ export async function authorizeCredentialHandler(req: Request, res: Response): P
     renderError({ res, csrfToken: sessionCsrf, oauthContinue, clientName, activeTab: "api_key" });
     return;
   }
-  if (lookup.user.status !== "ACTIVE") {
-    await logCredFailure(
-      "APIKEY_USER_INACTIVE",
-      { userId: lookup.user.id, status: lookup.user.status },
-      { orgId: lookup.user.orgId, actorId: lookup.user.id, targetType: "user", targetId: lookup.user.id, metadata: { status: lookup.user.status } },
-    );
-    renderError({ res, csrfToken: sessionCsrf, oauthContinue, clientName, activeTab: "api_key" });
-    return;
-  }
+  // Intentionally NO `user.status === "ACTIVE"` gate here. Admins can create
+  // a user + key in one step and hand the key out-of-band; the user record
+  // stays INVITED until they accept the email and set a password (which is
+  // only needed for password login). The proxy (`safeguards.ts:authenticateKey`)
+  // accepts the same key for direct API/MCP calls without this gate, and
+  // `lookupApiKey` documents that it mirrors the proxy. Re-adding a
+  // `user.status` check here would silently break admin-distributed keys
+  // that already work via the raw proxy path.
   sess.userId = lookup.user.id;
   sess.orgId = lookup.user.orgId;
   sess.orgRole = lookup.user.orgRole;
