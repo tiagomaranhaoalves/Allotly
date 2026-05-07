@@ -2397,5 +2397,17 @@
       "disclosureTitle": "Encontrou uma vulnerabilidade?",
       "disclosureBody": "Levamos a segurança a sério. Se você descobrir um problema de segurança, reporte-o de forma responsável. Não divulgue publicamente até que tenhamos a chance de tratá-lo."
     }
+  },
+  "oauth": {
+    "voucherKey": {
+      "pageTitle": "Salve sua chave da Allotly",
+      "heading": "Salve sua chave da Allotly",
+      "intro": "Seu voucher foi resgatado e uma nova chave da Allotly foi criada para que {host} possa chamar a IA em seu nome.",
+      "warning": "Esta é a única vez que mostraremos esta chave. Copie em um lugar seguro antes de continuar — se você perdê-la, não poderá recuperá-la resgatando o voucher novamente.",
+      "copyHint": "Selecione a chave abaixo para copiá-la.",
+      "continueLabel": "Continuar para {host}",
+      "hostFallback": "sua ferramenta de IA",
+      "keyLabel": "Sua chave de API da Allotly"
+    }
   }
 }

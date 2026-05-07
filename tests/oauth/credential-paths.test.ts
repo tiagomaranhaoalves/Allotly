@@ -328,7 +328,9 @@ describe("oauth credential POST /oauth/authorize/credential — three-path auth"
     const res = mockRes();
     await authorizeCredentialHandler(req as any, res as any);
     expect(res.statusCode).toBe(302);
-    expect(res.redirected).toBe(oauthContinue);
+    // Voucher path now redirects to the one-shot key-display interstitial
+    // before continuing to the original /oauth/authorize URL (Task #65).
+    expect(res.redirected).toBe("/oauth/authorize/voucher-key");
     expect(sess.userId).toBeTruthy();
     expect(sess.userId).not.toBe(realUserId);
     expect(sess.orgId).toBe(testOrgId);
@@ -338,6 +340,11 @@ describe("oauth credential POST /oauth/authorize/credential — three-path auth"
     const syntheticUser = await storage.getUser(sess.userId);
     expect(syntheticUser?.email).toMatch(/^voucher-.*@allotly\.local$/);
     expect(syntheticUser?.isVoucherUser).toBe(true);
+    // The freshly-minted key is stashed in the session for the interstitial
+    // to consume; it must NOT appear in the redirect URL or the response.
+    expect((sess as any)._oauthVoucherKey).toBeTruthy();
+    expect((sess as any)._oauthVoucherKey.apiKey).toMatch(/^allotly_sk_/);
+    expect(res.redirected).not.toMatch(/allotly_sk_/);
   });
 
   it("[5] POST credential voucher — expired voucher re-renders form WITHOUT leaking 'expired' in body", async () => {
@@ -515,7 +522,10 @@ describe("oauth credential POST /oauth/authorize/credential — three-path auth"
     const resPost = mockRes();
     await authorizeCredentialHandler(reqPost as any, resPost as any);
     expect(resPost.statusCode).toBe(302);
-    expect(resPost.redirected).toBe(oauthContinue);
+    // Task #65: voucher path now interposes the key-display interstitial
+    // before completing to the consent screen. The interstitial's continue
+    // link sends the browser back to the original oauth_continue URL.
+    expect(resPost.redirected).toBe("/oauth/authorize/voucher-key");
     expect(sess.userId).toBeTruthy();
     await trackSyntheticUser(sess);
 

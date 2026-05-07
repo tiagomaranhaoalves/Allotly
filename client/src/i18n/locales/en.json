@@ -2397,5 +2397,17 @@
       "disclosureTitle": "Found a vulnerability?",
       "disclosureBody": "We take security seriously. If you discover a security issue, please report it responsibly. Do not disclose it publicly until we've had a chance to address it."
     }
+  },
+  "oauth": {
+    "voucherKey": {
+      "pageTitle": "Save your Allotly key",
+      "heading": "Save your Allotly key",
+      "intro": "Your voucher was redeemed and a new Allotly key was created so {host} can call AI on your behalf.",
+      "warning": "This is the only time we'll show this key. Copy it somewhere safe before continuing — if you lose it, you cannot recover it by re-redeeming your voucher.",
+      "copyHint": "Select the key below to copy it.",
+      "continueLabel": "Continue to {host}",
+      "hostFallback": "your AI tool",
+      "keyLabel": "Your Allotly API key"
+    }
   }
 }

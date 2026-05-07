@@ -3,7 +3,7 @@ import { discoveryHandler } from "./discovery";
 import { protectedResourceHandler } from "./protected-resource";
 import { registerHandler } from "./register";
 import { authorizeHandler, consentHandler } from "./authorize";
-import { authorizeCredentialHandler, credentialRateLimiter } from "./authorize-credential";
+import { authorizeCredentialHandler, credentialRateLimiter, voucherKeyDisplayHandler } from "./authorize-credential";
 import { tokenHandler } from "./token";
 import { revokeHandler } from "./revoke";
 import { listConnectionsHandler, deleteConnectionHandler } from "./connections";
@@ -14,6 +14,7 @@ export function mountOAuth(app: Express): void {
   app.post("/oauth/register", registerHandler);
   app.get("/oauth/authorize", authorizeHandler);
   app.post("/oauth/authorize/credential", credentialRateLimiter, authorizeCredentialHandler);
+  app.get("/oauth/authorize/voucher-key", voucherKeyDisplayHandler);
   app.post("/oauth/consent", consentHandler);
   app.post("/oauth/token", tokenHandler);
   app.post("/oauth/revoke", revokeHandler);

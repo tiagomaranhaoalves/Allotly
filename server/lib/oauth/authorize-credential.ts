@@ -9,7 +9,36 @@ import { comparePasswords } from "../password";
 import { redeemVoucherInline } from "../vouchers/redeem-inline";
 import { lookupApiKey } from "../auth/api-key-lookup";
 import { renderCredentialForm } from "./credential-form-template";
+import { renderVoucherKeyPage, pickVoucherKeyLocale } from "./voucher-key-template";
 import { loginLimiter, redeemLimiter } from "../rate-limiter";
+
+/**
+ * Session field used to hand off the freshly-minted Allotly API key from
+ * the voucher credential POST handler to the GET interstitial. Cleared on
+ * the first GET render so the raw key is never available a second time.
+ *
+ * The key is stored in the session (server-side, in the connect-pg-simple
+ * store) — never in the URL, never in a cookie, never in an audit log.
+ */
+const VOUCHER_KEY_SESSION_FIELD = "_oauthVoucherKey";
+
+interface PendingVoucherKey {
+  apiKey: string;
+  keyPrefix: string;
+  userId: string;
+  orgId: string;
+  /** The /oauth/authorize?... URL the user was originally trying to reach.
+   *  Re-validated by isSafeContinue() on render — a tampered session value
+   *  must not be able to redirect to an off-origin host. */
+  oauthContinue: string;
+  /** OAuth client's display name for the host requesting access (purely
+   *  cosmetic — used in the "Continue to {host}" label). */
+  clientName: string;
+  /** OAuth client_id we extracted from oauthContinue, recorded in the audit
+   *  metadata so operators can correlate the display event to a specific
+   *  host without ever seeing the raw key. */
+  clientId: string | null;
+}
 
 const GENERIC_ERROR = "We couldn't sign you in with those credentials. Please double-check and try again.";
 
@@ -264,7 +293,30 @@ export async function authorizeCredentialHandler(req: Request, res: Response): P
     sess.userId = result.user.id;
     sess.orgId = result.user.orgId;
     sess.orgRole = result.user.orgRole;
-    res.redirect(302, oauthContinue);
+    // Hand the freshly-minted raw key off to the GET interstitial via the
+    // session. The key is also returned to non-OAuth /api/vouchers/redeem
+    // callers in JSON, but for the OAuth flow we have no opportunity to
+    // surface it from the redirect target (consent doesn't show keys), so
+    // we interpose a one-shot interstitial. Stashing in the session means
+    // the raw key never appears in URLs, query strings, or browser history.
+    let clientId: string | null = null;
+    try {
+      const u = new URL(oauthContinue, "http://placeholder.local");
+      clientId = u.searchParams.get("client_id");
+    } catch {
+      clientId = null;
+    }
+    const pending: PendingVoucherKey = {
+      apiKey: result.apiKey,
+      keyPrefix: result.keyPrefix,
+      userId: result.user.id,
+      orgId: result.user.orgId,
+      oauthContinue,
+      clientName,
+      clientId,
+    };
+    sess[VOUCHER_KEY_SESSION_FIELD] = pending;
+    res.redirect(302, "/oauth/authorize/voucher-key");
     return;
   }
 
@@ -317,6 +369,86 @@ export function credentialRateLimiter(req: Request, res: Response, next: NextFun
   const credType = (req.body || {}).credential_type;
   const limiter = credType === "password" ? loginLimiter : redeemLimiter;
   limiter(req, res, next);
+}
+
+/**
+ * GET /oauth/authorize/voucher-key — single-shot interstitial that surfaces
+ * the freshly-minted Allotly API key after a successful voucher credential
+ * POST. Reads `_oauthVoucherKey` from the session, renders the page, then
+ * deletes the field so a refresh / back-button never re-displays the key.
+ *
+ * Audit-logs `voucher.oauth_key_displayed` exactly once per render. The
+ * audit metadata records the key prefix and host client_id only — the raw
+ * key is never persisted, never logged, and never written to the URL.
+ *
+ * If the session field is missing (refresh after consume, direct hit, etc.)
+ * the user is bounced to the login page rather than shown an error oracle.
+ */
+export async function voucherKeyDisplayHandler(req: Request, res: Response): Promise<void> {
+  const sess = req.session as any;
+  const pending = sess?.[VOUCHER_KEY_SESSION_FIELD] as PendingVoucherKey | undefined;
+  if (!pending || typeof pending !== "object" || typeof pending.apiKey !== "string") {
+    // No pending key — most likely a refresh after the one-shot consumed it,
+    // or someone hitting the URL directly. Send them back to the start of
+    // the OAuth flow rather than leaking that "there was once a key here".
+    res.redirect(302, "/login");
+    return;
+  }
+  // Re-validate the stashed continue URL on every render. Without this, a
+  // tampered session value (e.g. via session-fixation against a logged-out
+  // attacker) could redirect the next click off-origin. isSafeContinue()
+  // already rejects every absolute URL, scheme-relative, and traversal form.
+  const safeContinue = isSafeContinue(pending.oauthContinue) ? pending.oauthContinue : "/oauth/authorize";
+
+  // CRITICAL: clear the session field BEFORE rendering. If the render path
+  // throws after we send headers, we've still removed the raw key from the
+  // session — a retry will land on the "no pending" branch above rather than
+  // re-showing the key.
+  delete sess[VOUCHER_KEY_SESSION_FIELD];
+
+  // Audit log: one row per displayed key. Metadata carries the key prefix
+  // (the first ~12 chars users see in the dashboard, safe to log) and the
+  // OAuth client_id of the host that triggered the display. The raw key is
+  // intentionally absent.
+  try {
+    const entry: InsertAuditLog = {
+      orgId: pending.orgId,
+      actorId: pending.userId,
+      action: "voucher.oauth_key_displayed",
+      targetType: "user",
+      targetId: pending.userId,
+      metadata: {
+        keyPrefix: pending.keyPrefix,
+        oauthClientId: pending.clientId,
+      },
+    };
+    await storage.createAuditLog(entry);
+  } catch (e) {
+    // An audit-log failure must not block surfacing the key to the user —
+    // we've already deleted the session field, so a non-displayed key would
+    // be permanently unrecoverable. Log to server console and continue.
+    console.log(`[oauth-credential] voucher_key audit_log write failed err=${(e as Error).message}`);
+  }
+
+  const locale = pickVoucherKeyLocale(req);
+  const html = renderVoucherKeyPage({
+    apiKey: pending.apiKey,
+    continueUrl: safeContinue,
+    hostName: pending.clientName,
+    locale,
+  });
+  // Strict CSP: same shape as the credential form, plus Cache-Control:no-store
+  // so the raw key isn't retained in the browser's HTTP cache or any
+  // intermediary. `script-src 'none'` rules out injected JS exfiltrating
+  // the key from the DOM. `form-action 'self'` is harmless here (no form)
+  // but keeps the header consistent with sibling OAuth pages.
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'none'; img-src 'self'; form-action 'self'",
+  );
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.type("text/html").send(html);
 }
 
 /**
