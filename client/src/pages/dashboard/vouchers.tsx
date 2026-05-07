@@ -677,14 +677,23 @@ export default function VouchersPage() {
                       ))}
                     </div>
                   </div>
-                  <div className="p-3 rounded-lg bg-muted/50">
-                    <p className="text-sm font-medium">{t("dashboard.vouchers.summaryTitle")}</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {t("dashboard.vouchers.summaryDescription", { budget: budgetDollars, redemptions: maxRedemptions, total: (parseFloat(budgetDollars || "0") * parseInt(maxRedemptions || "0")).toFixed(2) })}
-                    </p>
-                    {selectedBundleId && (
-                      <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-1">{t("dashboard.vouchers.fromBundle")}</p>
-                    )}
+                  <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 text-sm flex items-start gap-2" data-testid="callout-voucher-exposure">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="font-medium text-amber-700 dark:text-amber-300">{t("dashboard.vouchers.exposureTitle")}</p>
+                      <p className="text-amber-700 dark:text-amber-300 text-xs mt-0.5">
+                        {parseInt(maxRedemptions || "0") > 1
+                          ? t("dashboard.vouchers.exposureMulti", {
+                              budget: budgetDollars,
+                              redemptions: maxRedemptions,
+                              total: (parseFloat(budgetDollars || "0") * parseInt(maxRedemptions || "0")).toFixed(2),
+                            })
+                          : t("dashboard.vouchers.exposureSingle", { budget: budgetDollars })}
+                      </p>
+                      {selectedBundleId && (
+                        <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-1">{t("dashboard.vouchers.fromBundle")}</p>
+                      )}
+                    </div>
                   </div>
                   <Button className="w-full" onClick={() => createMutation.mutate()} disabled={providers.length === 0 || createMutation.isPending} data-testid="button-submit-voucher">
                     {createMutation.isPending ? t("dashboard.vouchers.submitCreatePending") : t("dashboard.vouchers.submitCreate")}
@@ -800,6 +809,21 @@ export default function VouchersPage() {
                     </span>
                   </label>
                 ))}
+              </div>
+            </div>
+            <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 text-sm flex items-start gap-2" data-testid="callout-voucher-exposure-edit">
+              <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+              <div>
+                <p className="font-medium text-amber-700 dark:text-amber-300">{t("dashboard.vouchers.exposureTitle")}</p>
+                <p className="text-amber-700 dark:text-amber-300 text-xs mt-0.5">
+                  {parseInt(editVoucherMaxRedemptions || "0") > 1
+                    ? t("dashboard.vouchers.exposureMulti", {
+                        budget: editVoucherBudget || "0",
+                        redemptions: editVoucherMaxRedemptions,
+                        total: (parseFloat(editVoucherBudget || "0") * parseInt(editVoucherMaxRedemptions || "0")).toFixed(2),
+                      })
+                    : t("dashboard.vouchers.exposureSingle", { budget: editVoucherBudget || "0" })}
+                </p>
               </div>
             </div>
             <Button className="w-full" onClick={() => editVoucherMutation.mutate()} disabled={editVoucherProviders.length === 0 || editVoucherMutation.isPending} data-testid="button-save-voucher-edit">

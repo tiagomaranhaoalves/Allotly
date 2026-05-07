@@ -53,7 +53,7 @@ export function BundleCard({ id, totalRedemptions, usedRedemptions, totalProxyRe
           </div>
           <div>
             <p className="text-sm font-bold">{t("dashboard.components.bundleCard.title")}</p>
-            <p className="text-xs text-muted-foreground">{t("dashboard.components.bundleCard.maxPerRecipient", { amount: (maxBudgetPerRecipientCents / 100).toFixed(0) })}</p>
+            <p className="text-xs text-muted-foreground">{t("dashboard.components.bundleCard.maxPerRedemption", { amount: (maxBudgetPerRecipientCents / 100).toFixed(0) })}</p>
           </div>
         </div>
         <Badge variant="secondary" className={`${statusConfig.className} no-default-hover-elevate no-default-active-elevate`}>
