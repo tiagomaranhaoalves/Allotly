@@ -677,11 +677,11 @@ export default function VouchersPage() {
                       ))}
                     </div>
                   </div>
-                  <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 text-sm flex items-start gap-2" data-testid="callout-voucher-exposure">
-                    <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                  <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 text-sm flex items-start gap-2" data-testid="callout-voucher-exposure">
+                    <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
                     <div>
-                      <p className="font-medium text-amber-700 dark:text-amber-300">{t("dashboard.vouchers.exposureTitle")}</p>
-                      <p className="text-amber-700 dark:text-amber-300 text-xs mt-0.5">
+                      <p className="font-medium text-blue-700 dark:text-blue-300">{t("dashboard.vouchers.exposureTitle")}</p>
+                      <p className="text-blue-700 dark:text-blue-300 text-xs mt-0.5">
                         {parseInt(maxRedemptions || "0") > 1
                           ? t("dashboard.vouchers.exposureMulti", {
                               budget: budgetDollars,
@@ -715,7 +715,7 @@ export default function VouchersPage() {
               </span>
             </div>
             {voucherLimits.remainingCodes === 0 && (
-              <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 text-xs">
+              <div className="flex items-center gap-1.5 text-blue-500 text-xs">
                 <AlertTriangle className="w-3.5 h-3.5" />
                 {t("dashboard.vouchers.limitReached")}
               </div>
@@ -811,11 +811,11 @@ export default function VouchersPage() {
                 ))}
               </div>
             </div>
-            <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 text-sm flex items-start gap-2" data-testid="callout-voucher-exposure-edit">
-              <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+            <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 text-sm flex items-start gap-2" data-testid="callout-voucher-exposure-edit">
+              <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
               <div>
-                <p className="font-medium text-amber-700 dark:text-amber-300">{t("dashboard.vouchers.exposureTitle")}</p>
-                <p className="text-amber-700 dark:text-amber-300 text-xs mt-0.5">
+                <p className="font-medium text-blue-700 dark:text-blue-300">{t("dashboard.vouchers.exposureTitle")}</p>
+                <p className="text-blue-700 dark:text-blue-300 text-xs mt-0.5">
                   {parseInt(editVoucherMaxRedemptions || "0") > 1
                     ? t("dashboard.vouchers.exposureMulti", {
                         budget: editVoucherBudget || "0",
