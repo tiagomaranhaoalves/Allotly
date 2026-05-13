@@ -121,8 +121,15 @@ describe("V1.5.1 Piece 2 — page composition (source-level guards)", () => {
     expect(src).toContain("ConnectorGrid");
     expect(src).toMatch(/variant="stdio-only"/);
     expect(src).toMatch(/variant="oauth-only"/);
-    expect(src).toContain("connect.oauthSection.heading");
+    expect(src).toContain("connect.aiToolSection.heading");
+    expect(src).toContain("connect.devToolSection.heading");
     expect(src).toContain("link-to-connections");
+    // AI-tool (OAuth) section is rendered first now — it's the simpler path.
+    const aiIdx = src.indexOf("connect.aiToolSection.heading");
+    const devIdx = src.indexOf("connect.devToolSection.heading");
+    expect(aiIdx).toBeGreaterThan(-1);
+    expect(devIdx).toBeGreaterThan(-1);
+    expect(aiIdx).toBeLessThan(devIdx);
     // Inlined OAuth rendering must not return.
     expect(src).not.toContain("OAUTH_CONNECTORS");
     expect(src).not.toContain("OAuthConnectorCard");

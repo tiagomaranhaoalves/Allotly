@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/brand/empty-state";
-import { PlugZap, Key as KeyIcon, Link2 } from "lucide-react";
+import { PlugZap, Key as KeyIcon, Link2, Terminal } from "lucide-react";
 import { ConnectorGrid } from "@/components/connectors";
 import { TestKeyButton } from "@/components/redeem/test-key-button";
 import { useActiveMembership } from "@/hooks/use-active-membership";
@@ -143,52 +143,22 @@ export default function ConnectPage() {
 
       <MembershipSwitcher />
 
-      {/*
-        OAuth users (Claude.ai / ChatGPT / Gemini) reach this page without a
-        pasteable bearer token, but they ARE logged in via session cookie.
-        `useSession` lets the button fall back to
-        `POST /api/v1/test-connection/session`, which authenticates by
-        cookie + the caller's membership and returns the same envelope.
-      */}
-      <TestKeyButton
-        testKey={testKey}
-        useSession
-        heading={t("testKey.heading")}
-        subtitle={t("testKey.subtitle")}
-        missingKeyMessage={t("testKey.missingKey")}
-      />
-
-      <ConnectorGrid
-        mode="full"
-        variant="stdio-only"
-        showTestConnection={false}
-        keyContext={{
-          kind: "selectable",
-          keys: activeKeys.map((k) => ({ id: k.id, keyPrefix: k.keyPrefix })),
-          selectedId: selectedKeyId,
-          onSelectKey: setSelectedKeyId,
-        }}
-        onTestKeyChange={setTestKey}
-      />
-
-      {/* OAuth section: hosted-AI tools (claude.ai, ChatGPT, Gemini) cannot
-          accept a pasted bearer token, so the flow there is "paste our MCP URL
-          and let the host run OAuth against us". After consent, the resulting
-          connection appears under /dashboard/connections. The 3 cards
-          themselves are rendered by the shared <ConnectorGrid variant="oauth-only" />
-          (same component used by /redeem) — only the section heading +
-          "manage approved apps" link live here. */}
-      <section className="space-y-3 pt-2" data-testid="section-oauth-connectors">
+      {/* AI tool section (LEAD). Hosted-AI tools (Claude.ai, ChatGPT, Gemini)
+          accept an MCP URL and run OAuth against us themselves — no key to
+          paste, no config file to edit. This is the simplest path so it
+          leads the page. After consent, the resulting connection appears
+          under /dashboard/connections. */}
+      <section className="space-y-3" data-testid="section-ai-tool-connectors">
         <div className="space-y-1">
           <h2
             className="text-xl font-semibold tracking-tight flex items-center gap-2"
-            data-testid="text-oauth-section-heading"
+            data-testid="text-ai-tool-section-heading"
           >
             <Link2 className="w-5 h-5 text-primary" />
-            {t("connect.oauthSection.heading")}
+            {t("connect.aiToolSection.heading")}
           </h2>
           <p className="text-sm text-muted-foreground">
-            {t("connect.oauthSection.descriptionPrefix")}{" "}
+            {t("connect.aiToolSection.descriptionPrefix")}{" "}
             <Link
               href="/dashboard/connections"
               className="text-primary hover-elevate active-elevate-2 rounded px-1 py-0.5"
@@ -196,10 +166,54 @@ export default function ConnectPage() {
             >
               {t("dashboard.connections.heading")}
             </Link>
-            {t("connect.oauthSection.descriptionSuffix")}
+            {t("connect.aiToolSection.descriptionSuffix")}
           </p>
         </div>
         <ConnectorGrid mode="full" variant="oauth-only" />
+      </section>
+
+      {/* Dev tool section (DEMOTED). The 5 CLI / IDE bridges (Cursor, VS Code,
+          Claude Code, OpenAI Codex, Claude Desktop) need a pasted bearer key
+          via a config file. Includes the TestKeyButton (session-aware so it
+          works for OAuth-only users too) and the full stdio grid. */}
+      <section className="space-y-4 pt-4" data-testid="section-dev-tool-connectors">
+        <div className="space-y-1">
+          <h2
+            className="text-xl font-semibold tracking-tight flex items-center gap-2"
+            data-testid="text-dev-tool-section-heading"
+          >
+            <Terminal className="w-5 h-5 text-primary" />
+            {t("connect.devToolSection.heading")}
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            {t("connect.devToolSection.description")}
+          </p>
+        </div>
+
+        {/* OAuth users reach this page without a pasteable bearer token, but
+            they ARE logged in via session cookie. `useSession` lets the button
+            fall back to POST /api/v1/test-connection/session, which
+            authenticates by cookie + the caller's membership. */}
+        <TestKeyButton
+          testKey={testKey}
+          useSession
+          heading={t("testKey.heading")}
+          subtitle={t("testKey.subtitle")}
+          missingKeyMessage={t("testKey.missingKey")}
+        />
+
+        <ConnectorGrid
+          mode="full"
+          variant="stdio-only"
+          showTestConnection={false}
+          keyContext={{
+            kind: "selectable",
+            keys: activeKeys.map((k) => ({ id: k.id, keyPrefix: k.keyPrefix })),
+            selectedId: selectedKeyId,
+            onSelectKey: setSelectedKeyId,
+          }}
+          onTestKeyChange={setTestKey}
+        />
       </section>
 
       <p className="text-xs text-muted-foreground">

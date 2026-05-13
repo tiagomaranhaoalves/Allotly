@@ -1840,7 +1840,7 @@
   },
   "connect": {
     "title": "Connect Allotly to your AI tool",
-    "subtitle": "Pick your tool, copy the config, paste it in. Tested in under a minute.",
+    "subtitle": "Two ways to connect — pick the one that fits how you work.",
     "connectorsHeading": "Connectors",
     "keySelector": {
       "label": "Key",
@@ -1914,10 +1914,14 @@
     },
     "keysPageLink": "Set up your AI tool →",
     "backToKeys": "Back to Keys",
-    "oauthSection": {
-      "heading": "Or connect a hosted AI tool via OAuth",
-      "descriptionPrefix": "For Claude.ai, ChatGPT, and Gemini — paste the MCP URL into your tool of choice and authorize Allotly when prompted. Manage approved apps anytime from",
+    "aiToolSection": {
+      "heading": "Just ask your AI tool to use Allotly",
+      "descriptionPrefix": "Open Claude.ai, ChatGPT, or Gemini, paste the link below, and tell it to use Allotly. The rest happens automatically. Manage approved apps anytime from",
       "descriptionSuffix": "."
+    },
+    "devToolSection": {
+      "heading": "Or paste your key into a dev tool",
+      "description": "For Cursor, VS Code, Claude Code, OpenAI Codex, or Claude Desktop — pick your tool, copy the config, and paste it in."
     }
   },
   "redeem": {

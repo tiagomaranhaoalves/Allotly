@@ -1840,7 +1840,7 @@
   },
   "connect": {
     "title": "Conecta Allotly con tu herramienta de IA",
-    "subtitle": "Elige tu herramienta, copia la configuración y pégala. Listo en menos de un minuto.",
+    "subtitle": "Dos formas de conectar — elige la que se ajuste a cómo trabajas.",
     "connectorsHeading": "Conectores",
     "keySelector": {
       "label": "Key",
@@ -1914,10 +1914,14 @@
     },
     "keysPageLink": "Configurar tu herramienta de IA →",
     "backToKeys": "Volver a Keys",
-    "oauthSection": {
-      "heading": "O conecta una herramienta de IA alojada vía OAuth",
-      "descriptionPrefix": "Para Claude.ai, ChatGPT y Gemini — pega la URL del MCP en tu herramienta y autoriza a Allotly cuando se te pida. Gestiona las apps aprobadas desde",
+    "aiToolSection": {
+      "heading": "Solo pídele a tu herramienta de IA que use Allotly",
+      "descriptionPrefix": "Abre Claude.ai, ChatGPT o Gemini, pega el enlace de abajo y dile que use Allotly. El resto pasa automáticamente. Gestiona las apps aprobadas desde",
       "descriptionSuffix": "."
+    },
+    "devToolSection": {
+      "heading": "O pega tu key en una herramienta de desarrollo",
+      "description": "Para Cursor, VS Code, Claude Code, OpenAI Codex o Claude Desktop — elige tu herramienta, copia la configuración y pégala."
     }
   },
   "redeem": {
