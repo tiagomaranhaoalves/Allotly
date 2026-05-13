@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/brand/empty-state";
-import { PlugZap, Key as KeyIcon, Link2, Terminal } from "lucide-react";
+import { PlugZap, Key as KeyIcon, Sparkles, Terminal } from "lucide-react";
 import { ConnectorGrid } from "@/components/connectors";
 import { TestKeyButton } from "@/components/redeem/test-key-button";
 import { useActiveMembership } from "@/hooks/use-active-membership";
@@ -154,7 +154,7 @@ export default function ConnectPage() {
             className="text-xl font-semibold tracking-tight flex items-center gap-2"
             data-testid="text-ai-tool-section-heading"
           >
-            <Link2 className="w-5 h-5 text-primary" />
+            <Sparkles className="w-5 h-5 text-primary" />
             {t("connect.aiToolSection.heading")}
           </h2>
           <p className="text-sm text-muted-foreground">
