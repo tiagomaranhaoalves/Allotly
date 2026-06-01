@@ -1,0 +1,71 @@
+Replit Prompt — Fix estimate_cost alternatives: cent-rounding collapses cheaper models
+What & Why
+The estimate_cost MCP tool (server/lib/mcp/tools/consumption/estimate-cost.ts) returns a correct max-cost estimate, but its cheaper-alternatives array is wrong at low max_tokens. Live evidence against prod (synthetic voucher key, "hello world" prompt, max_tokens=500):
+
+Requested model	Reported max cost	Alternatives
+claude-opus-4-1	$0.05	3 (gpt-4o, gpt-4o-mini, gpt-4-0613)
+gpt-4o	$0.02	0 ← wrong: gpt-4o-mini is ~16× cheaper and in the allowlist
+claude-sonnet-4-5	$0.02	0 ← wrong: Haiku / mini / flash are cheaper
+Confirmed root cause (verify before changing anything)
+maxCostCents rounds each component independently with Math.ceil to whole USD cents:
+
+function maxCostCents(inputTokens, maxOutputTokens, pricing) {
+  const inputCost  = Math.ceil((inputTokens   * pricing.inputPricePerMTok)  / 1_000_000);
+  const outputCost = Math.ceil((maxOutputTokens * pricing.outputPricePerMTok) / 1_000_000);
+  return inputCost + outputCost;
+}
+At small token counts, every model's two components each round up to a minimum of 1 cent, so almost every model evaluates to exactly 2 cents. The alternatives filter then does x.cost < requestedCost. When the requested model is also 2 cents, the strict < excludes every same-floor model — even ones that are genuinely 10–100× cheaper in true price. The bug disappears at large max_tokens (e.g. the 4096 default) because the per-component costs separate above the 1-cent floor, which is why nobody caught it until a low-max_tokens preview.
+
+This is the only confirmed defect. Do not assume there are others. In particular, the "alternatives were all OpenAI for the opus case" observation is probably correct behaviour — alternatives are filtered to filteredProviders (active provider connections ∩ the membership's allowedProviders), so an org with only OpenAI connections active will only ever see OpenAI alternatives. Investigate and confirm whether that is intended; do not change it unless you find it's actually wrong.
+
+Done looks like
+A request with low max_tokens (e.g. 500) for gpt-4o returns gpt-4o-mini (and other genuinely-cheaper allowed models) in alternatives, sorted cheapest-first.
+Alternatives are ranked and filtered by true (unrounded) cost, so a model that is genuinely cheaper is never dropped due to cent-rounding ties.
+The requested model's displayed max_cost_usd_cents is unchanged — it must stay the conservative Math.ceil whole-cent value, because that matches what processChatCompletion actually reserves against budget (do not make the preview cheaper than the real reservation).
+savings_pct is computed from the true cost difference, not the rounded cents, so it's meaningful (no more "$0.02 vs $0.02, 0% cheaper" noise).
+Each alternative's displayed max_cost_usd_cents / formatted amount remains the conservative ceil value for consistency with the requested model's display.
+All existing tests pass; new tests lock the low-max_tokens behaviour.
+Out of scope — do not touch
+processChatCompletion and anything in server/lib/proxy/handler*.ts.
+The token-counting helper estimateInputTokens in server/lib/proxy/safeguards.ts.
+The provider/allowlist filtering chain (active connections ∩ allowedProviders ∩ allowedModels ∩ vision) — unless your investigation proves it's wrong, in which case stop and report findings rather than changing it silently.
+The currency/display helpers (convertFromUsdCents, formatMoney, buildAmountDisplay).
+The tool's description string (no re-pinning of description hashes).
+Any other MCP tool.
+Steps
+Reproduce and confirm the root cause with a unit test before fixing: assert that today, two models with very different true prices but both under the 1-cent-per-component floor produce equal maxCostCents, and that the cheaper one is wrongly excluded from alternatives. This codifies the bug.
+Add a precise (unrounded) cost function alongside the existing maxCostCents, e.g.:
+// True fractional-cent cost for ranking/comparison. Do NOT round per component.
+function preciseCostCents(inputTokens: number, maxOutputTokens: number, pricing: ModelPricing): number {
+  return (inputTokens * pricing.inputPricePerMTok + maxOutputTokens * pricing.outputPricePerMTok) / 1_000_000;
+}
+Keep maxCostCents (the conservative whole-cent ceil) for display of both the requested model and each alternative.
+Rewrite the alternatives pipeline to rank/filter on preciseCostCents:
+Compute requestedPrecise = preciseCostCents(...) for the requested model.
+For each candidate (after the existing provider/allowlist/vision filters, unchanged): compute candidatePrecise.
+Keep candidates where candidatePrecise < requestedPrecise (strict, on the unrounded value).
+Sort ascending by candidatePrecise.
+slice(0, MAX_ALTERNATIVES).
+For each surviving alternative, compute its display cost with the existing maxCostCents (ceil) and buildAmountDisplay, and compute savings_pct from the precise values: Math.round(((requestedPrecise - candidatePrecise) / requestedPrecise) * 100), guarded for requestedPrecise > 0.
+Leave the requested model's estimated.max_cost_usd_cents and max_cost_display exactly as today (the Math.ceil conservative value). Only the alternatives' selection, ordering, and savings_pct change.
+Investigate the provider-filter question and write one sentence in the final report: is limiting alternatives to active-connection providers intended (suggest only callable models) or should it surface cheaper models the user can't currently call? Recommendation: keep "only callable models" — but confirm, don't change.
+Tests to add (in the existing estimate_cost test file)
+Regression (the bug): with max_tokens=500 and a tiny prompt, an org/membership that allows both gpt-4o and gpt-4o-mini (both active), requesting gpt-4o returns a non-empty alternatives array containing gpt-4o-mini, ordered cheapest-first.
+Strictly-cheaper-by-true-price still surfaces even when display cents tie: assert a candidate whose ceil-rounded display cost equals the requested model's display cost is still included when its precise cost is lower, and its savings_pct is > 0.
+Conservative display unchanged: assert the requested model's max_cost_usd_cents equals the existing Math.ceil-based value (guards against accidentally making the preview cheaper than the proxy reservation).
+Cheapest model returns empty alternatives: requesting the genuinely cheapest allowed model yields alternatives: [].
+Cap respected: when more than 3 cheaper models exist, exactly 3 are returned, and they are the 3 cheapest by true price.
+All existing estimate_cost tests must still pass.
+Verify
+npm run check
+npx vitest run server/lib/mcp/tools/consumption  # or the path of the estimate_cost test file
+npx vitest run                                    # full suite, must stay green
+npm run build
+Then a live curl against the dev preview with a key that has both gpt-4o and gpt-4o-mini active, max_tokens=500, requesting gpt-4o — confirm alternatives now contains gpt-4o-mini.
+
+Final report
+Root cause confirmed: ✅ (the per-component Math.ceil floor)
+Files modified (paths only)
+Tests added (count) + full suite result
+One sentence on the provider-filter investigation (intended / needs change)
+Confirmation that the requested model's displayed max cost is byte-identical to pre-change behaviour
