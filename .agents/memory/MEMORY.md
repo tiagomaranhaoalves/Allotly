@@ -1,0 +1,1 @@
+- [estimate_cost dual-cost rule](estimate-cost-dual-cost.md) — display costs use conservative ceil (must match proxy reservation); ranking/savings use unrounded precise cost.

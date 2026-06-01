@@ -215,6 +215,69 @@ describe("estimate_cost — alternatives selection", () => {
   });
 });
 
+describe("estimate_cost — low max_tokens true-cost ranking (regression)", () => {
+  // At max_tokens=500 with a tiny prompt, each per-component cost rounds up
+  // to the 1-cent floor, so most models' DISPLAY cost collapses to 2c. The
+  // old strict `cost < requestedCost` on rounded cents wrongly dropped every
+  // same-floor model. Alternatives must now rank/filter on the true cost.
+  it("surfaces genuinely-cheaper models even when display cents tie", async () => {
+    const tool = getTool("estimate_cost")!;
+    const out = await tool.handler({
+      model: "gpt-4o",
+      messages: [{ role: "user", content: "hello world" }],
+      max_tokens: 500,
+    }, { principal: principal(makeMembership()), authHeader: undefined });
+
+    const models = out.alternatives.map((a: any) => a.model);
+    expect(models).toContain("gpt-4o-mini");
+    // Cheapest-first ordering by true cost.
+    expect(models[0]).toBe("gpt-4o-mini");
+
+    const mini = out.alternatives.find((a: any) => a.model === "gpt-4o-mini")!;
+    // Displayed cents tie with the requested model (both ceil to 2c) ...
+    expect(mini.max_cost_usd_cents).toBe(out.estimated.max_cost_usd_cents);
+    // ... but savings_pct is computed from the true (unrounded) difference.
+    expect(mini.savings_pct).toBeGreaterThan(0);
+  });
+
+  it("keeps the requested model's displayed max cost on the conservative ceil", async () => {
+    const tool = getTool("estimate_cost")!;
+    const out = await tool.handler({
+      model: "gpt-4o",
+      messages: [{ role: "user", content: "hello world" }],
+      max_tokens: 500,
+    }, { principal: principal(makeMembership()), authHeader: undefined });
+    // 5 input tokens * 250/Mtok -> ceil 1c; 500 out * 1000/Mtok -> ceil 1c.
+    expect(out.estimated.max_cost_usd_cents).toBe(2);
+  });
+
+  it("returns no alternatives when the requested model is genuinely cheapest", async () => {
+    const tool = getTool("estimate_cost")!;
+    const out = await tool.handler({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: "hello world" }],
+      max_tokens: 500,
+    }, { principal: principal(makeMembership()), authHeader: undefined });
+    expect(out.alternatives).toEqual([]);
+  });
+
+  it("caps at the 3 cheapest by true cost when more than 3 are cheaper", async () => {
+    const tool = getTool("estimate_cost")!;
+    const out = await tool.handler({
+      model: "claude-opus-4-7",
+      messages: [{ role: "user", content: "hi" }],
+      max_tokens: 1000,
+    }, { principal: principal(makeMembership()), authHeader: undefined });
+
+    expect(out.alternatives).toHaveLength(3);
+    expect(out.alternatives.map((a: any) => a.model)).toEqual([
+      "gpt-4o-mini",
+      "claude-haiku-4-5",
+      "gpt-4o",
+    ]);
+  });
+});
+
 describe("estimate_cost — currency display", () => {
   it("formats max_cost_display in the org's currency (BRL → R$ 0,...)", async () => {
     (storage.getOrganization as any).mockResolvedValue({ id: ORG_ID, plan: "TEAM", currency: "BRL" });

@@ -46,6 +46,19 @@ function maxCostCents(inputTokens: number, maxOutputTokens: number, pricing: Mod
   return inputCost + outputCost;
 }
 
+/**
+ * True fractional-cent cost for ranking/comparison ONLY. Unlike
+ * `maxCostCents` it does NOT round per component, so two models with very
+ * different real prices don't collapse to the same value at low max_tokens
+ * (where each component would otherwise hit the 1-cent ceil floor). This is
+ * used to select and order alternatives and to compute savings_pct; it is
+ * never displayed. Displayed costs stay on the conservative `maxCostCents`
+ * ceil so a preview never undercuts what `processChatCompletion` reserves.
+ */
+function preciseCostCents(inputTokens: number, maxOutputTokens: number, pricing: ModelPricing): number {
+  return (inputTokens * pricing.inputPricePerMTok + maxOutputTokens * pricing.outputPricePerMTok) / 1_000_000;
+}
+
 function buildAmountDisplay(
   usdCents: number,
   currency: SupportedCurrency,
@@ -123,7 +136,13 @@ registerTool({
       });
     }
 
+    // Conservative whole-cent ceil — this is what we DISPLAY for the
+    // requested model and what the proxy actually reserves against budget.
     const requestedCost = maxCostCents(inputTokens, maxOutputTokens, requestedPricing);
+    // True fractional cost — used ONLY to rank/filter alternatives and to
+    // compute savings_pct, so genuinely-cheaper models aren't dropped on a
+    // rounded-cent tie at low max_tokens.
+    const requestedPrecise = preciseCostCents(inputTokens, maxOutputTokens, requestedPricing);
 
     // Alternatives must be ACTUALLY callable for the user — filter to
     // active provider connections + their allowedProviders + allowedModels,
@@ -142,10 +161,12 @@ registerTool({
       .filter(p => !needsVision || VISION_CAPABLE.test(p.modelId))
       .map(p => ({
         modelId: p.modelId,
+        // Conservative ceil for display, precise value for ranking/savings.
         cost: maxCostCents(inputTokens, maxOutputTokens, p),
+        precise: preciseCostCents(inputTokens, maxOutputTokens, p),
       }))
-      .filter(x => x.cost < requestedCost)
-      .sort((a, b) => a.cost - b.cost)
+      .filter(x => x.precise < requestedPrecise)
+      .sort((a, b) => a.precise - b.precise)
       .slice(0, MAX_ALTERNATIVES);
 
     const orgCurrency = getOrgCurrency(org);
@@ -164,8 +185,8 @@ registerTool({
         model: a.modelId,
         max_cost_usd_cents: a.cost,
         max_cost_display: buildAmountDisplay(a.cost, orgCurrency, rate),
-        savings_pct: requestedCost > 0
-          ? Math.round(((requestedCost - a.cost) / requestedCost) * 100)
+        savings_pct: requestedPrecise > 0
+          ? Math.round(((requestedPrecise - a.precise) / requestedPrecise) * 100)
           : 0,
       })),
       disclaimer: DISCLAIMER,
