@@ -86,6 +86,8 @@ vi.mock("../../server/lib/proxy/translate", async () => {
 
 import { processChatCompletionStreaming } from "../../server/lib/proxy/handler-streaming";
 import { storage } from "../../server/storage";
+import { detectProvider } from "../../server/lib/proxy/translate";
+import { calculateSettledCostCents } from "../../server/lib/proxy/safeguards";
 
 function makeMembership() {
   return {
@@ -360,5 +362,62 @@ describe("processChatCompletionStreaming — behavioural accounting", () => {
     // 8000-token output cost (proves we used the pricing cap not 4096).
     expect(reservedAmount).toBeGreaterThanOrEqual(expectedAt8k);
     expect(expectedAt8k).toBeGreaterThan(expectedAt4k); // sanity
+  });
+
+  it("Anthropic stream: merges message_start input + cache buckets with message_delta output, settling on all four buckets", async () => {
+    // Drive the ANTHROPIC branch so processData exercises the merge: input +
+    // cache counts at message_start, output (prompt_tokens 0, no cache) at
+    // message_delta. A naive overwrite would drop input + cache and under-bill.
+    (detectProvider as any).mockReturnValue({ provider: "ANTHROPIC", strippedModel: null });
+    (storage.getProviderConnectionsByOrg as any).mockResolvedValue([
+      { provider: "ANTHROPIC", status: "ACTIVE", adminApiKeyEncrypted: "x", adminApiKeyIv: "y", adminApiKeyTag: "z" },
+    ]);
+    const pricing = { modelId: "claude-test", inputPricePerMTok: 300, outputPricePerMTok: 1500, isActive: true, maxOutputTokens: null };
+    (storage.getModelPricingByProvider as any).mockResolvedValue([pricing]);
+
+    const fetchMock = vi.fn().mockResolvedValue(makeUpstreamSse([
+      JSON.stringify({ type: "message_start", message: { id: "msg_1", usage: { input_tokens: 1_000_000, cache_creation_input_tokens: 200_000, cache_read_input_tokens: 300_000 } } }),
+      JSON.stringify({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Hi" } }),
+      JSON.stringify({ type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 100_000 } }),
+    ]));
+    (globalThis as any).fetch = fetchMock;
+
+    const onComplete = vi.fn();
+    const onError = vi.fn();
+    const ac = new AbortController();
+
+    await processChatCompletionStreaming(
+      {
+        membership: makeMembership(),
+        userId: "u-1",
+        apiKeyId: null,
+        body: { model: "claude-test", messages: [{ role: "user", content: "hi" }], max_tokens: 500_000 },
+        requestId: "r-anthropic-cache",
+        abortSignal: ac.signal,
+      },
+      vi.fn(), onComplete, onError,
+    );
+
+    expect(onError).not.toHaveBeenCalled();
+    expect(onComplete).toHaveBeenCalledTimes(1);
+
+    // Settlement must price all four buckets in a single rounding step.
+    const expectedCost = calculateSettledCostCents(
+      { inputTokens: 1_000_000, outputTokens: 100_000, cacheWriteTokens: 200_000, cacheReadTokens: 300_000 },
+      pricing as any,
+    );
+    // input 300 + output 150 + cache-write 75 + cache-read 9 = 534c.
+    expect(expectedCost).toBe(534);
+    expect(safeguardCalls.adjustBudgetAfterResponse).toHaveBeenCalledTimes(1);
+    const settledArg = safeguardCalls.adjustBudgetAfterResponse.mock.calls[0][2] as number;
+    expect(settledArg).toBe(expectedCost);
+    // Sanity: dropping the input + cache buckets (overwrite bug) would settle
+    // to just the output cost (150c) — prove the merge kept them.
+    expect(settledArg).toBeGreaterThan(150);
+
+    // The completion body must report the merged input/output token counts.
+    const completeArg = onComplete.mock.calls[0][0];
+    expect(completeArg.inputTokens).toBe(1_000_000);
+    expect(completeArg.outputTokens).toBe(100_000);
   });
 });
