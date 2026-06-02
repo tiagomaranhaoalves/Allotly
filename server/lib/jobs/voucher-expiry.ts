@@ -86,7 +86,7 @@ export async function expireMembershipsForVoucher(voucherId: string): Promise<{ 
 
     await redisDel(REDIS_KEYS.budget(membership.id));
     await redisDel(REDIS_KEYS.concurrent(membership.id));
-    await redisDel(REDIS_KEYS.rateLimit(membership.id));
+    await redisDel(REDIS_KEYS.ratelimit(membership.id));
   }
 
   return { keysRevoked };

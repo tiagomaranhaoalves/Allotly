@@ -31,7 +31,7 @@ export async function runSnapshotCleanup(): Promise<void> {
     const logResult = await db.delete(proxyRequestLogs)
       .where(and(
         inArray(proxyRequestLogs.membershipId, membershipIds),
-        lt(proxyRequestLogs.requestedAt, cutoff)
+        lt(proxyRequestLogs.createdAt, cutoff)
       ));
     logsDeleted += (logResult as any).rowCount || 0;
   }

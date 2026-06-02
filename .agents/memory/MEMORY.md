@@ -1,1 +1,2 @@
 - [Anthropic usage settlement & cost rounding](anthropic-usage-settlement.md) — round once at settlement / ceil at reservation; cache buckets 1.25x/0.1x; merge streaming usage (input at message_start, output at message_delta); input_tokens can be a real 0 (use ??, not ||).
+- [Express v5 route param typing](express-v5-params-typing.md) — @types/express v5 types req.params.X as string|string[]; wrap with String(...) at use sites; keep `npm run check` green.

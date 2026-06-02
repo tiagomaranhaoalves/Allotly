@@ -264,7 +264,7 @@ export async function redisKeys(pattern: string): Promise<string[]> {
   }
   const regex = new RegExp("^" + pattern.replace(/\*/g, ".*") + "$");
   const keys: string[] = [];
-  for (const [key] of memoryStore) {
+  for (const key of Array.from(memoryStore.keys())) {
     if (regex.test(key) && cleanExpired(key) !== null) {
       keys.push(key);
     }

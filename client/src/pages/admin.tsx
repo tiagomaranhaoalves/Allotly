@@ -734,7 +734,7 @@ function TransferUserDialog({ user, orgs, onClose }: { user: AdminUser; orgs: Ad
           )}
           <div className="space-y-2">
             <Label>Role in New Organization</Label>
-            <Select value={targetOrgRole} onValueChange={setTargetOrgRole}>
+            <Select value={targetOrgRole ?? undefined} onValueChange={setTargetOrgRole}>
               <SelectTrigger data-testid="select-target-role"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="ROOT_ADMIN">Root Admin</SelectItem>

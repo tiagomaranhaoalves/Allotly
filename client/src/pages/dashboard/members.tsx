@@ -1626,7 +1626,7 @@ export default function MembersPage() {
       {selectedMemberIds.size > 0 && filteredMembers && user?.orgRole !== "MEMBER" && (
         <BulkActionBar
           selectedIds={selectedMemberIds}
-          members={members}
+          members={members ?? []}
           onClearSelection={() => setSelectedMemberIds(new Set())}
         />
       )}

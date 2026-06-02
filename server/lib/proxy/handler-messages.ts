@@ -432,6 +432,7 @@ export async function handleMessages(req: Request, res: Response) {
           displayName: azureDeployment.deploymentName,
           inputPricePerMTok: azureDeployment.inputPricePerMTok,
           outputPricePerMTok: azureDeployment.outputPricePerMTok,
+          maxOutputTokens: null,
           isActive: true,
           updatedAt: new Date(),
         };

@@ -197,7 +197,7 @@ export async function runModelSync(): Promise<void> {
         if (!triedProviders.has(conn.provider)) {
           triedProviders.add(conn.provider);
           let models: DiscoveredModel[] = [];
-          if (conn.provider === "OPENAI") models = await fetchOpenAIModels(apiKey, conn.displayName);
+          if (conn.provider === "OPENAI") models = await fetchOpenAIModels(apiKey, conn.displayName ?? undefined);
           else if (conn.provider === "ANTHROPIC") models = await fetchAnthropicModels(apiKey);
           else if (conn.provider === "GOOGLE") models = await fetchGoogleModels(apiKey);
 

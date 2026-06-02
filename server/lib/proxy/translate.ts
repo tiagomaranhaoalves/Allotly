@@ -194,7 +194,7 @@ export function translateToProvider(
       body.model = azureContext.deploymentName;
     } else {
       url = `${baseUrl}/openai/deployments/${encodeURIComponent(azureContext.deploymentName)}/chat/completions?api-version=${azureContext.apiVersion || DEFAULT_AZURE_API_VERSION}`;
-      delete body.model;
+      delete (body as any).model;
     }
 
     if (body.stream) {
@@ -442,7 +442,7 @@ export function translateResponseToOpenAI(
     const promptTokens = body.usageMetadata?.promptTokenCount || 0;
     const completionTokens = body.usageMetadata?.candidatesTokenCount || 0;
     const thinkingTokens = body.usageMetadata?.thoughtsTokenCount || 0;
-    const usage: Record<string, number> = {
+    const usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number; [k: string]: number } = {
       prompt_tokens: promptTokens,
       completion_tokens: completionTokens,
       total_tokens: promptTokens + completionTokens,

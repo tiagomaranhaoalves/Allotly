@@ -28,8 +28,8 @@ registerTool({
     const result: Record<string, any> = {
       ...snap,
       formatted: {
-        remaining: snap.display.formatted.remaining,
-        total: snap.display.formatted.total,
+        remaining: snap.display?.formatted.remaining ?? "",
+        total: snap.display?.formatted.total ?? "",
         used_pct: usedPct,
         expires_in: expiresIn,
       },

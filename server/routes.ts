@@ -294,7 +294,7 @@ export async function registerRoutes(
 
       const baseUrl = `${req.protocol}://${req.get("host")}`;
       const resetUrl = `${baseUrl}/reset-password?token=${rawToken}`;
-      const emailContent = emailTemplates.passwordReset(user.name, resetUrl);
+      const emailContent = emailTemplates.passwordReset(user.name ?? "", resetUrl);
       sendEmail(user.email, emailContent.subject, emailContent.html);
 
       res.json({ message: "If an account with that email exists, a reset link has been sent." });
@@ -551,7 +551,7 @@ export async function registerRoutes(
     const user = await storage.getUser(req.session.userId!);
     if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
     const connections = await storage.getProviderConnectionsByOrg(user.orgId);
-    const safe = connections.filter(c => c.status === "ACTIVE" || c.status === "CONNECTED").map(c => ({
+    const safe = connections.filter(c => c.status === "ACTIVE").map(c => ({
       id: c.id,
       provider: c.provider,
       displayName: c.displayName,
@@ -679,7 +679,7 @@ export async function registerRoutes(
 
   app.delete("/api/providers/:id", requireRole("ROOT_ADMIN"), async (req, res) => {
     const user = (req as any).user;
-    const conn = await storage.getProviderConnection(req.params.id);
+    const conn = await storage.getProviderConnection(String(req.params.id));
     if (!conn || conn.orgId !== user.orgId) {
       return res.status(404).json({ message: "Not found" });
     }
@@ -702,7 +702,7 @@ export async function registerRoutes(
   app.patch("/api/providers/:id", requireRole("ROOT_ADMIN"), async (req, res) => {
     try {
       const user = (req as any).user;
-      const conn = await storage.getProviderConnection(req.params.id);
+      const conn = await storage.getProviderConnection(String(req.params.id));
       if (!conn || conn.orgId !== user.orgId) {
         return res.status(404).json({ message: "Not found" });
       }
@@ -778,7 +778,7 @@ export async function registerRoutes(
   app.post("/api/providers/:id/validate", requireRole("ROOT_ADMIN"), async (req, res) => {
     try {
       const user = (req as any).user;
-      const conn = await storage.getProviderConnection(req.params.id);
+      const conn = await storage.getProviderConnection(String(req.params.id));
       if (!conn || conn.orgId !== user.orgId) {
         return res.status(404).json({ message: "Not found" });
       }
@@ -823,7 +823,7 @@ export async function registerRoutes(
   app.post("/api/providers/:id/rotate-key", requireRole("ROOT_ADMIN"), async (req, res) => {
     try {
       const user = (req as any).user;
-      const conn = await storage.getProviderConnection(req.params.id);
+      const conn = await storage.getProviderConnection(String(req.params.id));
       if (!conn || conn.orgId !== user.orgId) {
         return res.status(404).json({ message: "Not found" });
       }
@@ -882,7 +882,7 @@ export async function registerRoutes(
   app.post("/api/providers/:id/validate-now", requireRole("ROOT_ADMIN"), async (req, res) => {
     try {
       const user = (req as any).user;
-      const conn = await storage.getProviderConnection(req.params.id);
+      const conn = await storage.getProviderConnection(String(req.params.id));
       if (!conn || conn.orgId !== user.orgId) {
         return res.status(404).json({ message: "Not found" });
       }
@@ -917,7 +917,7 @@ export async function registerRoutes(
   app.post("/api/providers/:id/test-connection", requireRole("ROOT_ADMIN"), async (req, res) => {
     try {
       const user = (req as any).user;
-      const conn = await storage.getProviderConnection(req.params.id);
+      const conn = await storage.getProviderConnection(String(req.params.id));
       if (!conn || conn.orgId !== user.orgId) {
         return res.status(404).json({ message: "Not found" });
       }
@@ -1026,7 +1026,7 @@ export async function registerRoutes(
   app.get("/api/providers/:id/models", requireRole("ROOT_ADMIN"), async (req, res) => {
     try {
       const user = (req as any).user;
-      const conn = await storage.getProviderConnection(req.params.id);
+      const conn = await storage.getProviderConnection(String(req.params.id));
       if (!conn || conn.orgId !== user.orgId) {
         return res.status(404).json({ message: "Not found" });
       }
@@ -1119,7 +1119,7 @@ export async function registerRoutes(
   app.get("/api/providers/:id/health", requireRole("ROOT_ADMIN"), async (req, res) => {
     try {
       const user = (req as any).user;
-      const conn = await storage.getProviderConnection(req.params.id);
+      const conn = await storage.getProviderConnection(String(req.params.id));
       if (!conn || conn.orgId !== user.orgId) {
         return res.status(404).json({ message: "Not found" });
       }
@@ -1432,7 +1432,7 @@ export async function registerRoutes(
     const user = await storage.getUser(req.session.userId!);
     if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
 
-    const membership = await storage.getMembership(req.params.id);
+    const membership = await storage.getMembership(String(req.params.id));
     if (!membership) return res.status(404).json({ message: "Not found" });
 
     const team = await storage.getTeam(membership.teamId);
@@ -1456,7 +1456,7 @@ export async function registerRoutes(
     const user = await storage.getUser(req.session.userId!);
     if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
 
-    const membership = await storage.getMembership(req.params.id);
+    const membership = await storage.getMembership(String(req.params.id));
     if (!membership) return res.status(404).json({ message: "Not found" });
 
     const team = await storage.getTeam(membership.teamId);
@@ -1481,7 +1481,7 @@ export async function registerRoutes(
       const user = await storage.getUser(req.session.userId!);
       if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
 
-      const membership = await storage.getMembership(req.params.id);
+      const membership = await storage.getMembership(String(req.params.id));
       if (!membership) return res.status(404).json({ message: "Not found" });
 
       const team = await storage.getTeam(membership.teamId);
@@ -1593,7 +1593,7 @@ export async function registerRoutes(
       const user = await storage.getUser(req.session.userId!);
       if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
 
-      const membership = await storage.getMembership(req.params.id);
+      const membership = await storage.getMembership(String(req.params.id));
       if (!membership) return res.status(404).json({ message: "Not found" });
 
       const team = await storage.getTeam(membership.teamId);
@@ -1662,7 +1662,7 @@ export async function registerRoutes(
       const user = await storage.getUser(req.session.userId!);
       if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
 
-      const membership = await storage.getMembership(req.params.id);
+      const membership = await storage.getMembership(String(req.params.id));
       if (!membership) return res.status(404).json({ message: "Not found" });
 
       const team = await storage.getTeam(membership.teamId);
@@ -1729,7 +1729,7 @@ export async function registerRoutes(
       const user = await storage.getUser(req.session.userId!);
       if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
 
-      const membership = await storage.getMembership(req.params.id);
+      const membership = await storage.getMembership(String(req.params.id));
       if (!membership) return res.status(404).json({ message: "Not found" });
 
       const team = await storage.getTeam(membership.teamId);
@@ -1820,7 +1820,7 @@ export async function registerRoutes(
       const user = await storage.getUser(req.session.userId!);
       if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
 
-      const membership = await storage.getMembership(req.params.id);
+      const membership = await storage.getMembership(String(req.params.id));
       if (!membership) return res.status(404).json({ message: "Not found" });
 
       const team = await storage.getTeam(membership.teamId);
@@ -1842,7 +1842,7 @@ export async function registerRoutes(
       const user = await storage.getUser(req.session.userId!);
       if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
 
-      const membership = await storage.getMembership(req.params.id);
+      const membership = await storage.getMembership(String(req.params.id));
       if (!membership) return res.status(404).json({ message: "Not found" });
 
       const sourceTeam = await storage.getTeam(membership.teamId);
@@ -2001,7 +2001,7 @@ export async function registerRoutes(
       const user = await storage.getUser(req.session.userId!);
       if (!user || user.orgRole !== "ROOT_ADMIN") return res.status(403).json({ message: "Only Root Admin can change roles" });
 
-      const membership = await storage.getMembership(req.params.id);
+      const membership = await storage.getMembership(String(req.params.id));
       if (!membership) return res.status(404).json({ message: "Not found" });
 
       const team = await storage.getTeam(membership.teamId);
@@ -2191,7 +2191,7 @@ export async function registerRoutes(
       const user = await storage.getUser(req.session.userId!);
       if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
 
-      const membership = await storage.getMembership(req.params.id);
+      const membership = await storage.getMembership(String(req.params.id));
       if (!membership) return res.status(404).json({ message: "Not found" });
 
       const team = await storage.getTeam(membership.teamId);
@@ -2239,7 +2239,7 @@ export async function registerRoutes(
       const user = await storage.getUser(req.session.userId!);
       if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
 
-      const membership = await storage.getMembership(req.params.id);
+      const membership = await storage.getMembership(String(req.params.id));
       if (!membership) return res.status(404).json({ message: "Not found" });
 
       const team = await storage.getTeam(membership.teamId);
@@ -2288,7 +2288,7 @@ export async function registerRoutes(
       const user = await storage.getUser(req.session.userId!);
       if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
 
-      const membership = await storage.getMembership(req.params.id);
+      const membership = await storage.getMembership(String(req.params.id));
       if (!membership) return res.status(404).json({ message: "Not found" });
 
       const team = await storage.getTeam(membership.teamId);
@@ -2325,7 +2325,7 @@ export async function registerRoutes(
       const user = await storage.getUser(req.session.userId!);
       if (!user) return res.status(401).json({ message: "Unauthorized" });
 
-      const team = await storage.getTeam(req.params.teamId);
+      const team = await storage.getTeam(String(req.params.teamId));
       if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Team not found" });
 
       const projects = await storage.getProjectsByTeam(team.id);
@@ -2341,7 +2341,7 @@ export async function registerRoutes(
       const user = await storage.getUser(req.session.userId!);
       if (!user) return res.status(401).json({ message: "Unauthorized" });
 
-      const team = await storage.getTeam(req.params.teamId);
+      const team = await storage.getTeam(String(req.params.teamId));
       if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Team not found" });
 
       const createProjectSchema = z.object({
@@ -2388,7 +2388,7 @@ export async function registerRoutes(
       const user = await storage.getUser(req.session.userId!);
       if (!user) return res.status(401).json({ message: "Unauthorized" });
 
-      const project = await storage.getProject(req.params.id);
+      const project = await storage.getProject(String(req.params.id));
       if (!project) return res.status(404).json({ message: "Project not found" });
 
       const team = await storage.getTeam(project.teamId);
@@ -2424,7 +2424,7 @@ export async function registerRoutes(
       const user = await storage.getUser(req.session.userId!);
       if (!user) return res.status(401).json({ message: "Unauthorized" });
 
-      const project = await storage.getProject(req.params.id);
+      const project = await storage.getProject(String(req.params.id));
       if (!project) return res.status(404).json({ message: "Project not found" });
 
       const team = await storage.getTeam(project.teamId);
@@ -2617,7 +2617,7 @@ export async function registerRoutes(
       const user = await storage.getUser(req.session.userId!);
       if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
 
-      const team = await storage.getTeam(req.params.id);
+      const team = await storage.getTeam(String(req.params.id));
       if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
       if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
 
@@ -2667,7 +2667,7 @@ export async function registerRoutes(
       const { confirmName } = req.body || {};
       if (!confirmName) return res.status(400).json({ message: "Confirmation name is required" });
 
-      const team = await storage.getTeam(req.params.id);
+      const team = await storage.getTeam(String(req.params.id));
       if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
 
       const result = await cascadeDeleteTeam(team.id, confirmName, user.id, user.orgId);
@@ -2684,7 +2684,7 @@ export async function registerRoutes(
     const user = await storage.getUser(req.session.userId!);
     if (!user) return res.status(401).json({ message: "Unauthorized" });
 
-    const team = await storage.getTeam(req.params.id);
+    const team = await storage.getTeam(String(req.params.id));
     if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
     if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
     if (user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
@@ -3006,7 +3006,7 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Only admins can revoke vouchers" });
       }
 
-      const voucher = await storage.getVoucherById(req.params.id);
+      const voucher = await storage.getVoucherById(String(req.params.id));
       if (!voucher || voucher.orgId !== user.orgId) {
         return res.status(404).json({ message: "Voucher not found" });
       }
@@ -3068,7 +3068,7 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Only admins can edit vouchers" });
       }
 
-      const voucher = await storage.getVoucherById(req.params.id);
+      const voucher = await storage.getVoucherById(String(req.params.id));
       if (!voucher || voucher.orgId !== user.orgId) {
         return res.status(404).json({ message: "Voucher not found" });
       }
@@ -3159,7 +3159,7 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Forbidden" });
       }
 
-      const voucher = await storage.getVoucher(req.params.id);
+      const voucher = await storage.getVoucher(String(req.params.id));
       if (!voucher || voucher.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
 
       if (user.orgRole === "TEAM_ADMIN") {
@@ -3348,7 +3348,7 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Only admins can extend vouchers" });
       }
 
-      const voucher = await storage.getVoucherById(req.params.id);
+      const voucher = await storage.getVoucherById(String(req.params.id));
       if (!voucher || voucher.orgId !== user.orgId) {
         return res.status(404).json({ message: "Voucher not found" });
       }
@@ -3417,7 +3417,7 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Only admins can top up vouchers" });
       }
 
-      const voucher = await storage.getVoucherById(req.params.id);
+      const voucher = await storage.getVoucherById(String(req.params.id));
       if (!voucher || voucher.orgId !== user.orgId) {
         return res.status(404).json({ message: "Voucher not found" });
       }
@@ -3660,7 +3660,7 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Only admins can view voucher details" });
       }
 
-      const voucher = await storage.getVoucherById(req.params.id);
+      const voucher = await storage.getVoucherById(String(req.params.id));
       if (!voucher || voucher.orgId !== user.orgId) {
         return res.status(404).json({ message: "Voucher not found" });
       }
@@ -4326,7 +4326,7 @@ export async function registerRoutes(
     const user = await storage.getUser(req.session.userId!);
     if (!user) return res.status(401).json({ message: "Unauthorized" });
 
-    const membership = await storage.getMembership(req.params.membershipId);
+    const membership = await storage.getMembership(String(req.params.membershipId));
     if (!membership) return res.status(404).json({ message: "Not found" });
 
     const team = await storage.getTeam(membership.teamId);
@@ -4335,7 +4335,7 @@ export async function registerRoutes(
     if (user.orgRole === "MEMBER" && membership.userId !== user.id) return res.status(403).json({ message: "Forbidden" });
     if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
 
-    const snapshots = await storage.getUsageSnapshotsByMembership(req.params.membershipId, 100);
+    const snapshots = await storage.getUsageSnapshotsByMembership(String(req.params.membershipId), 100);
     res.json(snapshots);
   });
 
@@ -4343,7 +4343,7 @@ export async function registerRoutes(
     const user = await storage.getUser(req.session.userId!);
     if (!user) return res.status(401).json({ message: "Unauthorized" });
 
-    const membership = await storage.getMembership(req.params.membershipId);
+    const membership = await storage.getMembership(String(req.params.membershipId));
     if (!membership) return res.status(404).json({ message: "Not found" });
 
     const team = await storage.getTeam(membership.teamId);
@@ -4352,7 +4352,7 @@ export async function registerRoutes(
     if (user.orgRole === "MEMBER" && membership.userId !== user.id) return res.status(403).json({ message: "Forbidden" });
     if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
 
-    const logs = await storage.getProxyRequestLogsByMembership(req.params.membershipId, 100);
+    const logs = await storage.getProxyRequestLogsByMembership(String(req.params.membershipId), 100);
     res.json(logs);
   });
 
@@ -4635,7 +4635,7 @@ export async function registerRoutes(
       let allLogs: any[] = [];
 
       for (const tId of targetTeamIds) {
-        const members = await storage.getMembersByTeam(tId);
+        const members = await storage.getMembershipsByTeam(tId);
         const teamProjects = await storage.getProjectsByTeam(tId);
         const projectMap = new Map(teamProjects.map(p => [p.id, p.name]));
 
@@ -4709,7 +4709,7 @@ export async function registerRoutes(
       const rows: any[] = [];
 
       for (const tId of targetTeamIds) {
-        const members = await storage.getMembersByTeam(tId);
+        const members = await storage.getMembershipsByTeam(tId);
         const team = teams.find(t => t.id === tId);
         for (const m of members) {
           if (status && m.status !== status) continue;
@@ -4753,7 +4753,7 @@ export async function registerRoutes(
       const user = await storage.getUser(req.session.userId!);
       if (!user || user.orgRole === "MEMBER") return res.status(403).json({ message: "Forbidden" });
 
-      const team = await storage.getTeam(req.params.teamId);
+      const team = await storage.getTeam(String(req.params.teamId));
       if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Team not found" });
       if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
 
@@ -4923,7 +4923,7 @@ export async function registerRoutes(
         for (const u of orgUsers) {
           let hasMembership = false;
           for (const tId of allTeamIds) {
-            const members = await storage.getMembersByTeam(tId);
+            const members = await storage.getMembershipsByTeam(tId);
             if (members.some(m => m.userId === u.id)) { hasMembership = true; break; }
           }
           if (!hasMembership && u.orgRole === "MEMBER") orphanReport.usersNoMembership.push(u.email);
@@ -5144,7 +5144,7 @@ export async function registerRoutes(
 
   app.get("/api/admin/organizations/:id", requireAdmin, async (req, res) => {
     try {
-      const org = await storage.getOrganization(req.params.id);
+      const org = await storage.getOrganization(String(req.params.id));
       if (!org) return res.status(404).json({ message: "Organization not found" });
       const orgUsers = await storage.getUsersByOrg(org.id);
       const safeUsers = orgUsers.map(u => ({
@@ -5168,7 +5168,7 @@ export async function registerRoutes(
       const parsed = patchSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
 
-      const org = await storage.getOrganization(req.params.id);
+      const org = await storage.getOrganization(String(req.params.id));
       if (!org) return res.status(404).json({ message: "Organization not found" });
 
       const updates: Record<string, any> = {};
@@ -5207,7 +5207,7 @@ export async function registerRoutes(
 
   app.delete("/api/admin/users/:id", requireAdmin, async (req, res) => {
     try {
-      const user = await storage.getUser(req.params.id);
+      const user = await storage.getUser(String(req.params.id));
       if (!user) return res.status(404).json({ message: "User not found" });
 
       await storage.updateUser(user.id, { status: "SUSPENDED" } as any);
@@ -5294,7 +5294,7 @@ export async function registerRoutes(
   // ── Admin: User Hard Delete ──
   app.delete("/api/admin/users/:id/hard", requireAdmin, async (req, res) => {
     try {
-      const user = await storage.getUser(req.params.id);
+      const user = await storage.getUser(String(req.params.id));
       if (!user) return res.status(404).json({ message: "User not found" });
 
       const ownedTeams = await db.select().from(teams).where(eq(teams.adminId, user.id));
@@ -5382,7 +5382,7 @@ export async function registerRoutes(
   // ── Admin: User Soft Delete (suspend + free email) ──
   app.delete("/api/admin/users/:id/soft", requireAdmin, async (req, res) => {
     try {
-      const user = await storage.getUser(req.params.id);
+      const user = await storage.getUser(String(req.params.id));
       if (!user) return res.status(404).json({ message: "User not found" });
 
       const freedEmail = user.email;
@@ -5436,7 +5436,7 @@ export async function registerRoutes(
   // ── Admin: Reactivate User ──
   app.post("/api/admin/users/:id/reactivate", requireAdmin, async (req, res) => {
     try {
-      const user = await storage.getUser(req.params.id);
+      const user = await storage.getUser(String(req.params.id));
       if (!user) return res.status(404).json({ message: "User not found" });
       if (user.status === "ACTIVE") return res.status(400).json({ message: "User is already active" });
 
@@ -5479,7 +5479,7 @@ export async function registerRoutes(
       const parsed = transferSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
 
-      const user = await storage.getUser(req.params.id);
+      const user = await storage.getUser(String(req.params.id));
       if (!user) return res.status(404).json({ message: "User not found" });
 
       const targetOrg = await storage.getOrganization(parsed.data.targetOrgId);
@@ -5544,9 +5544,6 @@ export async function registerRoutes(
               currentPeriodSpendCents: 0,
               periodStart: now,
               periodEnd,
-              maxTokensPerRequest: 4096,
-              rpmLimit: 30,
-              concurrencyLimit: 3,
               status: "ACTIVE",
             });
           }
@@ -5561,9 +5558,6 @@ export async function registerRoutes(
             currentPeriodSpendCents: 0,
             periodStart: now,
             periodEnd,
-            maxTokensPerRequest: 4096,
-            rpmLimit: 30,
-            concurrencyLimit: 3,
             status: "ACTIVE",
           });
         }
@@ -5617,7 +5611,7 @@ export async function registerRoutes(
   // ── Admin: Delete Organization ──
   app.delete("/api/admin/organizations/:id", requireAdmin, async (req, res) => {
     try {
-      const org = await storage.getOrganization(req.params.id);
+      const org = await storage.getOrganization(String(req.params.id));
       if (!org) return res.status(404).json({ message: "Organization not found" });
 
       const result = await cascadeDeleteOrganization(org.id, org.name, "admin", false);
@@ -5633,7 +5627,7 @@ export async function registerRoutes(
   // ── Admin: Organization Drill-Down Details ──
   app.get("/api/admin/organizations/:id/details", requireAdmin, async (req, res) => {
     try {
-      const org = await storage.getOrganization(req.params.id);
+      const org = await storage.getOrganization(String(req.params.id));
       if (!org) return res.status(404).json({ message: "Organization not found" });
 
       const orgTeams = await storage.getTeamsByOrg(org.id);
@@ -5714,7 +5708,7 @@ export async function registerRoutes(
   app.delete("/api/admin/keys/:id", requireAdmin, async (req, res) => {
     try {
       const key = await db.select().from(allotlyApiKeysTable)
-        .where(eq(allotlyApiKeysTable.id, req.params.id)).then(r => r[0]);
+        .where(eq(allotlyApiKeysTable.id, String(req.params.id))).then(r => r[0]);
       if (!key) return res.status(404).json({ message: "Key not found" });
 
       await db.update(allotlyApiKeysTable)
@@ -5889,7 +5883,7 @@ export async function registerRoutes(
       const parsed = voucherPatchSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Validation error" });
 
-      const voucher = await storage.getVoucherById(req.params.id);
+      const voucher = await storage.getVoucherById(String(req.params.id));
       if (!voucher) return res.status(404).json({ message: "Voucher not found" });
 
       await storage.updateVoucher(voucher.id, { status: parsed.data.status });

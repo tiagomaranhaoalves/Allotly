@@ -211,7 +211,7 @@ print(response.choices[0].message.content)`}
               <div className="grid gap-2">
                 {welcomeData.allowedModels.map((m: any) => (
                   <div key={m.modelId} className="flex items-center gap-2 p-2 rounded-md bg-muted/30" data-testid={`model-item-${m.modelId}`}>
-                    <ProviderBadge provider={m.provider} size="sm" />
+                    <ProviderBadge provider={m.provider} />
                     <span className="text-sm font-mono">{m.modelId}</span>
                   </div>
                 ))}

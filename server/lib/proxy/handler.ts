@@ -311,6 +311,7 @@ export async function processChatCompletion(
           displayName: azureDeployment.deploymentName,
           inputPricePerMTok: azureDeployment.inputPricePerMTok,
           outputPricePerMTok: azureDeployment.outputPricePerMTok,
+          maxOutputTokens: null,
           isActive: true,
           updatedAt: new Date(),
         };
@@ -668,7 +669,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
       ), budgetCtx);
     }
 
-    let pricing: ModelPricing | null;
+    let pricing: ModelPricing | null = null;
     if (provider === "AZURE_OPENAI" && azureDeployment) {
       if (azureDeployment.inputPricePerMTok > 0 || azureDeployment.outputPricePerMTok > 0) {
         pricing = {
@@ -678,6 +679,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
           displayName: azureDeployment.deploymentName,
           inputPricePerMTok: azureDeployment.inputPricePerMTok,
           outputPricePerMTok: azureDeployment.outputPricePerMTok,
+          maxOutputTokens: null,
           isActive: true,
           updatedAt: new Date(),
         };

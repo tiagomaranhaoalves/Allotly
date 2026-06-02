@@ -57,6 +57,7 @@ export const organizations = pgTable("organizations", {
   defaultMemberBudgetCents: integer("default_member_budget_cents"),
   currency: currencyEnum("currency").default("USD").notNull(),
   settings: jsonb("settings"),
+  graceEndsAt: timestamp("grace_ends_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

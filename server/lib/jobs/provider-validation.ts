@@ -18,6 +18,7 @@ export async function runProviderValidation(): Promise<void> {
       try {
         const decryptedKey = decryptProviderKey(conn.adminApiKeyEncrypted, conn.adminApiKeyIv, conn.adminApiKeyTag);
         const adapter = getProviderAdapter(conn.provider);
+        if (!adapter) continue;
 
         const validationOptions = conn.provider === "AZURE_OPENAI" ? {
           baseUrl: conn.azureBaseUrl || undefined,

@@ -49,6 +49,7 @@ export async function resolveAzurePricing(
       displayName: azureDeployment.deploymentName,
       inputPricePerMTok: azureDeployment.inputPricePerMTok,
       outputPricePerMTok: azureDeployment.outputPricePerMTok,
+      maxOutputTokens: null,
       isActive: true,
       updatedAt: new Date(),
     };
