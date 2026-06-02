@@ -1,1 +1,1 @@
-- [estimate_cost dual-cost rule](estimate-cost-dual-cost.md) — display costs use conservative ceil (must match proxy reservation); ranking/savings use unrounded precise cost.
+- [Anthropic usage settlement & cost rounding](anthropic-usage-settlement.md) — round once at settlement / ceil at reservation; cache buckets 1.25x/0.1x; merge streaming usage (input at message_start, output at message_delta); input_tokens can be a real 0 (use ??, not ||).

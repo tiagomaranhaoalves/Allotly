@@ -19,6 +19,7 @@ import {
   estimateInputTokens,
   estimateInputCostCents,
   calculateOutputCostCents,
+  calculateSettledCostCents,
   clampMaxTokens,
   reserveBudget,
   refundBudget,
@@ -439,7 +440,12 @@ export async function processChatCompletion(
       ), membership, tier);
     }
 
-    const actualCostCents = estimateInputCostCents(actualInputTokens, pricing) + calculateOutputCostCents(actualOutputTokens, pricing);
+    const actualCostCents = calculateSettledCostCents({
+      inputTokens: actualInputTokens,
+      outputTokens: actualOutputTokens,
+      cacheWriteTokens: openaiResponse.usage?.cache_creation_input_tokens,
+      cacheReadTokens: openaiResponse.usage?.cache_read_input_tokens,
+    }, pricing);
     await adjustBudgetAfterResponse(membershipId, reservedCostCents, actualCostCents);
     await releaseConcurrency(membershipId, requestId);
     concurrencyAcquired = false;
@@ -855,14 +861,21 @@ export async function handleChatCompletion(req: Request, res: Response) {
 
     let actualInputTokens = inputTokens;
     let actualOutputTokens = 0;
+    let actualCacheWriteTokens: number | undefined;
+    let actualCacheReadTokens: number | undefined;
     let actualCostCents = 0;
 
     if (parsed.stream) {
       const streamResult = await streamProviderResponse(providerResponse, provider, effectiveModel, res, translated.proxyStopSequences);
 
       if (streamResult.usage) {
-        actualInputTokens = streamResult.usage.prompt_tokens || inputTokens;
+        // Use `??` not `||`: Anthropic reports input_tokens: 0 when the prompt
+        // is fully served from cache (cache_read_input_tokens > 0), and a
+        // legitimate 0 must NOT fall back to the pre-request estimate.
+        actualInputTokens = streamResult.usage.prompt_tokens ?? inputTokens;
         actualOutputTokens = streamResult.usage.completion_tokens || 0;
+        actualCacheWriteTokens = streamResult.usage.cache_creation_input_tokens;
+        actualCacheReadTokens = streamResult.usage.cache_read_input_tokens;
       } else {
         actualOutputTokens = Math.ceil(streamResult.fullContent.length / 4);
       }
@@ -895,6 +908,8 @@ export async function handleChatCompletion(req: Request, res: Response) {
       if (openaiResponse.usage) {
         actualInputTokens = openaiResponse.usage.prompt_tokens;
         actualOutputTokens = openaiResponse.usage.completion_tokens;
+        actualCacheWriteTokens = openaiResponse.usage.cache_creation_input_tokens;
+        actualCacheReadTokens = openaiResponse.usage.cache_read_input_tokens;
       }
 
       const content = openaiResponse.choices?.[0]?.message?.content;
@@ -913,8 +928,12 @@ export async function handleChatCompletion(req: Request, res: Response) {
       res.json(openaiResponse);
     }
 
-    actualCostCents = estimateInputCostCents(actualInputTokens, pricing)
-      + calculateOutputCostCents(actualOutputTokens, pricing);
+    actualCostCents = calculateSettledCostCents({
+      inputTokens: actualInputTokens,
+      outputTokens: actualOutputTokens,
+      cacheWriteTokens: actualCacheWriteTokens,
+      cacheReadTokens: actualCacheReadTokens,
+    }, pricing);
 
     await adjustBudgetAfterResponse(membershipId, reservedCostCents, actualCostCents);
     await releaseConcurrency(membershipId, requestId);

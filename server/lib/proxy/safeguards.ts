@@ -145,6 +145,53 @@ export function calculateOutputCostCents(outputTokens: number, pricing: ModelPri
   return Math.ceil((outputTokens * pricing.outputPricePerMTok) / 1_000_000);
 }
 
+/**
+ * Anthropic prompt-caching price multipliers, expressed relative to the base
+ * (uncached) input rate. Cache writes are billed at 1.25x the input rate;
+ * cache reads at 0.1x. Anthropic's `input_tokens` already excludes cached
+ * tokens, so the three input buckets never double-count.
+ */
+export const CACHE_WRITE_MULTIPLIER = 1.25;
+export const CACHE_READ_MULTIPLIER = 0.1;
+
+export interface SettledTokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  /** Anthropic `cache_creation_input_tokens` — billed at 1.25x input rate. */
+  cacheWriteTokens?: number;
+  /** Anthropic `cache_read_input_tokens` — billed at 0.1x input rate. */
+  cacheReadTokens?: number;
+}
+
+/**
+ * Settle the final, billable cost of a completed request.
+ *
+ * Unlike the reservation helpers (`estimateInputCostCents` /
+ * `calculateOutputCostCents`), which round each component up independently to
+ * stay conservative when *reserving* budget, settlement sums every priced
+ * token bucket in fractional cents and rounds the total exactly ONCE.
+ *
+ * Rounding each component separately (the previous behaviour) rounded up the
+ * sub-cent remainder of both the input and the output cost, double-counting it
+ * and over-charging versus the provider's own sub-cent invoice — worst on
+ * small requests, where a sub-cent true cost showed up as 1-2c.
+ *
+ * Providers without prompt caching simply omit the cache buckets (0) and get
+ * plain `round((input*rate + output*rate)/1e6)` settlement.
+ */
+export function calculateSettledCostCents(usage: SettledTokenUsage, pricing: ModelPricing): number {
+  const inputRate = pricing.inputPricePerMTok;
+  const outputRate = pricing.outputPricePerMTok;
+  const cacheWrite = usage.cacheWriteTokens ?? 0;
+  const cacheRead = usage.cacheReadTokens ?? 0;
+  const weightedCentsPerMTok =
+    usage.inputTokens * inputRate +
+    cacheWrite * inputRate * CACHE_WRITE_MULTIPLIER +
+    cacheRead * inputRate * CACHE_READ_MULTIPLIER +
+    usage.outputTokens * outputRate;
+  return Math.round(weightedCentsPerMTok / 1_000_000);
+}
+
 export function clampMaxTokens(
   remainingBudgetCents: number,
   inputCostCents: number,

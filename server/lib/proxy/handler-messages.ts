@@ -15,6 +15,7 @@ import {
   estimateInputTokens,
   estimateInputCostCents,
   calculateOutputCostCents,
+  calculateSettledCostCents,
   clampMaxTokens,
   reserveBudget,
   refundBudget,
@@ -604,14 +605,21 @@ export async function handleMessages(req: Request, res: Response) {
 
     let actualInputTokens = inputTokens;
     let actualOutputTokens = 0;
+    let actualCacheWriteTokens: number | undefined;
+    let actualCacheReadTokens: number | undefined;
     let actualCostCents = 0;
 
     if (parsed.stream) {
       const streamResult = await streamProviderResponseAsAnthropic(providerResponse, provider, effectiveModel, res);
 
       if (streamResult.usage) {
-        actualInputTokens = streamResult.usage.input_tokens || inputTokens;
+        // Use `??` not `||`: Anthropic reports input_tokens: 0 when the prompt
+        // is fully served from cache (cache_read_input_tokens > 0), and a
+        // legitimate 0 must NOT fall back to the pre-request estimate.
+        actualInputTokens = streamResult.usage.input_tokens ?? inputTokens;
         actualOutputTokens = streamResult.usage.output_tokens || 0;
+        actualCacheWriteTokens = streamResult.usage.cache_creation_input_tokens;
+        actualCacheReadTokens = streamResult.usage.cache_read_input_tokens;
       } else {
         actualOutputTokens = Math.ceil(streamResult.fullContent.length / 4);
       }
@@ -653,8 +661,13 @@ export async function handleMessages(req: Request, res: Response) {
 
       const usage = anthropicResponse?.usage;
       if (usage) {
-        actualInputTokens = usage.input_tokens || inputTokens;
+        // Use `??` not `||`: a fully cache-served Anthropic prompt reports
+        // input_tokens: 0 (with cache_read_input_tokens > 0); that real 0 must
+        // not fall back to the pre-request estimate.
+        actualInputTokens = usage.input_tokens ?? inputTokens;
         actualOutputTokens = usage.output_tokens || 0;
+        actualCacheWriteTokens = usage.cache_creation_input_tokens;
+        actualCacheReadTokens = usage.cache_read_input_tokens;
       }
 
       // Empty-response detection — text content blocks with no text and no tool_use.
@@ -684,8 +697,12 @@ export async function handleMessages(req: Request, res: Response) {
       res.json(anthropicResponse);
     }
 
-    actualCostCents = estimateInputCostCents(actualInputTokens, pricing)
-      + calculateOutputCostCents(actualOutputTokens, pricing);
+    actualCostCents = calculateSettledCostCents({
+      inputTokens: actualInputTokens,
+      outputTokens: actualOutputTokens,
+      cacheWriteTokens: actualCacheWriteTokens,
+      cacheReadTokens: actualCacheReadTokens,
+    }, pricing);
 
     await adjustBudgetAfterResponse(membershipId, reservedCostCents, actualCostCents);
     await releaseConcurrency(membershipId, requestId);

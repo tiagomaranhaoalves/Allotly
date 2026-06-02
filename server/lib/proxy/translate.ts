@@ -329,7 +329,15 @@ interface OpenAIResponse {
   created: number;
   model: string;
   choices: OpenAIChoice[];
-  usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+  usage: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    // Anthropic prompt-caching buckets, carried through so settlement can
+    // price them at their own rates. Absent for providers without caching.
+    cache_creation_input_tokens?: number;
+    cache_read_input_tokens?: number;
+  };
 }
 
 export function extractGoogleText(candidate: any): string {
@@ -418,6 +426,12 @@ export function translateResponseToOpenAI(
         prompt_tokens: body.usage?.input_tokens || 0,
         completion_tokens: body.usage?.output_tokens || 0,
         total_tokens: (body.usage?.input_tokens || 0) + (body.usage?.output_tokens || 0),
+        ...(body.usage?.cache_creation_input_tokens != null && {
+          cache_creation_input_tokens: body.usage.cache_creation_input_tokens,
+        }),
+        ...(body.usage?.cache_read_input_tokens != null && {
+          cache_read_input_tokens: body.usage.cache_read_input_tokens,
+        }),
       },
     };
   }
@@ -458,7 +472,7 @@ export function translateStreamChunkToOpenAI(
   provider: ProviderType,
   chunk: any,
   model: string
-): { sseData: string; done: boolean; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } } | null {
+): { sseData: string; done: boolean; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number } } | null {
   if (provider === "OPENAI" || provider === "AZURE_OPENAI") {
     if (chunk === "[DONE]") return { sseData: "data: [DONE]\n\n", done: true };
     try {
@@ -475,7 +489,28 @@ export function translateStreamChunkToOpenAI(
   if (provider === "ANTHROPIC") {
     try {
       const parsed = typeof chunk === "string" ? JSON.parse(chunk) : chunk;
-      if (parsed.type === "message_start") return null;
+      if (parsed.type === "message_start") {
+        // No OpenAI-format chunk maps to message_start, but it carries the
+        // authoritative input + prompt-cache token counts. Surface them as a
+        // usage-only result so streaming consumers can settle accurately.
+        const u = parsed.message?.usage;
+        if (!u) return null;
+        return {
+          sseData: "",
+          done: false,
+          usage: {
+            prompt_tokens: u.input_tokens || 0,
+            completion_tokens: 0,
+            total_tokens: u.input_tokens || 0,
+            ...(u.cache_creation_input_tokens != null && {
+              cache_creation_input_tokens: u.cache_creation_input_tokens,
+            }),
+            ...(u.cache_read_input_tokens != null && {
+              cache_read_input_tokens: u.cache_read_input_tokens,
+            }),
+          },
+        };
+      }
       if (parsed.type === "content_block_start") return null;
       if (parsed.type === "ping") return null;
 
@@ -1083,6 +1118,10 @@ export interface AnthropicStreamState {
   model: string;
   inputTokens: number;
   outputTokens: number;
+  /** Anthropic `cache_creation_input_tokens` (cache write) seen at message_start. */
+  cacheWriteTokens: number;
+  /** Anthropic `cache_read_input_tokens` (cache read) seen at message_start. */
+  cacheReadTokens: number;
   /** True iff upstream actually reported usage tokens (input or output). */
   usageObserved: boolean;
   textBlockOpen: boolean;
@@ -1102,6 +1141,8 @@ export function createAnthropicStreamState(model: string): AnthropicStreamState 
     model,
     inputTokens: 0,
     outputTokens: 0,
+    cacheWriteTokens: 0,
+    cacheReadTokens: 0,
     usageObserved: false,
     textBlockOpen: false,
     textBlockIndex: -1,
@@ -1190,6 +1231,14 @@ export function translateStreamChunkToAnthropic(
       const usage = parsed.message?.usage;
       if (usage?.input_tokens) {
         state.inputTokens = usage.input_tokens;
+        state.usageObserved = true;
+      }
+      if (usage?.cache_creation_input_tokens) {
+        state.cacheWriteTokens = usage.cache_creation_input_tokens;
+        state.usageObserved = true;
+      }
+      if (usage?.cache_read_input_tokens) {
+        state.cacheReadTokens = usage.cache_read_input_tokens;
         state.usageObserved = true;
       }
       if (parsed.message?.id) state.messageId = parsed.message.id;

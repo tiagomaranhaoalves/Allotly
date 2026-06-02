@@ -13,7 +13,13 @@ import {
 import { consumeSseUpstream } from "./upstream-stream";
 
 export interface StreamResult {
-  usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | null;
+  usage: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    cache_creation_input_tokens?: number;
+    cache_read_input_tokens?: number;
+  } | null;
   fullContent: string;
 }
 
@@ -98,18 +104,29 @@ export async function streamProviderResponse(
               const parsed = JSON.parse(data);
               const result = translateStreamChunkToOpenAI(provider, parsed, model);
               if (result) {
-                res.write(result.sseData);
-                if (result.usage) usage = result.usage;
+                // Anthropic usage is captured authoritatively by the explicit
+                // message_start / message_delta blocks below; do NOT copy
+                // result.usage here — the message_delta result omits
+                // prompt_tokens and the cache buckets and would clobber the
+                // input/cache counts captured at message_start.
+                if (result.sseData) res.write(result.sseData);
                 if (parsed.type === "content_block_delta") {
                   fullContent += parsed.delta?.text || "";
                 }
               }
 
               if (parsed.type === "message_start" && parsed.message?.usage) {
+                const mu = parsed.message.usage;
                 usage = {
-                  prompt_tokens: parsed.message.usage.input_tokens || 0,
+                  prompt_tokens: mu.input_tokens || 0,
                   completion_tokens: 0,
-                  total_tokens: parsed.message.usage.input_tokens || 0,
+                  total_tokens: mu.input_tokens || 0,
+                  ...(mu.cache_creation_input_tokens != null && {
+                    cache_creation_input_tokens: mu.cache_creation_input_tokens,
+                  }),
+                  ...(mu.cache_read_input_tokens != null && {
+                    cache_read_input_tokens: mu.cache_read_input_tokens,
+                  }),
                 };
               }
               if (parsed.type === "message_delta" && parsed.usage) {
@@ -187,8 +204,27 @@ export async function streamProviderResponse(
             const parsed = JSON.parse(data);
             const result = translateStreamChunkToOpenAI(provider, parsed, model);
             if (result) {
-              if (!stopTriggered) res.write(result.sseData);
-              if (result.usage) usage = result.usage;
+              if (!stopTriggered && result.sseData) res.write(result.sseData);
+              if (result.usage) {
+                // MERGE, do not overwrite: a trailing Anthropic message_delta
+                // frame carries prompt_tokens: 0 and no cache buckets, which
+                // would clobber the input + cache counts captured earlier at
+                // message_start. Prefer the non-zero/defined value from
+                // whichever frame supplied it.
+                const u = result.usage;
+                const prev = usage;
+                const mergedPrompt = u.prompt_tokens || prev?.prompt_tokens || 0;
+                const mergedCompletion = u.completion_tokens || prev?.completion_tokens || 0;
+                const mergedCacheWrite = u.cache_creation_input_tokens ?? prev?.cache_creation_input_tokens;
+                const mergedCacheRead = u.cache_read_input_tokens ?? prev?.cache_read_input_tokens;
+                usage = {
+                  prompt_tokens: mergedPrompt,
+                  completion_tokens: mergedCompletion,
+                  total_tokens: mergedPrompt + mergedCompletion,
+                  ...(mergedCacheWrite != null && { cache_creation_input_tokens: mergedCacheWrite }),
+                  ...(mergedCacheRead != null && { cache_read_input_tokens: mergedCacheRead }),
+                };
+              }
             }
           } catch {}
         }
@@ -221,7 +257,12 @@ export async function readNonStreamingResponse(
 // =============================================================================
 
 export interface AnthropicStreamResult {
-  usage: { input_tokens: number; output_tokens: number } | null;
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_creation_input_tokens?: number;
+    cache_read_input_tokens?: number;
+  } | null;
   fullContent: string;
   stopReason: string | null;
   /** True iff at least one `message_start` event was emitted to the client. */
@@ -295,7 +336,12 @@ export async function streamProviderResponseAsAnthropic(
   return {
     // Null when upstream never reported usage — caller falls back to estimating from fullContent.
     usage: state.usageObserved
-      ? { input_tokens: state.inputTokens, output_tokens: state.outputTokens }
+      ? {
+          input_tokens: state.inputTokens,
+          output_tokens: state.outputTokens,
+          ...(state.cacheWriteTokens > 0 && { cache_creation_input_tokens: state.cacheWriteTokens }),
+          ...(state.cacheReadTokens > 0 && { cache_read_input_tokens: state.cacheReadTokens }),
+        }
       : null,
     fullContent: state.fullText,
     stopReason: state.stopReason,

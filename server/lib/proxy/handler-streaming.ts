@@ -40,6 +40,7 @@ import {
   estimateInputTokens,
   estimateInputCostCents,
   calculateOutputCostCents,
+  calculateSettledCostCents,
   clampMaxTokens,
   reserveBudget,
   refundBudget,
@@ -365,7 +366,13 @@ export async function processChatCompletionStreaming(
     }
 
     // ---- Stream consumption ----
-    type UpstreamUsage = { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+    type UpstreamUsage = {
+      prompt_tokens: number;
+      completion_tokens: number;
+      total_tokens: number;
+      cache_creation_input_tokens?: number;
+      cache_read_input_tokens?: number;
+    };
     let fullContent = "";
     let outputTokensSoFar = 0;
     let upstreamUsage: UpstreamUsage | null = null;
@@ -379,7 +386,26 @@ export async function processChatCompletionStreaming(
       try { parsed = JSON.parse(rawData); } catch { return; }
 
       const result = translateStreamChunkToOpenAI(provider, parsed, effectiveModel);
-      if (result?.usage) upstreamUsage = result.usage as UpstreamUsage;
+      if (result?.usage) {
+        // MERGE rather than overwrite: Anthropic reports input + cache buckets
+        // at message_start and output tokens (with prompt_tokens: 0) at
+        // message_delta, so a naive assignment would drop the input/cache
+        // counts. Take the non-zero/defined value from whichever chunk
+        // supplied it.
+        const u = result.usage as UpstreamUsage;
+        const prev = upstreamUsage;
+        const merged: UpstreamUsage = {
+          prompt_tokens: u.prompt_tokens || prev?.prompt_tokens || 0,
+          completion_tokens: u.completion_tokens || prev?.completion_tokens || 0,
+          total_tokens: 0,
+          cache_creation_input_tokens:
+            u.cache_creation_input_tokens ?? prev?.cache_creation_input_tokens,
+          cache_read_input_tokens:
+            u.cache_read_input_tokens ?? prev?.cache_read_input_tokens,
+        };
+        merged.total_tokens = merged.prompt_tokens + merged.completion_tokens;
+        upstreamUsage = merged;
+      }
 
       // Per-provider delta extraction → unify on OpenAI shape internally
       let deltaText = "";
@@ -447,7 +473,12 @@ export async function processChatCompletionStreaming(
       const u = upstreamUsage as UpstreamUsage | null;
       const actualOutput = u?.completion_tokens ?? outputTokensSoFar;
       const actualInput = u?.prompt_tokens ?? inputTokens;
-      const actualCost = estimateInputCostCents(actualInput, pricing) + calculateOutputCostCents(actualOutput, pricing);
+      const actualCost = calculateSettledCostCents({
+        inputTokens: actualInput,
+        outputTokens: actualOutput,
+        cacheWriteTokens: u?.cache_creation_input_tokens,
+        cacheReadTokens: u?.cache_read_input_tokens,
+      }, pricing);
       await adjustBudgetAfterResponse(membershipId, reservedCostCents, actualCost);
       reservedCostCents = 0;
       if (concurrencyAcquired) {
@@ -516,7 +547,12 @@ export async function processChatCompletionStreaming(
       );
     }
 
-    const actualCostCents = estimateInputCostCents(actualInputTokens, pricing) + calculateOutputCostCents(actualOutputTokens, pricing);
+    const actualCostCents = calculateSettledCostCents({
+      inputTokens: actualInputTokens,
+      outputTokens: actualOutputTokens,
+      cacheWriteTokens: finalUsage?.cache_creation_input_tokens,
+      cacheReadTokens: finalUsage?.cache_read_input_tokens,
+    }, pricing);
     await adjustBudgetAfterResponse(membershipId, reservedCostCents, actualCostCents);
     reservedCostCents = 0;
 
