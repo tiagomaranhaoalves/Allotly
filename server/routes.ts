@@ -36,6 +36,8 @@ import {
   buildDisplayBlock,
   formatMoney,
   convertFromUsdCents,
+  centsToMicroCents,
+  microCentsToCents,
   CURRENCY_LOCALES,
   type SupportedCurrency,
 } from "./lib/currency";
@@ -170,7 +172,7 @@ export async function registerRoutes(
         teamId: defaultTeam.id,
         userId: user.id,
         accessType: "TEAM",
-        monthlyBudgetCents: 500,
+        monthlyBudgetCents: centsToMicroCents(500),
         allowedModels: null,
         allowedProviders: null,
         currentPeriodSpendCents: 0,
@@ -187,7 +189,7 @@ export async function registerRoutes(
         keyPrefix,
       });
 
-      await redisSet(REDIS_KEYS.budget(membership.id), String(500));
+      await redisSet(REDIS_KEYS.budget(membership.id), String(centsToMicroCents(500)));
       await redisSet(`allotly:pending_key:${user.id}`, rawKey, 7 * 24 * 60 * 60);
 
       const baseUrl = `${req.protocol}://${req.get('host')}`;
@@ -471,7 +473,7 @@ export async function registerRoutes(
             apiKey: pendingKey || null,
             keyPrefix: activeKey?.keyPrefix || null,
             teamName: team?.name || null,
-            budgetCents: membership.monthlyBudgetCents,
+            budgetCents: microCentsToCents(membership.monthlyBudgetCents),
             accessType: membership.accessType,
             periodEnd: membership.periodEnd,
             voucherExpiresAt: membership.voucherExpiresAt,
@@ -528,8 +530,8 @@ export async function registerRoutes(
       res.json({
         keyPrefix: activeKey?.keyPrefix || null,
         teamName: team?.name || null,
-        budgetCents: membership.monthlyBudgetCents,
-        spentCents: membership.currentPeriodSpendCents,
+        budgetCents: microCentsToCents(membership.monthlyBudgetCents),
+        spentCents: microCentsToCents(membership.currentPeriodSpendCents),
         accessType: membership.accessType,
         periodEnd: membership.periodEnd,
         voucherExpiresAt: membership.voucherExpiresAt,
@@ -1509,6 +1511,9 @@ export async function registerRoutes(
       const beforeUser = { name: memberUser?.name, email: memberUser?.email };
 
       const { userName, userEmail, ...membershipData } = parsed.data;
+      if (membershipData.monthlyBudgetCents !== undefined) {
+        membershipData.monthlyBudgetCents = centsToMicroCents(membershipData.monthlyBudgetCents);
+      }
 
       if (userEmail && memberUser && userEmail !== memberUser.email) {
         const existing = await storage.getUserByEmail(userEmail);
@@ -1557,7 +1562,7 @@ export async function registerRoutes(
 
       const changes: Record<string, { from: any; to: any }> = {};
       if (membershipData.monthlyBudgetCents !== undefined && membershipData.monthlyBudgetCents !== beforeMembership.monthlyBudgetCents) {
-        changes.monthlyBudgetCents = { from: beforeMembership.monthlyBudgetCents, to: membershipData.monthlyBudgetCents };
+        changes.monthlyBudgetCents = { from: microCentsToCents(beforeMembership.monthlyBudgetCents), to: microCentsToCents(membershipData.monthlyBudgetCents) };
       }
       if (membershipData.allowedModels !== undefined) {
         changes.allowedModels = { from: beforeMembership.allowedModels, to: membershipData.allowedModels };
@@ -1581,7 +1586,12 @@ export async function registerRoutes(
         metadata: { changes, userId: membership.userId },
       });
 
-      res.json(updated);
+      if (!updated) return res.status(404).json({ message: "Membership not found" });
+      res.json({
+        ...updated,
+        monthlyBudgetCents: microCentsToCents(updated.monthlyBudgetCents),
+        currentPeriodSpendCents: microCentsToCents(updated.currentPeriodSpendCents),
+      });
     } catch (e: any) {
       console.error("Member budget update error:", e);
       res.status(500).json({ message: "Internal server error" });
@@ -1637,8 +1647,8 @@ export async function registerRoutes(
         targetType: "team_membership",
         targetId: membership.id,
         metadata: {
-          previousSpend,
-          budgetCents: membership.monthlyBudgetCents,
+          previousSpend: microCentsToCents(previousSpend),
+          budgetCents: microCentsToCents(membership.monthlyBudgetCents),
           newPeriodStart: now.toISOString(),
           newPeriodEnd: newPeriodEnd.toISOString(),
           wasExhausted: membership.status === "BUDGET_EXHAUSTED",
@@ -1649,7 +1659,7 @@ export async function registerRoutes(
         message: "Budget reset successfully",
         newPeriodStart: now.toISOString(),
         newPeriodEnd: newPeriodEnd.toISOString(),
-        budgetCents: membership.monthlyBudgetCents,
+        budgetCents: microCentsToCents(membership.monthlyBudgetCents),
       });
     } catch (e: any) {
       console.error("Budget reset error:", e);
@@ -1677,8 +1687,9 @@ export async function registerRoutes(
       if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
 
       const { amountCents, reason } = parsed.data;
+      const amountMicroCents = centsToMicroCents(amountCents);
       const previousSpend = membership.currentPeriodSpendCents;
-      const newSpend = Math.max(0, previousSpend - amountCents);
+      const newSpend = Math.max(0, previousSpend - amountMicroCents);
       const effectiveCreditCents = previousSpend - newSpend;
 
       await storage.updateMembership(membership.id, { currentPeriodSpendCents: newSpend });
@@ -1703,20 +1714,20 @@ export async function registerRoutes(
         targetId: membership.id,
         metadata: {
           requestedCreditCents: amountCents,
-          effectiveCreditCents,
+          effectiveCreditCents: microCentsToCents(effectiveCreditCents),
           reason,
-          previousSpendCents: previousSpend,
-          newSpendCents: newSpend,
+          previousSpendCents: microCentsToCents(previousSpend),
+          newSpendCents: microCentsToCents(newSpend),
           wasExhausted: membership.status === "BUDGET_EXHAUSTED",
         },
       });
 
       res.json({
         message: "Budget credit applied",
-        amountCents: effectiveCreditCents,
+        amountCents: microCentsToCents(effectiveCreditCents),
         requestedCents: amountCents,
-        previousSpendCents: previousSpend,
-        newSpendCents: newSpend,
+        previousSpendCents: microCentsToCents(previousSpend),
+        newSpendCents: microCentsToCents(newSpend),
       });
     } catch (e: any) {
       console.error("Budget credit error:", e);
@@ -1794,7 +1805,7 @@ export async function registerRoutes(
         provider: l.provider,
         inputTokens: l.inputTokens,
         outputTokens: l.outputTokens,
-        costCents: l.costCents,
+        costCents: microCentsToCents(l.costCents),
         statusCode: l.statusCode,
         durationMs: l.durationMs,
       }));
@@ -1917,7 +1928,7 @@ export async function registerRoutes(
         teamId: targetTeamId,
         userId: memberUser.id,
         accessType: "TEAM",
-        monthlyBudgetCents: newBudgetCents,
+        monthlyBudgetCents: centsToMicroCents(newBudgetCents),
         allowedModels: newAllowedModels || null,
         allowedProviders: newAllowedProviders || null,
         currentPeriodSpendCents: 0,
@@ -1934,7 +1945,7 @@ export async function registerRoutes(
         keyPrefix: prefix,
       });
 
-      await redisSet(REDIS_KEYS.budget(newMembership.id), String(newBudgetCents));
+      await redisSet(REDIS_KEYS.budget(newMembership.id), String(centsToMicroCents(newBudgetCents)));
 
       await storage.createAuditLog({
         orgId: user.orgId,
@@ -2698,8 +2709,8 @@ export async function registerRoutes(
       memberCount: memberships.length,
       adminName: admin?.name || admin?.email,
       adminEmail: admin?.email,
-      totalSpendCents: totalSpend,
-      totalBudgetCents: totalBudget,
+      totalSpendCents: microCentsToCents(totalSpend),
+      totalBudgetCents: microCentsToCents(totalBudget),
     });
   });
 
@@ -2973,7 +2984,7 @@ export async function registerRoutes(
         createdById: user.id,
         bundleId: bundleId || null,
         label: label || null,
-        budgetCents,
+        budgetCents: centsToMicroCents(budgetCents),
         allowedProviders,
         allowedModels: allowedModels || null,
         expiresAt: new Date(expiresAt),
@@ -3118,7 +3129,7 @@ export async function registerRoutes(
 
       const updateData: Record<string, any> = {};
       if (parsed.data.label !== undefined) updateData.label = parsed.data.label;
-      if (parsed.data.budgetCents !== undefined) updateData.budgetCents = parsed.data.budgetCents;
+      if (parsed.data.budgetCents !== undefined) updateData.budgetCents = centsToMicroCents(parsed.data.budgetCents);
       if (parsed.data.expiresAt !== undefined) updateData.expiresAt = new Date(parsed.data.expiresAt);
       if (parsed.data.allowedProviders !== undefined) updateData.allowedProviders = parsed.data.allowedProviders;
       if (parsed.data.allowedModels !== undefined) updateData.allowedModels = parsed.data.allowedModels;
@@ -3135,6 +3146,9 @@ export async function registerRoutes(
           changes[key] = { from: fromVal, to: toVal };
         }
       }
+      if (changes.budgetCents) {
+        changes.budgetCents = { from: microCentsToCents(changes.budgetCents.from), to: microCentsToCents(changes.budgetCents.to) };
+      }
 
       await storage.createAuditLog({
         orgId: user.orgId,
@@ -3145,7 +3159,7 @@ export async function registerRoutes(
         metadata: { changes, code: voucher.code },
       });
 
-      res.json(updated);
+      res.json({ ...updated, budgetCents: microCentsToCents(updated.budgetCents) });
     } catch (e: any) {
       console.error("Voucher update error:", e);
       res.status(500).json({ message: "Internal server error" });
@@ -3217,7 +3231,7 @@ export async function registerRoutes(
       const orgCurrency = getOrgCurrency(org);
       const fxSnap = await getActiveRates();
       const budgetFormatted = formatMoney(
-        convertFromUsdCents(voucher.budgetCents, orgCurrency, fxSnap.rates[orgCurrency]),
+        convertFromUsdCents(microCentsToCents(voucher.budgetCents), orgCurrency, fxSnap.rates[orgCurrency]),
         orgCurrency,
       );
 
@@ -3311,7 +3325,7 @@ export async function registerRoutes(
         orgId: user.orgId!,
         teamId: targetTeamId!,
         createdById: user.id,
-        budgetCents,
+        budgetCents: centsToMicroCents(budgetCents),
         allowedProviders: allowedProviders || ["OPENAI", "ANTHROPIC", "GOOGLE", "AZURE_OPENAI"],
         allowedModels: allowedModels || null,
         expiresAt: expiryDate,
@@ -3332,7 +3346,7 @@ export async function registerRoutes(
       });
 
       res.json({
-        vouchers: created.map(v => ({ id: v.id, code: v.code, budgetCents: v.budgetCents, expiresAt: v.expiresAt })),
+        vouchers: created.map(v => ({ id: v.id, code: v.code, budgetCents: microCentsToCents(v.budgetCents), expiresAt: v.expiresAt })),
       });
     } catch (e: any) {
       console.error("Voucher bulk create error:", e);
@@ -3444,14 +3458,15 @@ export async function registerRoutes(
       if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
 
       const { additionalBudgetCents } = parsed.data;
+      const additionalMicroCents = centsToMicroCents(additionalBudgetCents);
       const oldBudget = voucher.budgetCents;
-      const newBudget = oldBudget + additionalBudgetCents;
+      const newBudget = oldBudget + additionalMicroCents;
 
       const updated = await storage.updateVoucher(voucher.id, { budgetCents: newBudget });
 
       const memberships = await storage.getMembershipsByVoucherId(voucher.id);
       for (const membership of memberships) {
-        const newMemberBudget = (membership.monthlyBudgetCents || 0) + additionalBudgetCents;
+        const newMemberBudget = (membership.monthlyBudgetCents || 0) + additionalMicroCents;
         await storage.updateMembership(membership.id, {
           monthlyBudgetCents: newMemberBudget,
         });
@@ -3459,7 +3474,7 @@ export async function registerRoutes(
         const budgetKey = REDIS_KEYS.budget(membership.id);
         const currentBudget = await redisGet(budgetKey);
         if (currentBudget !== null) {
-          await redisSet(budgetKey, String(parseInt(currentBudget) + additionalBudgetCents));
+          await redisSet(budgetKey, String(parseInt(currentBudget) + additionalMicroCents));
         } else {
           const remaining = newMemberBudget - (membership.currentPeriodSpendCents || 0);
           await redisSet(budgetKey, String(remaining));
@@ -3483,10 +3498,10 @@ export async function registerRoutes(
         action: "voucher.topped_up",
         targetType: "voucher",
         targetId: voucher.id,
-        metadata: { code: voucher.code, from: oldBudget, to: newBudget, added: additionalBudgetCents },
+        metadata: { code: voucher.code, from: microCentsToCents(oldBudget), to: microCentsToCents(newBudget), added: additionalBudgetCents },
       });
 
-      res.json(updated);
+      res.json({ ...updated, budgetCents: microCentsToCents(updated.budgetCents) });
     } catch (e: any) {
       console.error("Voucher top-up error:", e);
       res.status(500).json({ message: "Internal server error" });
@@ -3541,9 +3556,9 @@ export async function registerRoutes(
         return [
           v.code,
           v.status,
-          v.budgetCents,
-          totalSpent,
-          remaining,
+          microCentsToCents(v.budgetCents),
+          microCentsToCents(totalSpent),
+          microCentsToCents(remaining),
           new Date(v.expiresAt).toISOString(),
           escapeCsv(redeemedBy),
           redeemedAt,
@@ -3701,14 +3716,14 @@ export async function registerRoutes(
           redeemedBy: redemption.user?.email || "anonymous",
           redeemedAt: new Date(redemption.redeemedAt).toISOString(),
           keyPrefix,
-          currentSpendCents: currentSpend,
+          currentSpendCents: microCentsToCents(currentSpend),
           requestsMade,
           lastRequestAt,
           membershipStatus: membership?.status || "unknown",
         });
       }
 
-      res.json({ voucher, details });
+      res.json({ voucher: { ...voucher, budgetCents: microCentsToCents(voucher.budgetCents) }, details });
     } catch (e: any) {
       console.error("Voucher details error:", e);
       res.status(500).json({ message: "Internal server error" });
@@ -4106,14 +4121,18 @@ export async function registerRoutes(
       res.json(stats);
     } else {
       const membership = await resolveOwnedMembership(user.id, req.query.membershipId);
-      const budgetCents = membership?.monthlyBudgetCents || 0;
-      const spendCents = membership?.currentPeriodSpendCents || 0;
+      const budgetCents = microCentsToCents(membership?.monthlyBudgetCents || 0);
+      const spendCents = microCentsToCents(membership?.currentPeriodSpendCents || 0);
       const org = await storage.getOrganization(user.orgId);
       const orgCurrency = getOrgCurrency(org);
       const rates = await getActiveRates();
       const display = buildDisplayBlock(Math.max(0, budgetCents - spendCents), budgetCents, orgCurrency, rates);
       res.json({
-        membership: membership || null,
+        membership: membership ? {
+          ...membership,
+          monthlyBudgetCents: microCentsToCents(membership.monthlyBudgetCents),
+          currentPeriodSpendCents: microCentsToCents(membership.currentPeriodSpendCents),
+        } : null,
         budgetCents,
         spendCents,
         accessType: membership?.accessType || "TEAM",
@@ -4295,8 +4314,8 @@ export async function registerRoutes(
         teamName: teams[i]?.name || "Unknown",
         accessType: m.accessType,
         status: m.status,
-        monthlyBudgetCents: m.monthlyBudgetCents,
-        currentPeriodSpendCents: m.currentPeriodSpendCents,
+        monthlyBudgetCents: microCentsToCents(m.monthlyBudgetCents),
+        currentPeriodSpendCents: microCentsToCents(m.currentPeriodSpendCents),
         periodEnd: m.periodEnd,
         voucherExpiresAt: m.voucherExpiresAt,
       }));
@@ -4427,7 +4446,11 @@ export async function registerRoutes(
     const user = await storage.getUser(req.session.userId!);
     if (!user) return res.status(401).json({ message: "Unauthorized" });
     const org = await storage.getOrganization(user.orgId);
-    res.json(org);
+    res.json(org ? {
+      ...org,
+      orgBudgetCeilingCents: org.orgBudgetCeilingCents != null ? microCentsToCents(org.orgBudgetCeilingCents) : org.orgBudgetCeilingCents,
+      defaultMemberBudgetCents: org.defaultMemberBudgetCents != null ? microCentsToCents(org.defaultMemberBudgetCents) : org.defaultMemberBudgetCents,
+    } : org);
   });
 
   // Returns the live FX snapshot used for currency display. Authenticated so
@@ -4500,8 +4523,8 @@ export async function registerRoutes(
     if (name !== undefined) updateData.name = name;
     if (billingEmail !== undefined) updateData.billingEmail = billingEmail;
     if (description !== undefined) updateData.description = description;
-    if (orgBudgetCeilingCents !== undefined) updateData.orgBudgetCeilingCents = orgBudgetCeilingCents;
-    if (defaultMemberBudgetCents !== undefined) updateData.defaultMemberBudgetCents = defaultMemberBudgetCents;
+    if (orgBudgetCeilingCents !== undefined) updateData.orgBudgetCeilingCents = orgBudgetCeilingCents === null ? null : centsToMicroCents(orgBudgetCeilingCents);
+    if (defaultMemberBudgetCents !== undefined) updateData.defaultMemberBudgetCents = defaultMemberBudgetCents === null ? null : centsToMicroCents(defaultMemberBudgetCents);
     if (currency !== undefined) updateData.currency = currency;
     if (settings !== undefined) {
       const existingSettings = (before?.settings as Record<string, any>) || {};
@@ -4670,7 +4693,7 @@ export async function registerRoutes(
               inputTokens: l.inputTokens || 0,
               outputTokens: l.outputTokens || 0,
               totalTokens: (l.inputTokens || 0) + (l.outputTokens || 0),
-              costCents: l.costCents || 0,
+              costCents: microCentsToCents(l.costCents || 0),
               responseStatus: l.statusCode || 200,
             });
           }
@@ -4723,9 +4746,9 @@ export async function registerRoutes(
             team: team?.name || "",
             role: memberUser?.orgRole || "",
             accessType: m.accessType,
-            budgetCents: m.monthlyBudgetCents,
-            spentCents: m.currentPeriodSpendCents,
-            remainingCents: m.monthlyBudgetCents - m.currentPeriodSpendCents,
+            budgetCents: microCentsToCents(m.monthlyBudgetCents),
+            spentCents: microCentsToCents(m.currentPeriodSpendCents),
+            remainingCents: microCentsToCents(m.monthlyBudgetCents - m.currentPeriodSpendCents),
             status: m.status,
             keyStatus: activeKey ? "ACTIVE" : (keys.length > 0 ? "REVOKED" : "NONE"),
             createdAt: new Date(m.createdAt).toISOString(),
@@ -4769,7 +4792,7 @@ export async function registerRoutes(
 
       const org = await storage.getOrganization(user.orgId);
       const orgSettings = (org?.settings as Record<string, any>) || {};
-      const defaultBudget = orgSettings.defaults?.defaultBudgetCents || org?.defaultMemberBudgetCents || 1000;
+      const defaultBudget = orgSettings.defaults?.defaultBudgetCents || (org?.defaultMemberBudgetCents != null ? microCentsToCents(org.defaultMemberBudgetCents) : 0) || 1000;
       const defaultModels = orgSettings.defaults?.defaultAllowedModels || null;
 
       const created: { email: string; keyPrefix: string }[] = [];
@@ -4810,7 +4833,7 @@ export async function registerRoutes(
             userId: memberUser.id,
             teamId: team.id,
             accessType: "TEAM",
-            monthlyBudgetCents: budgetCents,
+            monthlyBudgetCents: centsToMicroCents(budgetCents),
             currentPeriodSpendCents: 0,
             periodStart: now,
             periodEnd: periodEnd,
@@ -4826,7 +4849,7 @@ export async function registerRoutes(
             keyPrefix,
           });
 
-          await redisSet(REDIS_KEYS.budget(membership.id), String(budgetCents));
+          await redisSet(REDIS_KEYS.budget(membership.id), String(centsToMicroCents(budgetCents)));
 
           try {
             const tmpl = emailTemplates.memberInvite(
@@ -5118,7 +5141,7 @@ export async function registerRoutes(
         totalUsers: allUsers.length,
         totalVouchers,
         activeVouchers,
-        totalSpend: totalSpendCents,
+        totalSpend: microCentsToCents(totalSpendCents),
       });
     } catch (e: any) {
       console.error("Admin stats error:", e);
@@ -5151,7 +5174,12 @@ export async function registerRoutes(
         id: u.id, email: u.email, name: u.name, orgRole: u.orgRole,
         status: u.status, isVoucherUser: u.isVoucherUser, createdAt: u.createdAt, lastLoginAt: u.lastLoginAt,
       }));
-      res.json({ ...org, users: safeUsers });
+      res.json({
+        ...org,
+        orgBudgetCeilingCents: org.orgBudgetCeilingCents != null ? microCentsToCents(org.orgBudgetCeilingCents) : org.orgBudgetCeilingCents,
+        defaultMemberBudgetCents: org.defaultMemberBudgetCents != null ? microCentsToCents(org.defaultMemberBudgetCents) : org.defaultMemberBudgetCents,
+        users: safeUsers,
+      });
     } catch (e: any) {
       console.error("Admin org detail error:", e);
       res.status(500).json({ message: "Internal server error" });
@@ -5517,7 +5545,7 @@ export async function registerRoutes(
             await tx.update(teamMemberships)
               .set({
                 teamId: targetTeam.id,
-                monthlyBudgetCents: parsed.data.monthlyBudgetCents,
+                monthlyBudgetCents: centsToMicroCents(parsed.data.monthlyBudgetCents),
                 currentPeriodSpendCents: 0,
                 periodStart: now,
                 periodEnd,
@@ -5540,7 +5568,7 @@ export async function registerRoutes(
               teamId: targetTeam.id,
               userId: user.id,
               accessType: "TEAM",
-              monthlyBudgetCents: parsed.data.monthlyBudgetCents,
+              monthlyBudgetCents: centsToMicroCents(parsed.data.monthlyBudgetCents),
               currentPeriodSpendCents: 0,
               periodStart: now,
               periodEnd,
@@ -5554,7 +5582,7 @@ export async function registerRoutes(
             teamId: targetTeam.id,
             userId: user.id,
             accessType: "TEAM",
-            monthlyBudgetCents: parsed.data.monthlyBudgetCents,
+            monthlyBudgetCents: centsToMicroCents(parsed.data.monthlyBudgetCents),
             currentPeriodSpendCents: 0,
             periodStart: now,
             periodEnd,
@@ -5567,7 +5595,7 @@ export async function registerRoutes(
           .set({ orgId: targetOrg.id, orgRole: finalRole } as any)
           .where(eq(usersTable.id, user.id));
 
-        await redisSet(REDIS_KEYS.budget(activeMembershipId), String(parsed.data.monthlyBudgetCents));
+        await redisSet(REDIS_KEYS.budget(activeMembershipId), String(centsToMicroCents(parsed.data.monthlyBudgetCents)));
 
         const { key: newRawKey, hash: newKeyHash, prefix: newKeyPrefix } = generateAllotlyKey();
         await tx.insert(allotlyApiKeysTable).values({
@@ -5649,8 +5677,8 @@ export async function registerRoutes(
               email: m.email,
               name: m.name,
               status: m.status,
-              monthlyBudgetCents: m.monthlyBudgetCents,
-              currentPeriodSpendCents: m.currentPeriodSpendCents,
+              monthlyBudgetCents: microCentsToCents(m.monthlyBudgetCents),
+              currentPeriodSpendCents: microCentsToCents(m.currentPeriodSpendCents),
               accessType: m.accessType,
             })),
           };
@@ -5806,8 +5834,8 @@ export async function registerRoutes(
         totalRequests: totalRequests[0]?.count ?? 0,
         totalErrors: errors[0]?.count ?? 0,
         last24hRequests: last24h[0]?.count ?? 0,
-        byProvider,
-        byModel,
+        byProvider: byProvider.map(p => ({ ...p, totalCostCents: microCentsToCents(Number(p.totalCostCents) || 0) })),
+        byModel: byModel.map(m => ({ ...m, totalCostCents: microCentsToCents(Number(m.totalCostCents) || 0) })),
       });
     } catch (e: any) {
       console.error("Admin proxy stats error:", e);
@@ -5857,7 +5885,7 @@ export async function registerRoutes(
             status: v.status,
             maxRedemptions: v.maxRedemptions,
             currentRedemptions: v.currentRedemptions,
-            budgetCents: v.budgetCents,
+            budgetCents: microCentsToCents(v.budgetCents),
             expiresAt: v.expiresAt,
             orgId: org.id,
             orgName: org.name,

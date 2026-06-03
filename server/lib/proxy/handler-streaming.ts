@@ -38,9 +38,9 @@ import {
   incrementBundleRequests,
   getBundleRequestsRemaining,
   estimateInputTokens,
-  estimateInputCostCents,
-  calculateOutputCostCents,
-  calculateSettledCostCents,
+  estimateInputCostMicroCents,
+  calculateOutputCostMicroCents,
+  calculateSettledCostMicroCents,
   clampMaxTokens,
   reserveBudget,
   refundBudget,
@@ -48,6 +48,7 @@ import {
   createProxyError,
   type ProxyError,
 } from "./safeguards";
+import { microCentsToCents } from "../currency";
 import {
   detectProvider,
   translateToProvider,
@@ -138,8 +139,8 @@ async function buildBudgetSnapshot(membership: any, tier: RateLimitTier, remaini
     : Math.max(0, tier.rpm - parseInt(await redisGet(rlKey) || "0"));
   const remaining = remainingOverride ?? parseInt(await redisGet(budgetKey) || String(membership.monthlyBudgetCents - membership.currentPeriodSpendCents));
   return {
-    remaining_cents: Math.max(0, remaining),
-    total_cents: membership.monthlyBudgetCents,
+    remaining_cents: Math.max(0, microCentsToCents(remaining)),
+    total_cents: microCentsToCents(membership.monthlyBudgetCents),
     currency: "usd",
     period_end: new Date(membership.periodEnd).toISOString(),
     requests_remaining: requestsRemaining,
@@ -281,7 +282,7 @@ export async function processChatCompletionStreaming(
     }
 
     const inputTokens = estimateInputTokens(parsed.messages);
-    const inputCostCents = estimateInputCostCents(inputTokens, pricing);
+    const inputCostCents = estimateInputCostMicroCents(inputTokens, pricing);
     const remainingBudgetCents = membership.monthlyBudgetCents - membership.currentPeriodSpendCents;
     const clientTokenCap = (parsed as any).max_completion_tokens ?? parsed.max_tokens;
     const { effectiveMaxTokens, clamped } = clampMaxTokens(remainingBudgetCents, inputCostCents, pricing, clientTokenCap);
@@ -295,7 +296,7 @@ export async function processChatCompletionStreaming(
     //   3. 4096 (parity floor with processChatCompletion when neither
     //      the client nor the pricing row supplies a cap)
     const budgetEstimateTokens = effectiveMaxTokens ?? pricing.maxOutputTokens ?? 4096;
-    const estimatedOutputCostCents = calculateOutputCostCents(budgetEstimateTokens, pricing);
+    const estimatedOutputCostCents = calculateOutputCostMicroCents(budgetEstimateTokens, pricing);
     const totalEstimatedCostCents = inputCostCents + estimatedOutputCostCents;
     reservedCostCents = totalEstimatedCostCents;
 
@@ -473,7 +474,7 @@ export async function processChatCompletionStreaming(
       const u = upstreamUsage as UpstreamUsage | null;
       const actualOutput = u?.completion_tokens ?? outputTokensSoFar;
       const actualInput = u?.prompt_tokens ?? inputTokens;
-      const actualCost = calculateSettledCostCents({
+      const actualCost = calculateSettledCostMicroCents({
         inputTokens: actualInput,
         outputTokens: actualOutput,
         cacheWriteTokens: u?.cache_creation_input_tokens,
@@ -547,7 +548,7 @@ export async function processChatCompletionStreaming(
       );
     }
 
-    const actualCostCents = calculateSettledCostCents({
+    const actualCostCents = calculateSettledCostMicroCents({
       inputTokens: actualInputTokens,
       outputTokens: actualOutputTokens,
       cacheWriteTokens: finalUsage?.cache_creation_input_tokens,
@@ -626,7 +627,7 @@ export async function processChatCompletionStreaming(
     await onComplete({
       body: finalBody,
       budgetSnapshot: snap,
-      costCents: actualCostCents,
+      costCents: microCentsToCents(actualCostCents),
       inputTokens: actualInputTokens,
       outputTokens: actualOutputTokens,
       maxTokensApplied: clamped,

@@ -2,6 +2,7 @@ import { getStripeSync, getUncachableStripeClient } from './stripeClient';
 import { storage } from './storage';
 import { sendEmail, emailTemplates } from './lib/email';
 import { redisSet, REDIS_KEYS } from './lib/redis';
+import { centsToMicroCents } from './lib/currency';
 
 export class WebhookHandlers {
   static async processWebhook(payload: Buffer, signature: string): Promise<void> {
@@ -121,8 +122,8 @@ export class WebhookHandlers {
         usedRedemptions: 0,
         totalProxyRequests: BUNDLE_LIMITS.totalProxyRequests,
         usedProxyRequests: 0,
-        maxBudgetPerVoucherCents: BUNDLE_LIMITS.maxBudgetPerVoucherCents,
-        maxBudgetPerRecipientCents: BUNDLE_LIMITS.maxBudgetPerRecipientCents,
+        maxBudgetPerVoucherCents: centsToMicroCents(BUNDLE_LIMITS.maxBudgetPerVoucherCents),
+        maxBudgetPerRecipientCents: centsToMicroCents(BUNDLE_LIMITS.maxBudgetPerRecipientCents),
         expiresAt,
         status: "ACTIVE",
       });

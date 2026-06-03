@@ -13,6 +13,7 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, asc, gte, lte, count, inArray } from "drizzle-orm";
+import { microCentsToCents } from "./lib/currency";
 
 export interface IStorage {
   createOrganization(org: InsertOrganization): Promise<Organization>;
@@ -549,7 +550,7 @@ export class DrizzleStorage implements IStorage {
       const spendResult = await db.select({
         total: sql<number>`COALESCE(SUM(${teamMemberships.currentPeriodSpendCents}), 0)`,
       }).from(teamMemberships).where(inArray(teamMemberships.teamId, teamIds));
-      totalSpendCents = Number(spendResult[0]?.total || 0);
+      totalSpendCents = microCentsToCents(Number(spendResult[0]?.total || 0));
     }
 
     return {
@@ -568,7 +569,7 @@ export class DrizzleStorage implements IStorage {
     const memberships = await this.getMembershipsByTeam(teamId);
     const teamMembers = memberships.filter(m => m.accessType === "TEAM");
     const voucherMembers = memberships.filter(m => m.accessType === "VOUCHER");
-    const totalSpendCents = memberships.reduce((sum, m) => sum + m.currentPeriodSpendCents, 0);
+    const totalSpendCents = microCentsToCents(memberships.reduce((sum, m) => sum + m.currentPeriodSpendCents, 0));
 
     return {
       totalSpendCents,
@@ -624,7 +625,7 @@ export class DrizzleStorage implements IStorage {
     return orgTeams.map(team => ({
       teamId: team.id,
       teamName: team.name,
-      spendCents: spendMap.get(team.id) || 0,
+      spendCents: microCentsToCents(spendMap.get(team.id) || 0),
     }));
   }
 
@@ -647,7 +648,7 @@ export class DrizzleStorage implements IStorage {
       .where(inArray(proxyRequestLogs.membershipId, mIds))
       .groupBy(proxyRequestLogs.provider);
 
-    return rows.map(r => ({ provider: r.provider, spendCents: Number(r.total) }));
+    return rows.map(r => ({ provider: r.provider, spendCents: microCentsToCents(Number(r.total)) }));
   }
 
   async getMemberDetailsForTeam(teamId: string): Promise<any[]> {
@@ -666,6 +667,8 @@ export class DrizzleStorage implements IStorage {
 
       result.push({
         ...m,
+        monthlyBudgetCents: microCentsToCents(m.monthlyBudgetCents),
+        currentPeriodSpendCents: microCentsToCents(m.currentPeriodSpendCents),
         userName: user?.name || user?.email?.split("@")[0] || "Unknown",
         userEmail: user?.email || "",
         isVoucherUser: user?.isVoucherUser || false,
@@ -734,7 +737,7 @@ export class DrizzleStorage implements IStorage {
         voucherInfo = {
           code: voucher.code,
           expiresAt: voucher.expiresAt,
-          budgetCents: voucher.budgetCents,
+          budgetCents: microCentsToCents(voucher.budgetCents),
           allowedProviders: voucher.allowedProviders,
           allowedModels: voucher.allowedModels,
         };
@@ -769,14 +772,24 @@ export class DrizzleStorage implements IStorage {
     }
     const enrichedLogs = proxyLogs.map(log => ({
       ...log,
+      costCents: microCentsToCents(log.costCents),
       projectName: log.apiKeyId ? (keyProjectMap.get(log.apiKeyId) || null) : null,
+    }));
+    const displaySnapshots = snapshots.map(s => ({
+      ...s,
+      totalCostCents: microCentsToCents(s.totalCostCents),
+      periodCostCents: microCentsToCents(s.periodCostCents),
     }));
 
     return {
-      membership,
+      membership: {
+        ...membership,
+        monthlyBudgetCents: microCentsToCents(membership.monthlyBudgetCents),
+        currentPeriodSpendCents: microCentsToCents(membership.currentPeriodSpendCents),
+      },
       accessType: membership.accessType,
-      budgetCents: membership.monthlyBudgetCents,
-      spendCents: membership.currentPeriodSpendCents,
+      budgetCents: microCentsToCents(membership.monthlyBudgetCents),
+      spendCents: microCentsToCents(membership.currentPeriodSpendCents),
       periodStart: membership.periodStart,
       periodEnd: membership.periodEnd,
       status: membership.status,
@@ -785,7 +798,7 @@ export class DrizzleStorage implements IStorage {
       activeKeys: keysWithProjects,
       projects: teamProjects,
       proxyLogs: enrichedLogs,
-      usageSnapshots: snapshots,
+      usageSnapshots: displaySnapshots,
       availableModels,
       voucherInfo,
       voucherExpiresAt: membership.voucherExpiresAt,

@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import type { IStorage } from "../storage";
+import { microCentsToCents } from "./currency";
 
 export const VOUCHER_NOT_USABLE = { message: "Voucher not found or no longer usable" };
 
@@ -52,7 +53,7 @@ export function createVoucherValidateHandler(storage: VoucherValidateStorage) {
 
     res.json({
       code: voucher.code,
-      budgetCents: voucher.budgetCents,
+      budgetCents: microCentsToCents(voucher.budgetCents),
       allowedProviders: voucher.allowedProviders,
       allowedModels: allowedModels.map(m => ({
         modelId: m.modelId,

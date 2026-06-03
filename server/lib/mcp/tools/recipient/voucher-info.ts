@@ -2,6 +2,7 @@ import { storage } from "../../../../storage";
 import { McpToolError } from "../../errors";
 import { VoucherInfoInputSchema } from "../../schemas";
 import { registerTool } from "../registry";
+import { microCentsToCents } from "../../../currency";
 
 export const VOUCHER_INFO_DESCRIPTION = "Look up details about a voucher code without redeeming it. Useful for previewing what a voucher gives you before committing. Callable without authentication.";
 
@@ -45,7 +46,7 @@ registerTool({
     return {
       code: voucher.code,
       status: finalStatus,
-      budget_cents: voucher.budgetCents,
+      budget_cents: microCentsToCents(voucher.budgetCents),
       models: (voucher.allowedModels as string[] | null) || [],
       concurrency_limit: 2,
       expires_at: new Date(voucher.expiresAt).toISOString(),

@@ -42,6 +42,7 @@ import {
   getOrgCurrency,
   getActiveRates,
   buildDisplayBlock,
+  microCentsToCents,
   type DisplayBlock,
   type SupportedCurrency,
   type RatesSnapshot,
@@ -426,7 +427,7 @@ async function deriveAuthFailureContext(authHeader: string | undefined): Promise
     const org = team ? await storage.getOrganization(team.orgId) : null;
     if (!org) return { userType };
     const remaining = Math.max(0, membership.monthlyBudgetCents - membership.currentPeriodSpendCents);
-    const budget = await buildBudgetBlock(org, remaining, membership.monthlyBudgetCents);
+    const budget = await buildBudgetBlock(org, microCentsToCents(remaining), microCentsToCents(membership.monthlyBudgetCents));
     return { userType, budget };
   } catch {
     return fallback;
@@ -555,7 +556,7 @@ async function runTestConnection(
   if (membership.status === "BUDGET_EXHAUSTED" || remainingPreCall <= 0) {
     const tier = getRateLimitTier(org.plan, membership.accessType);
     const rl = await checkRateLimit(membership.id, tier.rpm);
-    const budget = await buildBudgetBlock(org, 0, membership.monthlyBudgetCents);
+    const budget = await buildBudgetBlock(org, 0, microCentsToCents(membership.monthlyBudgetCents));
     if (rl) {
       sendFailure(res, 429, "rate_limited", userType, genericMessage("rate_limited"), budget);
       return;
@@ -574,7 +575,7 @@ async function runTestConnection(
   if (selection.kind !== "ok") {
     const tier = getRateLimitTier(org.plan, membership.accessType);
     const rl = await checkRateLimit(membership.id, tier.rpm);
-    const budget = await buildBudgetBlock(org, remainingPreCall, membership.monthlyBudgetCents);
+    const budget = await buildBudgetBlock(org, microCentsToCents(remainingPreCall), microCentsToCents(membership.monthlyBudgetCents));
     if (rl) {
       sendFailure(res, 429, "rate_limited", userType, genericMessage("rate_limited"), budget);
       return;
@@ -612,7 +613,7 @@ async function runTestConnection(
   } catch (err) {
     // processChatCompletion catches its own errors — this branch is a defense
     // in depth for anything truly unexpected.
-    const budget = await buildBudgetBlock(org, remainingPreCall, membership.monthlyBudgetCents);
+    const budget = await buildBudgetBlock(org, microCentsToCents(remainingPreCall), microCentsToCents(membership.monthlyBudgetCents));
     sendFailure(res, 500, "unknown", userType, genericMessage("unknown"), budget);
     return;
   }

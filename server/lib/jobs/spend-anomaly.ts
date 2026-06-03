@@ -3,6 +3,7 @@ import { storage } from "../../storage";
 import { organizations, teams, teamMemberships, proxyRequestLogs, usageSnapshots, users } from "@shared/schema";
 import { eq, sql, gte, and, inArray } from "drizzle-orm";
 import { sendEmail, emailTemplates } from "../email";
+import { microCentsToCents, centsToMicroCents } from "../currency";
 
 export async function runSpendAnomalyCheck(): Promise<void> {
   const allOrgs = await db.select().from(organizations);
@@ -31,7 +32,7 @@ export async function runSpendAnomalyCheck(): Promise<void> {
           const avgDaily = dailyCosts.length > 0
             ? dailyCosts.reduce((sum, d) => sum + Number(d.dayCost || 0), 0) / dailyCosts.length
             : 0;
-          if (avgDaily < 100) continue;
+          if (avgDaily < centsToMicroCents(100)) continue;
 
           const today = new Date();
           today.setHours(0, 0, 0, 0);
@@ -68,8 +69,8 @@ export async function runSpendAnomalyCheck(): Promise<void> {
               targetId: membership.id,
               metadata: {
                 memberEmail: member.email,
-                todaySpendCents: todaySpend,
-                avgDailyCents: Math.round(avgDaily),
+                todaySpendCents: microCentsToCents(todaySpend),
+                avgDailyCents: microCentsToCents(Math.round(avgDaily)),
                 multiplier,
               },
             });
@@ -80,8 +81,8 @@ export async function runSpendAnomalyCheck(): Promise<void> {
                 teamAdmin.name || teamAdmin.email,
                 member.name || member.email,
                 member.email,
-                (todaySpend / 100).toFixed(2),
-                (avgDaily / 100).toFixed(2),
+                (microCentsToCents(todaySpend) / 100).toFixed(2),
+                (microCentsToCents(avgDaily) / 100).toFixed(2),
                 multiplier
               );
               await sendEmail(teamAdmin.email, tmpl.subject, tmpl.html);

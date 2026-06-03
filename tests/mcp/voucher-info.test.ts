@@ -19,7 +19,7 @@ describe("voucher_info tool", () => {
     (storage.getVoucherByCode as any).mockResolvedValue({
       code: "ALLOT-AAAA-BBBB-CCCC",
       status: "ACTIVE",
-      budgetCents: 1000,
+      budgetCents: 1000 * 1_000_000, // DB stores micro-cents; $10.00 voucher
       allowedModels: ["gpt-4o-mini"],
       expiresAt: new Date(Date.now() + 7 * 86_400_000),
       maxRedemptions: 1,
@@ -40,7 +40,7 @@ describe("voucher_info tool", () => {
     (storage.getVoucherByCode as any).mockResolvedValue({
       code: "ALLOT-EXP-XXXX",
       status: "ACTIVE",
-      budgetCents: 500,
+      budgetCents: 500 * 1_000_000, // DB stores micro-cents; $5.00 voucher
       allowedModels: [],
       expiresAt: new Date(Date.now() - 86_400_000),
       maxRedemptions: 1,

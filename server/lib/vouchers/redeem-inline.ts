@@ -16,6 +16,7 @@ import { generateAllotlyKey } from "../keys";
 import { redisSet, redisGet, redisIncr, REDIS_KEYS } from "../redis";
 import { sendEmail, emailTemplates } from "../email";
 import { checkPlanLimit } from "../plan-limits";
+import { microCentsToCents } from "../currency";
 
 type VoucherBundle = typeof voucherBundles.$inferSelect;
 
@@ -397,7 +398,7 @@ export async function redeemVoucherInline(input: RedeemInlineInput): Promise<Red
       voucher: claim.voucher,
       apiKey: key,
       keyPrefix: prefix,
-      budgetCents: voucher.budgetCents,
+      budgetCents: microCentsToCents(voucher.budgetCents),
       expiresAt: voucher.expiresAt,
       models: availableModels.map((m) => ({ modelId: m.modelId, displayName: m.displayName, provider: m.provider })),
       baseUrl: "/api/v1",

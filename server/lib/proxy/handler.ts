@@ -17,9 +17,9 @@ import {
   getBundleRequestsRemaining,
   incrementBundleRequests,
   estimateInputTokens,
-  estimateInputCostCents,
-  calculateOutputCostCents,
-  calculateSettledCostCents,
+  estimateInputCostMicroCents,
+  calculateOutputCostMicroCents,
+  calculateSettledCostMicroCents,
   clampMaxTokens,
   reserveBudget,
   refundBudget,
@@ -28,6 +28,7 @@ import {
   createProxyError,
   type ProxyError,
 } from "./safeguards";
+import { microCentsToCents } from "../currency";
 import {
   detectProvider,
   translateToProvider,
@@ -205,8 +206,8 @@ async function buildBudgetSnapshot(
     : Math.max(0, tier.rpm - parseInt(await redisGet(rlKey) || "0"));
   const remaining = remainingOverride ?? parseInt(await redisGet(budgetKey) || String(membership.monthlyBudgetCents - membership.currentPeriodSpendCents));
   return {
-    remaining_cents: Math.max(0, remaining),
-    total_cents: membership.monthlyBudgetCents,
+    remaining_cents: Math.max(0, microCentsToCents(remaining)),
+    total_cents: microCentsToCents(membership.monthlyBudgetCents),
     currency: "usd",
     period_end: new Date(membership.periodEnd).toISOString(),
     requests_remaining: requestsRemaining,
@@ -340,13 +341,13 @@ export async function processChatCompletion(
     }
 
     const inputTokens = estimateInputTokens(parsed.messages);
-    const inputCostCents = estimateInputCostCents(inputTokens, pricing);
+    const inputCostCents = estimateInputCostMicroCents(inputTokens, pricing);
     const remainingBudgetCents = membership.monthlyBudgetCents - membership.currentPeriodSpendCents;
     const clientTokenCap = (parsed as any).max_completion_tokens ?? parsed.max_tokens;
     const { effectiveMaxTokens, clamped } = clampMaxTokens(remainingBudgetCents, inputCostCents, pricing, clientTokenCap);
 
     const budgetEstimateTokens = effectiveMaxTokens ?? 4096;
-    const estimatedOutputCostCents = calculateOutputCostCents(budgetEstimateTokens, pricing);
+    const estimatedOutputCostCents = calculateOutputCostMicroCents(budgetEstimateTokens, pricing);
     const totalEstimatedCostCents = inputCostCents + estimatedOutputCostCents;
     reservedCostCents = totalEstimatedCostCents;
 
@@ -441,7 +442,7 @@ export async function processChatCompletion(
       ), membership, tier);
     }
 
-    const actualCostCents = calculateSettledCostCents({
+    const actualCostCents = calculateSettledCostMicroCents({
       inputTokens: actualInputTokens,
       outputTokens: actualOutputTokens,
       cacheWriteTokens: openaiResponse.usage?.cache_creation_input_tokens,
@@ -488,7 +489,7 @@ export async function processChatCompletion(
       status: 200,
       body: openaiResponse,
       budgetSnapshot: snap,
-      costCents: actualCostCents,
+      costCents: microCentsToCents(actualCostCents),
       inputTokens: actualInputTokens,
       outputTokens: actualOutputTokens,
       maxTokensApplied: clamped,
@@ -509,8 +510,8 @@ function mkErr(status: number, code: string, message: string, membership: any, t
     status,
     errorBody: { code, message, type: "allotly_error" },
     budgetSnapshot: {
-      remaining_cents: Math.max(0, membership.monthlyBudgetCents - membership.currentPeriodSpendCents),
-      total_cents: membership.monthlyBudgetCents,
+      remaining_cents: Math.max(0, microCentsToCents(membership.monthlyBudgetCents - membership.currentPeriodSpendCents)),
+      total_cents: microCentsToCents(membership.monthlyBudgetCents),
       currency: "usd",
       period_end: new Date(membership.periodEnd).toISOString(),
       requests_remaining: null,
@@ -582,8 +583,8 @@ export async function handleChatCompletion(req: Request, res: Response) {
       const budgetKey = REDIS_KEYS.budget(membershipId!);
       const budgetRemaining = remaining ?? parseInt(await redisGet(budgetKey) || String(membership.monthlyBudgetCents - membership.currentPeriodSpendCents));
       return {
-        remaining: budgetRemaining,
-        total: membership.monthlyBudgetCents,
+        remaining: microCentsToCents(budgetRemaining),
+        total: microCentsToCents(membership.monthlyBudgetCents),
         expires: periodEnd.toISOString(),
         requestsRemaining,
         keyType: membership.accessType,
@@ -729,7 +730,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
     }
 
     const inputTokens = estimateInputTokens(parsed.messages);
-    const inputCostCents = estimateInputCostCents(inputTokens, pricing);
+    const inputCostCents = estimateInputCostMicroCents(inputTokens, pricing);
 
     const remainingBudgetCents = membership.monthlyBudgetCents - membership.currentPeriodSpendCents;
     const clientTokenCap = (parsed as any).max_completion_tokens ?? parsed.max_tokens;
@@ -738,7 +739,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
     );
 
     const budgetEstimateTokens = effectiveMaxTokens ?? 4096;
-    const estimatedOutputCostCents = calculateOutputCostCents(budgetEstimateTokens, pricing);
+    const estimatedOutputCostCents = calculateOutputCostMicroCents(budgetEstimateTokens, pricing);
     const totalEstimatedCostCents = inputCostCents + estimatedOutputCostCents;
     reservedCostCents = totalEstimatedCostCents;
 
@@ -851,8 +852,8 @@ export async function handleChatCompletion(req: Request, res: Response) {
     if (clamped) {
       res.setHeader("X-Allotly-Max-Tokens-Applied", String(effectiveMaxTokens));
     }
-    res.setHeader("X-Allotly-Budget-Remaining", String(budgetResult.remaining));
-    res.setHeader("X-Allotly-Budget-Total", String(membership.monthlyBudgetCents));
+    res.setHeader("X-Allotly-Budget-Remaining", String(microCentsToCents(budgetResult.remaining)));
+    res.setHeader("X-Allotly-Budget-Total", String(microCentsToCents(membership.monthlyBudgetCents)));
     const bundleRemaining = await getBundleRequestsRemaining(membership, true);
     const requestsRemaining = bundleRemaining !== null
       ? bundleRemaining
@@ -930,7 +931,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
       res.json(openaiResponse);
     }
 
-    actualCostCents = calculateSettledCostCents({
+    actualCostCents = calculateSettledCostMicroCents({
       inputTokens: actualInputTokens,
       outputTokens: actualOutputTokens,
       cacheWriteTokens: actualCacheWriteTokens,
@@ -1091,8 +1092,8 @@ export async function handleChatCompletion(req: Request, res: Response) {
             const budgetKey = REDIS_KEYS.budget(membershipId);
             const budgetRemaining = parseInt(await redisGet(budgetKey) || String(m.monthlyBudgetCents - m.currentPeriodSpendCents));
             sendProxyError(res, createProxyError(500, "internal_error", "An internal error occurred"), {
-              remaining: budgetRemaining,
-              total: m.monthlyBudgetCents,
+              remaining: microCentsToCents(budgetRemaining),
+              total: microCentsToCents(m.monthlyBudgetCents),
               expires: new Date(m.periodEnd).toISOString(),
               requestsRemaining: 0,
             });
@@ -1190,11 +1191,11 @@ export async function handleKeyValidation(req: Request, res: Response) {
     const { membership } = authResult;
     const budgetRemainingCents = Math.max(
       0,
-      membership.monthlyBudgetCents - membership.currentPeriodSpendCents,
+      microCentsToCents(membership.monthlyBudgetCents - membership.currentPeriodSpendCents),
     );
 
     res.setHeader("X-Allotly-Budget-Remaining", String(budgetRemainingCents));
-    res.setHeader("X-Allotly-Budget-Total", String(membership.monthlyBudgetCents));
+    res.setHeader("X-Allotly-Budget-Total", String(microCentsToCents(membership.monthlyBudgetCents)));
     res.setHeader("X-Allotly-Expires", new Date(membership.periodEnd).toISOString());
     res.setHeader("X-Allotly-Key-Type", membership.accessType);
 
@@ -1202,7 +1203,7 @@ export async function handleKeyValidation(req: Request, res: Response) {
       valid: true,
       keyType: membership.accessType,
       budgetRemainingCents,
-      budgetTotalCents: membership.monthlyBudgetCents,
+      budgetTotalCents: microCentsToCents(membership.monthlyBudgetCents),
       expiresAt: new Date(membership.periodEnd).toISOString(),
       status: membership.status,
     });

@@ -6,6 +6,7 @@ import { generateAllotlyKey } from "../keys";
 import { redisSet, REDIS_KEYS } from "../redis";
 import { checkPlanLimit } from "../plan-limits";
 import { sendEmail, emailTemplates } from "../email";
+import { centsToMicroCents } from "../currency";
 
 export const addMemberSchema = z.object({
   email: z.string().email(),
@@ -89,7 +90,7 @@ export async function createMemberHandler(req: any, res: any) {
       teamId: targetTeamId,
       userId: memberUser.id,
       accessType: accessType || "TEAM",
-      monthlyBudgetCents: budgetCents,
+      monthlyBudgetCents: centsToMicroCents(budgetCents),
       allowedModels: allowedModels || null,
       allowedProviders: allowedProviders || null,
       currentPeriodSpendCents: 0,
@@ -106,7 +107,7 @@ export async function createMemberHandler(req: any, res: any) {
       keyPrefix: keyPrefix,
     });
 
-    await redisSet(REDIS_KEYS.budget(membership.id), String(budgetCents));
+    await redisSet(REDIS_KEYS.budget(membership.id), String(centsToMicroCents(budgetCents)));
 
     await redisSet(`allotly:pending_key:${memberUser.id}`, rawKey, 7 * 24 * 60 * 60);
 
