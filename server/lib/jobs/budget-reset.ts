@@ -1,7 +1,4 @@
 import { storage } from "../../storage";
-import { db } from "../../db";
-import { allotlyApiKeys } from "@shared/schema";
-import { eq } from "drizzle-orm";
 import { redisSet, redisDel, REDIS_KEYS } from "../redis";
 import { sendEmail, emailTemplates } from "../email";
 
@@ -40,13 +37,10 @@ export async function runBudgetReset(): Promise<{ membersReset: number; membersR
           updateData.status = "ACTIVE";
           stats.membersReactivated++;
 
+          // Membership-level reactivation only — never flip key status (that
+          // would resurrect manually revoked keys). Flush cached auth snapshots.
           const keys = await storage.getApiKeysByMembership(membership.id);
           for (const key of keys) {
-            if (key.status === "REVOKED") {
-              await db.update(allotlyApiKeys)
-                .set({ status: "ACTIVE", updatedAt: new Date() })
-                .where(eq(allotlyApiKeys.id, key.id));
-            }
             await redisDel(REDIS_KEYS.apiKeyCache(key.keyHash));
           }
         }

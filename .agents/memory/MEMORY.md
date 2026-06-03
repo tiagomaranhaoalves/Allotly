@@ -2,3 +2,4 @@
 - [Express v5 route param typing](express-v5-params-typing.md) — @types/express v5 types req.params.X as string|string[]; wrap with String(...) at use sites; keep `npm run check` green.
 - [Publish migrates schema, not data](publish-data-migration-gap.md) — Replit Publish applies the dev→prod SCHEMA diff only; one-off DATA backfills (e.g. unit re-scales) run by a task touch DEV ONLY and must be re-applied to prod separately, or prod silently serves wrong values.
 - [Money is whole cents (micro-cents reverted)](micro-cents-rollback.md) — money is whole integer USD-cents end-to-end, no conversion layer; the micro-cents migration was rolled back for shipping incomplete + un-backfilled. Verify stored scale before any bulk rescale.
+- [Key status decoupled from budget](key-status-budget-decoupling.md) — budget exhaustion/recovery must never mutate API key status; enforce at membership level + flush apiKeyCache, else manual revokes get resurrected.

@@ -5,9 +5,6 @@ import { decryptProviderKey } from "../encryption";
 import { effectiveAzureApiVersion } from "../providers/azure-openai";
 import { redisGet, redisSet, redisDel, REDIS_KEYS } from "../redis";
 import { sendEmail, emailTemplates } from "../email";
-import { db } from "../../db";
-import { allotlyApiKeys } from "@shared/schema";
-import { eq, and as drizzleAnd } from "drizzle-orm";
 import {
   authenticateKey,
   checkConcurrency,
@@ -1002,14 +999,14 @@ export async function handleChatCompletion(req: Request, res: Response) {
               });
               await storage.updateMembership(membershipId!, { status: "BUDGET_EXHAUSTED" });
 
+              // Budget exhaustion is enforced at the membership level (status =
+              // BUDGET_EXHAUSTED, checked in authenticateKey). We intentionally do
+              // NOT revoke the keys here: an automatic budget block must stay
+              // distinct from a deliberate manual revocation. Flush the cached
+              // auth snapshots so the new membership status takes effect at once.
               const keys = await storage.getApiKeysByMembership(membershipId!);
               for (const k of keys) {
-                if (k.status === "ACTIVE") {
-                  await db.update(allotlyApiKeys)
-                    .set({ status: "REVOKED", updatedAt: new Date() })
-                    .where(eq(allotlyApiKeys.id, k.id));
-                  await redisDel(REDIS_KEYS.apiKeyCache(k.keyHash));
-                }
+                await redisDel(REDIS_KEYS.apiKeyCache(k.keyHash));
               }
 
               const mTeam = await storage.getTeam(freshMembership.teamId);

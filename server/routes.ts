@@ -1534,15 +1534,19 @@ export async function registerRoutes(
 
         if (newRemaining <= 0 && oldRemaining > 0) {
           await storage.updateMembership(membership.id, { status: "BUDGET_EXHAUSTED" });
+          // Enforced via membership status, not by revoking keys (which would be
+          // indistinguishable from a manual revocation). Flush auth caches only.
           const keys = await storage.getApiKeysByMembership(membership.id);
           for (const key of keys) {
-            if (key.status === "ACTIVE") {
-              await storage.updateAllotlyApiKey(key.id, { status: "REVOKED" });
-              await redisDel(REDIS_KEYS.apiKeyCache(key.keyHash));
-            }
+            await redisDel(REDIS_KEYS.apiKeyCache(key.keyHash));
           }
         } else if (newRemaining > 0 && membership.status === "BUDGET_EXHAUSTED") {
           await storage.updateMembership(membership.id, { status: "ACTIVE" });
+          // Flush cached auth snapshots so the ACTIVE status takes effect at once.
+          const keys = await storage.getApiKeysByMembership(membership.id);
+          for (const key of keys) {
+            await redisDel(REDIS_KEYS.apiKeyCache(key.keyHash));
+          }
         }
       }
 
@@ -1617,11 +1621,11 @@ export async function registerRoutes(
 
       if (membership.status === "BUDGET_EXHAUSTED") {
         updateData.status = "ACTIVE";
+        // Reactivate at the membership level only. We must NOT flip keys back to
+        // ACTIVE here — that previously resurrected keys the user had manually
+        // revoked. Flush cached auth snapshots so the ACTIVE status applies.
         const keys = await storage.getApiKeysByMembership(membership.id);
         for (const key of keys) {
-          if (key.status === "REVOKED") {
-            await storage.updateAllotlyApiKey(key.id, { status: "ACTIVE", updatedAt: new Date() });
-          }
           await redisDel(REDIS_KEYS.apiKeyCache(key.keyHash));
         }
       }
@@ -1686,11 +1690,10 @@ export async function registerRoutes(
 
       if (membership.status === "BUDGET_EXHAUSTED" && (membership.monthlyBudgetCents - newSpend) > 0) {
         await storage.updateMembership(membership.id, { status: "ACTIVE" });
+        // Membership-level reactivation only; never touch key status here so
+        // manual revocations stay revoked. Flush cached auth snapshots.
         const keys = await storage.getApiKeysByMembership(membership.id);
         for (const key of keys) {
-          if (key.status === "REVOKED") {
-            await storage.updateAllotlyApiKey(key.id, { status: "ACTIVE", updatedAt: new Date() });
-          }
           await redisDel(REDIS_KEYS.apiKeyCache(key.keyHash));
         }
       }
@@ -3467,12 +3470,11 @@ export async function registerRoutes(
 
         if (membership.status === "BUDGET_EXHAUSTED") {
           await storage.updateMembership(membership.id, { status: "ACTIVE" });
+          // Membership-level reactivation only; never flip key status here so
+          // manual revocations stay revoked. Flush cached auth snapshots.
           const keys = await storage.getApiKeysByMembership(membership.id);
           for (const key of keys) {
-            if (key.status === "REVOKED") {
-              await storage.updateAllotlyApiKey(key.id, { status: "ACTIVE" });
-              await redisDel(REDIS_KEYS.apiKeyCache(key.keyHash));
-            }
+            await redisDel(REDIS_KEYS.apiKeyCache(key.keyHash));
           }
         }
       }
