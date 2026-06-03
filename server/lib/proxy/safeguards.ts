@@ -137,16 +137,12 @@ export function estimateInputTokens(messages: any[]): number {
   return Math.ceil(totalChars / 4);
 }
 
-// Money is metered in MICRO-CENTS (1 cent = 1_000_000). Pricing rates are
-// cents per 1M tokens, so `tokens * ratePerMTok` is already an exact integer
-// count of micro-cents (cost_cents = tokens*rate/1e6 => cost_microcents =
-// tokens*rate). No division is needed, so reservation estimates are exact.
-export function estimateInputCostMicroCents(inputTokens: number, pricing: ModelPricing): number {
-  return inputTokens * pricing.inputPricePerMTok;
+export function estimateInputCostCents(inputTokens: number, pricing: ModelPricing): number {
+  return Math.ceil((inputTokens * pricing.inputPricePerMTok) / 1_000_000);
 }
 
-export function calculateOutputCostMicroCents(outputTokens: number, pricing: ModelPricing): number {
-  return outputTokens * pricing.outputPricePerMTok;
+export function calculateOutputCostCents(outputTokens: number, pricing: ModelPricing): number {
+  return Math.ceil((outputTokens * pricing.outputPricePerMTok) / 1_000_000);
 }
 
 /**
@@ -170,11 +166,10 @@ export interface SettledTokenUsage {
 /**
  * Settle the final, billable cost of a completed request.
  *
- * Unlike the reservation helpers (`estimateInputCostMicroCents` /
- * `calculateOutputCostMicroCents`), settlement sums every priced token bucket
- * in fractional micro-cents and rounds the total to a whole micro-cent exactly
- * ONCE. Because a micro-cent is 1e-6 of a cent, even the tiniest request keeps
- * its true cost instead of rounding to 0.
+ * Unlike the reservation helpers (`estimateInputCostCents` /
+ * `calculateOutputCostCents`), which round each component up independently to
+ * stay conservative when *reserving* budget, settlement sums every priced
+ * token bucket in fractional cents and rounds the total exactly ONCE.
  *
  * Rounding each component separately (the previous behaviour) rounded up the
  * sub-cent remainder of both the input and the output cost, double-counting it
@@ -184,19 +179,17 @@ export interface SettledTokenUsage {
  * Providers without prompt caching simply omit the cache buckets (0) and get
  * plain `round((input*rate + output*rate)/1e6)` settlement.
  */
-export function calculateSettledCostMicroCents(usage: SettledTokenUsage, pricing: ModelPricing): number {
+export function calculateSettledCostCents(usage: SettledTokenUsage, pricing: ModelPricing): number {
   const inputRate = pricing.inputPricePerMTok;
   const outputRate = pricing.outputPricePerMTok;
   const cacheWrite = usage.cacheWriteTokens ?? 0;
   const cacheRead = usage.cacheReadTokens ?? 0;
-  // `tokens * ratePerMTok` is already in micro-cents; the only fractional part
-  // comes from the cache multipliers (1.25 / 0.1), so round once at the end.
-  const weightedMicroCents =
+  const weightedCentsPerMTok =
     usage.inputTokens * inputRate +
     cacheWrite * inputRate * CACHE_WRITE_MULTIPLIER +
     cacheRead * inputRate * CACHE_READ_MULTIPLIER +
     usage.outputTokens * outputRate;
-  return Math.round(weightedMicroCents);
+  return Math.round(weightedCentsPerMTok / 1_000_000);
 }
 
 export function clampMaxTokens(
@@ -210,9 +203,7 @@ export function clampMaxTokens(
     return { effectiveMaxTokens: 50, clamped: true };
   }
 
-  // budgetForOutput is micro-cents; cost_microcents = tokens * outputRate, so
-  // affordable tokens = budgetForOutput / outputRate (no extra scaling).
-  const maxAffordableOutput = Math.floor(budgetForOutput / pricing.outputPricePerMTok);
+  const maxAffordableOutput = Math.floor((budgetForOutput * 1_000_000) / pricing.outputPricePerMTok);
   const maxAffordable = Math.max(50, maxAffordableOutput);
 
   if (requestedMaxTokens && requestedMaxTokens <= maxAffordable) {
@@ -243,7 +234,7 @@ export async function reserveBudget(membershipId: string, estimatedCostCents: nu
   if (newBalance < 0) {
     await redisIncrBy(budgetKey, estimatedCostCents);
     return createProxyError(402, "insufficient_budget",
-      `Insufficient budget. Estimated cost: $${(estimatedCostCents / 1e8).toFixed(4)}, remaining: $${(parseInt(currentBudget) / 1e8).toFixed(4)}`,
+      `Insufficient budget. Estimated cost: $${(estimatedCostCents / 100).toFixed(4)}, remaining: $${(parseInt(currentBudget) / 100).toFixed(4)}`,
       "Reduce your request size or contact your admin to increase your budget."
     );
   }

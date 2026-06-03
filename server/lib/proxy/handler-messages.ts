@@ -13,9 +13,9 @@ import {
   getBundleRequestsRemaining,
   incrementBundleRequests,
   estimateInputTokens,
-  estimateInputCostMicroCents,
-  calculateOutputCostMicroCents,
-  calculateSettledCostMicroCents,
+  estimateInputCostCents,
+  calculateOutputCostCents,
+  calculateSettledCostCents,
   clampMaxTokens,
   reserveBudget,
   refundBudget,
@@ -24,7 +24,6 @@ import {
   createProxyError,
   type ProxyError,
 } from "./safeguards";
-import { microCentsToCents } from "../currency";
 import {
   detectProvider,
   translateAnthropicToProvider,
@@ -297,8 +296,8 @@ export async function handleMessages(req: Request, res: Response) {
         await redisGet(budgetKey) || String(membership.monthlyBudgetCents - membership.currentPeriodSpendCents),
       );
       return {
-        remaining: microCentsToCents(budgetRemaining),
-        total: microCentsToCents(membership.monthlyBudgetCents),
+        remaining: budgetRemaining,
+        total: membership.monthlyBudgetCents,
         expires: periodEnd.toISOString(),
         requestsRemaining,
         keyType: membership.accessType,
@@ -469,14 +468,14 @@ export async function handleMessages(req: Request, res: Response) {
 
     // Token + budget accounting (parsed.max_tokens is required by Anthropic schema).
     const inputTokens = estimateInputTokens(parsed.messages as any[]);
-    const inputCostCents = estimateInputCostMicroCents(inputTokens, pricing);
+    const inputCostCents = estimateInputCostCents(inputTokens, pricing);
     const remainingBudgetCents = membership.monthlyBudgetCents - membership.currentPeriodSpendCents;
     const { effectiveMaxTokens, clamped } = clampMaxTokens(
       remainingBudgetCents, inputCostCents, pricing, parsed.max_tokens,
     );
 
     const budgetEstimateTokens = effectiveMaxTokens ?? parsed.max_tokens;
-    const estimatedOutputCostCents = calculateOutputCostMicroCents(budgetEstimateTokens, pricing);
+    const estimatedOutputCostCents = calculateOutputCostCents(budgetEstimateTokens, pricing);
     const totalEstimatedCostCents = inputCostCents + estimatedOutputCostCents;
     reservedCostCents = totalEstimatedCostCents;
 
@@ -595,8 +594,8 @@ export async function handleMessages(req: Request, res: Response) {
       res.setHeader("X-Allotly-Max-Tokens-Applied", String(effectiveMaxTokens));
     }
     res.setHeader("X-Allotly-Effective-Model", effectiveModel);
-    res.setHeader("X-Allotly-Budget-Remaining-USD-Cents", String(microCentsToCents(budgetResult.remaining)));
-    res.setHeader("X-Allotly-Budget-Total-USD-Cents", String(microCentsToCents(membership.monthlyBudgetCents)));
+    res.setHeader("X-Allotly-Budget-Remaining-USD-Cents", String(budgetResult.remaining));
+    res.setHeader("X-Allotly-Budget-Total-USD-Cents", String(membership.monthlyBudgetCents));
     const bundleRemainingNow = await getBundleRequestsRemaining(membership, true);
     const requestsRemainingNow = bundleRemainingNow !== null
       ? bundleRemainingNow
@@ -699,7 +698,7 @@ export async function handleMessages(req: Request, res: Response) {
       res.json(anthropicResponse);
     }
 
-    actualCostCents = calculateSettledCostMicroCents({
+    actualCostCents = calculateSettledCostCents({
       inputTokens: actualInputTokens,
       outputTokens: actualOutputTokens,
       cacheWriteTokens: actualCacheWriteTokens,

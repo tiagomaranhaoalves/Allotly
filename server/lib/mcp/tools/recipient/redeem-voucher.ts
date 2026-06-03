@@ -5,7 +5,6 @@ import { RedeemVoucherInputSchema } from "../../schemas";
 import { getIdempotentResponse, storeIdempotentResponse, hashPrincipal } from "../../idempotency";
 import { checkMcpRateLimit } from "../../auth";
 import { registerTool } from "../registry";
-import { microCentsToCents } from "../../../currency";
 
 export const REDEEM_VOUCHER_DESCRIPTION = "Redeem a voucher code and bind it to your current MCP session. After redemption, your future chat calls automatically use the voucher's budget.";
 
@@ -49,7 +48,7 @@ registerTool({
       redeemed: true,
       voucher: {
         code: voucher.code,
-        budget_cents: microCentsToCents(voucher.budgetCents),
+        budget_cents: voucher.budgetCents,
         models: (voucher.allowedModels as string[] | null) || [],
         expires_at: new Date(voucher.expiresAt).toISOString(),
         label: voucher.label || undefined,

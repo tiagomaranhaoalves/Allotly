@@ -4,24 +4,6 @@ import { fxRates, type FxRate } from "@shared/schema";
 export type SupportedCurrency = "USD" | "GBP" | "EUR" | "BRL";
 export const SUPPORTED_CURRENCIES: SupportedCurrency[] = ["USD", "GBP", "EUR", "BRL"];
 
-/**
- * Internal money is stored as MICRO-CENTS (integer sub-cent precision):
- * 1 cent = 1_000_000 micro-cents. This lets tiny AI requests (< 0.5c) bill
- * exactly instead of rounding to 0. The wire/display/external-API contract is
- * still whole USD-cents — convert at the boundary with the two helpers below.
- */
-export const MICRO_CENTS_PER_CENT = 1_000_000;
-
-/** cents (wire/ingest) -> micro-cents (internal storage/compute). */
-export function centsToMicroCents(cents: number): number {
-  return Math.round(cents * MICRO_CENTS_PER_CENT);
-}
-
-/** micro-cents (internal) -> whole cents (wire/display), rounded half-up. */
-export function microCentsToCents(microCents: number): number {
-  return Math.round(microCents / MICRO_CENTS_PER_CENT);
-}
-
 export const FALLBACK_RATES: Record<Exclude<SupportedCurrency, "USD">, number> = {
   GBP: 0.79,
   EUR: 0.92,

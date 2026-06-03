@@ -10,7 +10,6 @@ import { checkMcpRateLimit } from "../../auth";
 import { sendEmail, emailTemplates } from "../../../email";
 import { eq, and, gte, count } from "drizzle-orm";
 import { registerTool } from "../registry";
-import { centsToMicroCents } from "../../../currency";
 
 export const REQUEST_TOPUP_DESCRIPTION = "Ask the admin who issued your voucher to add more budget. Optionally include a reason.";
 
@@ -62,7 +61,7 @@ registerTool({
       voucherId: voucher.id,
       membershipId: m.id,
       requestedByPrincipalHash: principal.principalHash,
-      amountCentsRequested: input.amount_cents_requested != null ? centsToMicroCents(input.amount_cents_requested) : null,
+      amountCentsRequested: input.amount_cents_requested ?? null,
       reason: input.reason ?? null,
       status: "pending",
       notificationSent: false,

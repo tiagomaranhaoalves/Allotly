@@ -1,6 +1,5 @@
 import { storage } from "../../storage";
 import { redisGet, redisSet, REDIS_KEYS } from "../redis";
-import { microCentsToCents, centsToMicroCents } from "../currency";
 
 let running = false;
 
@@ -40,10 +39,10 @@ export async function runRedisReconciliation(): Promise<{ synced: number; restor
       const redisRemaining = parseInt(redisBudget);
       const driftCents = Math.abs(redisRemaining - pgRemaining);
 
-      if (driftCents > centsToMicroCents(100)) {
+      if (driftCents > 100) {
         console.warn(
           `[redis-reconciliation] Budget drift detected for membership ${membership.id}: ` +
-          `Redis=${redisRemaining} micro-cents, PG=${pgRemaining} micro-cents, drift=$${(microCentsToCents(driftCents) / 100).toFixed(2)}`
+          `Redis=${redisRemaining} cents, PG=${pgRemaining} cents, drift=$${(driftCents / 100).toFixed(2)}`
         );
         drifts++;
 

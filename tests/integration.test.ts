@@ -14,8 +14,8 @@ import {
   releaseConcurrency,
   clampMaxTokens,
   estimateInputTokens,
-  estimateInputCostMicroCents,
-  calculateOutputCostMicroCents,
+  estimateInputCostCents,
+  calculateOutputCostCents,
   createProxyError,
 } from "../server/lib/proxy/safeguards";
 import { getRateLimitTier } from "../server/lib/proxy/handler";
@@ -302,7 +302,7 @@ describe("C2.5 Token clamping integration", () => {
     const budgetForOutput = remainingCents - inputCostCents;
     expect(budgetForOutput).toBe(4);
 
-    const result = clampMaxTokens(remainingCents * 1_000_000, inputCostCents * 1_000_000, gpt4Pricing, 4096);
+    const result = clampMaxTokens(remainingCents, inputCostCents, gpt4Pricing, 4096);
     expect(result.clamped).toBe(true);
 
     const maxAffordable = Math.floor((budgetForOutput * 1_000_000) / gpt4Pricing.outputPricePerMTok);
@@ -316,12 +316,12 @@ describe("C2.5 Token clamping integration", () => {
     const inputCostCents = 2;
     const budgetForOutput = remainingCents - inputCostCents;
 
-    const resultGpt4 = clampMaxTokens(remainingCents * 1_000_000, inputCostCents * 1_000_000, gpt4Pricing, 100000);
+    const resultGpt4 = clampMaxTokens(remainingCents, inputCostCents, gpt4Pricing, 100000);
     const gpt4Affordable = Math.floor((budgetForOutput * 1_000_000) / gpt4Pricing.outputPricePerMTok);
     expect(resultGpt4.effectiveMaxTokens).toBe(gpt4Affordable);
     expect(resultGpt4.clamped).toBe(true);
 
-    const resultClaude = clampMaxTokens(remainingCents * 1_000_000, inputCostCents * 1_000_000, claudePricing, 100000);
+    const resultClaude = clampMaxTokens(remainingCents, inputCostCents, claudePricing, 100000);
     const claudeAffordable = Math.floor((budgetForOutput * 1_000_000) / claudePricing.outputPricePerMTok);
     expect(resultClaude.effectiveMaxTokens).toBe(claudeAffordable);
     expect(resultClaude.clamped).toBe(true);
@@ -333,7 +333,7 @@ describe("C2.5 Token clamping integration", () => {
     const remainingCents = 5;
     const inputCostCents = 1;
 
-    const { effectiveMaxTokens, clamped } = clampMaxTokens(remainingCents * 1_000_000, inputCostCents * 1_000_000, gpt4Pricing, 4096);
+    const { effectiveMaxTokens, clamped } = clampMaxTokens(remainingCents, inputCostCents, gpt4Pricing, 4096);
     expect(clamped).toBe(true);
 
     const headerValue = String(effectiveMaxTokens);
@@ -345,7 +345,7 @@ describe("C2.5 Token clamping integration", () => {
     const remainingCents = 50000;
     const inputCostCents = 10;
 
-    const result = clampMaxTokens(remainingCents * 1_000_000, inputCostCents * 1_000_000, gpt4Pricing, 4096);
+    const result = clampMaxTokens(remainingCents, inputCostCents, gpt4Pricing, 4096);
     expect(result.clamped).toBe(false);
     expect(result.effectiveMaxTokens).toBe(4096);
   });
@@ -354,7 +354,7 @@ describe("C2.5 Token clamping integration", () => {
     const remainingCents = 5;
     const inputCostCents = 5;
 
-    const result = clampMaxTokens(remainingCents * 1_000_000, inputCostCents * 1_000_000, gpt4Pricing, 4096);
+    const result = clampMaxTokens(remainingCents, inputCostCents, gpt4Pricing, 4096);
     expect(result.clamped).toBe(true);
     expect(result.effectiveMaxTokens).toBe(50);
   });
@@ -362,16 +362,14 @@ describe("C2.5 Token clamping integration", () => {
   it("end-to-end: estimate input → clamp → calculate output cost", () => {
     const messages = [{ role: "user", content: "Hello, how are you?" }];
     const inputTokens = estimateInputTokens(messages);
-    // Budgets/costs are micro-cents now. 4c = 4_000_000 micro affords ~3995
-    // output tokens, fewer than the requested 4096 -> clamping must trigger.
-    const inputCost = estimateInputCostMicroCents(inputTokens, gpt4Pricing);
-    const remainingMicroCents = 4 * 1_000_000;
+    const inputCost = estimateInputCostCents(inputTokens, gpt4Pricing);
+    const remainingCents = 5;
 
-    const { effectiveMaxTokens, clamped } = clampMaxTokens(remainingMicroCents, inputCost, gpt4Pricing, 4096);
-    const outputCost = calculateOutputCostMicroCents(effectiveMaxTokens, gpt4Pricing);
+    const { effectiveMaxTokens, clamped } = clampMaxTokens(remainingCents, inputCost, gpt4Pricing, 4096);
+    const outputCost = calculateOutputCostCents(effectiveMaxTokens, gpt4Pricing);
 
     const totalCost = inputCost + outputCost;
-    expect(totalCost).toBeLessThanOrEqual(remainingMicroCents);
+    expect(totalCost).toBeLessThanOrEqual(remainingCents + 1);
     expect(clamped).toBe(true);
     expect(effectiveMaxTokens).toBeGreaterThanOrEqual(50);
   });

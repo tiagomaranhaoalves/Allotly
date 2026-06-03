@@ -3,7 +3,7 @@ import { storage } from "../../storage";
 import { getRateLimitTier } from "../proxy/handler";
 import type { BudgetSnapshot } from "./schemas";
 import type { TeamMembership } from "@shared/schema";
-import { getActiveRates, buildDisplayBlock, getOrgCurrency, microCentsToCents } from "../currency";
+import { getActiveRates, buildDisplayBlock, getOrgCurrency } from "../currency";
 import { getBudgetWarning } from "./budget-warnings";
 
 export async function buildBudgetSnapshot(membership: TeamMembership): Promise<BudgetSnapshot> {
@@ -17,10 +17,8 @@ export async function buildBudgetSnapshot(membership: TeamMembership): Promise<B
   const rlUsed = parseInt(await redisGet(rlKey) || "0");
   const requestsRemaining = Math.max(0, tier.rpm - rlUsed);
 
-  // Internal budget is metered in micro-cents; the snapshot, display block and
-  // warning all speak whole cents, so convert once here.
-  const remainingCents = microCentsToCents(Math.max(0, remaining));
-  const totalCents = microCentsToCents(membership.monthlyBudgetCents);
+  const remainingCents = Math.max(0, remaining);
+  const totalCents = membership.monthlyBudgetCents;
 
   const orgCurrency = getOrgCurrency(org);
   const rates = await getActiveRates();

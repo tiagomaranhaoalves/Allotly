@@ -2,7 +2,6 @@ import { storage } from "../../../../storage";
 import { withBudgetMeta, buildBudgetSnapshot } from "../../meta-budget";
 import { RecentUsageInputSchema } from "../../schemas";
 import { registerTool } from "../registry";
-import { microCentsToCents } from "../../../currency";
 
 export const MY_RECENT_USAGE_DESCRIPTION = "List your recent API calls with model, cost, and timestamp. Prompt content is never included.";
 
@@ -34,7 +33,7 @@ registerTool({
         provider: l.provider.toLowerCase(),
         input_tokens: l.inputTokens,
         output_tokens: l.outputTokens,
-        cost_cents: microCentsToCents(l.costCents),
+        cost_cents: l.costCents,
         status_code: l.statusCode,
         max_tokens_applied: l.maxTokensApplied !== null,
       }));

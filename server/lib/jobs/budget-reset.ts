@@ -4,7 +4,6 @@ import { allotlyApiKeys } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { redisSet, redisDel, REDIS_KEYS } from "../redis";
 import { sendEmail, emailTemplates } from "../email";
-import { microCentsToCents } from "../currency";
 
 let isResetting = false;
 
@@ -67,7 +66,7 @@ export async function runBudgetReset(): Promise<{ membersReset: number; membersR
             targetType: "team_membership",
             targetId: membership.id,
             metadata: {
-              previousSpend: microCentsToCents(membership.currentPeriodSpendCents),
+              previousSpend: membership.currentPeriodSpendCents,
               newPeriodStart: newPeriodStart.toISOString(),
               newPeriodEnd: newPeriodEnd.toISOString(),
             },
@@ -76,7 +75,7 @@ export async function runBudgetReset(): Promise<{ membersReset: number; membersR
 
         const memberUser = await storage.getUser(membership.userId);
         if (memberUser?.email) {
-          const budgetDollars = (microCentsToCents(membership.monthlyBudgetCents) / 100).toFixed(2);
+          const budgetDollars = (membership.monthlyBudgetCents / 100).toFixed(2);
           const tmpl = emailTemplates.budgetReset(memberUser.name || "User", budgetDollars, "/dashboard");
           try { await sendEmail(memberUser.email, tmpl.subject, tmpl.html); } catch {}
         }

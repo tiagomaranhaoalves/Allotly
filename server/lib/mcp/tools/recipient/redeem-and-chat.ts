@@ -7,7 +7,6 @@ import { checkMcpRateLimit } from "../../auth";
 import { callChatCompletion } from "../../proxy-bridge";
 import { mapProxyErrorToMcp, selectDefaultModel } from "../consumption/chat";
 import { registerTool } from "../registry";
-import { microCentsToCents } from "../../../currency";
 
 export const REDEEM_AND_CHAT_DESCRIPTION = "Redeem a voucher and run your first chat call in one go. The fastest path from \"I have a code\" to \"I have an answer\".";
 
@@ -58,7 +57,7 @@ registerTool({
 
     const redemption = {
       redeemed: true,
-      budget_cents: microCentsToCents(voucher.budgetCents),
+      budget_cents: voucher.budgetCents,
       expires_at: new Date(voucher.expiresAt).toISOString(),
     };
 

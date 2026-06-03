@@ -22,6 +22,11 @@ only. After Publish, prod columns were bigint but still held cent values, and th
 read path applies `microCentsToCents` (÷1e6), so a $50 budget (5000) displayed as
 `round(5000/1e6)=$0`. Every prod budget read ~$0 and enforcement was wrong.
 
+**Resolution of this incident:** the team chose to ROLL BACK to whole cents
+(revert the migration commit) rather than backfill prod — prod was still
+uniformly in cents and the migration had also shipped incomplete boundary
+conversions. No prod data backfill is pending. See micro-cents-rollback.md.
+
 **How to apply / remediate:**
 - Treat any unit/semantics change to stored money as a TWO-part prod rollout:
   schema (via Publish) **and** a separate, explicit prod data backfill.

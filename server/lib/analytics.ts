@@ -5,7 +5,6 @@ import {
   modelPricing, users, auditLogs,
 } from "@shared/schema";
 import { eq, and, gte, sql, desc, inArray } from "drizzle-orm";
-import { microCentsToCents, centsToMicroCents, MICRO_CENTS_PER_CENT } from "./currency";
 
 function daysAgo(n: number): Date {
   const d = new Date();
@@ -55,7 +54,7 @@ export async function getCostPerModel(orgId: string, teamId?: string, days = 30)
   return proxyData.map(row => ({
     model: row.model,
     provider: row.provider,
-    costCents: microCentsToCents(Number(row.costCents)),
+    costCents: Number(row.costCents),
     requests: Number(row.requests),
     inputTokens: Number(row.inputTokens),
     outputTokens: Number(row.outputTokens),
@@ -84,8 +83,8 @@ export async function getTopSpenders(orgId: string, teamId?: string) {
       email: user.email,
       team: teamNameMap[m.teamId] || "Unknown",
       teamId: m.teamId,
-      spendCents: microCentsToCents(m.currentPeriodSpendCents),
-      budgetCents: microCentsToCents(m.monthlyBudgetCents),
+      spendCents: m.currentPeriodSpendCents,
+      budgetCents: m.monthlyBudgetCents,
       utilization: m.monthlyBudgetCents > 0 ? Math.round((m.currentPeriodSpendCents / m.monthlyBudgetCents) * 100) : 0,
       accessType: m.accessType,
       isVoucherUser: user.isVoucherUser,
@@ -178,19 +177,16 @@ export async function getSpendForecast(orgId: string, teamId?: string) {
     if (orgBudget > 0) totalBudget = orgBudget;
   }
 
-  // All compute above is in micro-cents; the forecast block is emitted to the
-  // dashboard in whole cents. warningExceeds is decided on the micro values
-  // before conversion to avoid rounding affecting the comparison.
   return {
-    dailySpend: dailySpend.map(d => ({ date: d.date, costCents: microCentsToCents(d.costCents) })),
-    projectedMonthEnd: microCentsToCents(projectedMonthEnd),
-    currentMonthSpend: microCentsToCents(currentMonthSpend),
+    dailySpend,
+    projectedMonthEnd,
+    currentMonthSpend,
     daysRemaining,
     dayOfMonth,
-    dailyAvg: microCentsToCents(dailyAvg),
-    totalBudget: microCentsToCents(totalBudget),
-    slope: slope / MICRO_CENTS_PER_CENT,
-    intercept: intercept / MICRO_CENTS_PER_CENT,
+    dailyAvg,
+    totalBudget,
+    slope,
+    intercept,
     warningExceeds: totalBudget > 0 ? projectedMonthEnd > totalBudget : false,
   };
 }
@@ -264,7 +260,7 @@ export async function getOptimizationRecommendations(orgId: string, teamId?: str
     if (!alt) continue;
 
     const totalCost = Number(usage.totalCost);
-    if (totalCost < centsToMicroCents(100)) continue;
+    if (totalCost < 100) continue;
 
     const estimatedSavings = Math.round(totalCost * (1 - alt.pricingRatio));
     const members = Number(usage.uniqueMembers);
@@ -274,12 +270,12 @@ export async function getOptimizationRecommendations(orgId: string, teamId?: str
       type: "model_downgrade",
       title: "Model downgrade opportunity",
       description: `${members} member${members !== 1 ? "s" : ""} using ${usage.model} for tasks ${cheaperDisplay} could handle`,
-      estimatedSavingsCents: microCentsToCents(estimatedSavings),
+      estimatedSavingsCents: estimatedSavings,
       currentModel: usage.model,
       suggestedModel: alt.cheaperModel,
       suggestedModelDisplay: cheaperDisplay,
       memberCount: members,
-      currentCostCents: microCentsToCents(totalCost),
+      currentCostCents: totalCost,
     });
   }
 
@@ -293,7 +289,7 @@ export async function getOptimizationRecommendations(orgId: string, teamId?: str
       type: "budget_reallocation",
       title: "Budget utilization",
       description: `${underutilized.length} member${underutilized.length !== 1 ? "s" : ""} have used less than 10% of their budget this period`,
-      estimatedSavingsCents: microCentsToCents(totalUnused),
+      estimatedSavingsCents: totalUnused,
       memberCount: underutilized.length,
     });
   }

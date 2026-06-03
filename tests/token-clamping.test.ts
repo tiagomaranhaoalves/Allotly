@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { clampMaxTokens, estimateInputTokens, estimateInputCostMicroCents, calculateOutputCostMicroCents } from "../server/lib/proxy/safeguards";
+import { clampMaxTokens, estimateInputTokens, estimateInputCostCents, calculateOutputCostCents } from "../server/lib/proxy/safeguards";
 import type { ModelPricing } from "@shared/schema";
 
 const gpt4Pricing: ModelPricing = {
@@ -40,40 +40,40 @@ const geminiPricing: ModelPricing = {
 
 describe("Token clamping", () => {
   it("does not clamp when budget is ample", () => {
-    const result = clampMaxTokens(5000 * 1_000_000, 10 * 1_000_000, gpt4Pricing, 4096);
+    const result = clampMaxTokens(5000, 10, gpt4Pricing, 4096);
     expect(result.clamped).toBe(false);
     expect(result.effectiveMaxTokens).toBe(4096);
   });
 
   it("clamps when requested tokens exceed affordable amount", () => {
-    const result = clampMaxTokens(1 * 1_000_000, 0, gpt4Pricing, 4096);
+    const result = clampMaxTokens(1, 0, gpt4Pricing, 4096);
     expect(result.clamped).toBe(true);
     expect(result.effectiveMaxTokens).toBeLessThan(4096);
     expect(result.effectiveMaxTokens).toBeGreaterThanOrEqual(50);
   });
 
   it("returns minimum 50 tokens when budget is zero for output", () => {
-    const result = clampMaxTokens(10 * 1_000_000, 10 * 1_000_000, gpt4Pricing, 4096);
+    const result = clampMaxTokens(10, 10, gpt4Pricing, 4096);
     expect(result.clamped).toBe(true);
     expect(result.effectiveMaxTokens).toBe(50);
   });
 
   it("returns minimum 50 tokens when budget is negative for output", () => {
-    const result = clampMaxTokens(5 * 1_000_000, 10 * 1_000_000, gpt4Pricing, 4096);
+    const result = clampMaxTokens(5, 10, gpt4Pricing, 4096);
     expect(result.clamped).toBe(true);
     expect(result.effectiveMaxTokens).toBe(50);
   });
 
   it("correctly calculates affordable tokens for GPT-4o pricing", () => {
     const budgetForOutput = 100;
-    const result = clampMaxTokens((100 + 10) * 1_000_000, 10 * 1_000_000, gpt4Pricing);
+    const result = clampMaxTokens(100 + 10, 10, gpt4Pricing);
     expect(result.clamped).toBe(false);
     const maxAffordable = Math.floor((budgetForOutput * 1_000_000) / gpt4Pricing.outputPricePerMTok);
     expect(maxAffordable).toBe(100000);
   });
 
   it("correctly calculates affordable tokens for Claude pricing", () => {
-    const result = clampMaxTokens(200 * 1_000_000, 50 * 1_000_000, claudePricing, 200000);
+    const result = clampMaxTokens(200, 50, claudePricing, 200000);
     const budgetForOutput = 200 - 50;
     const maxAffordable = Math.floor((budgetForOutput * 1_000_000) / claudePricing.outputPricePerMTok);
     expect(maxAffordable).toBe(100000);
@@ -82,19 +82,19 @@ describe("Token clamping", () => {
   });
 
   it("passes through undefined when no requestedMaxTokens specified (provider decides)", () => {
-    const result = clampMaxTokens(50000 * 1_000_000, 10 * 1_000_000, gpt4Pricing);
+    const result = clampMaxTokens(50000, 10, gpt4Pricing);
     expect(result.clamped).toBe(false);
     expect(result.effectiveMaxTokens).toBeUndefined();
   });
 
   it("respects lower requestedMaxTokens when affordable", () => {
-    const result = clampMaxTokens(50000 * 1_000_000, 10 * 1_000_000, gpt4Pricing, 100);
+    const result = clampMaxTokens(50000, 10, gpt4Pricing, 100);
     expect(result.clamped).toBe(false);
     expect(result.effectiveMaxTokens).toBe(100);
   });
 
   it("works with Gemini pricing", () => {
-    const result = clampMaxTokens(50 * 1_000_000, 10 * 1_000_000, geminiPricing, 100000);
+    const result = clampMaxTokens(50, 10, geminiPricing, 100000);
     expect(result.clamped).toBe(true);
     const budgetForOutput = 40;
     const maxAffordable = Math.floor((budgetForOutput * 1_000_000) / geminiPricing.outputPricePerMTok);
@@ -133,32 +133,31 @@ describe("Token estimation", () => {
 });
 
 describe("Cost calculations", () => {
-  it("calculates input cost in micro-cents (integer, exact)", () => {
-    // tokens * ratePerMTok is already an exact micro-cent count (no /1e6).
-    const cost = estimateInputCostMicroCents(1000, gpt4Pricing);
+  it("calculates input cost in cents (integer)", () => {
+    const cost = estimateInputCostCents(1000, gpt4Pricing);
     expect(Number.isInteger(cost)).toBe(true);
-    expect(cost).toBe(1000 * 250);
+    expect(cost).toBe(Math.ceil((1000 * 250) / 1_000_000));
   });
 
-  it("calculates output cost in micro-cents (integer, exact)", () => {
-    const cost = calculateOutputCostMicroCents(1000, gpt4Pricing);
+  it("calculates output cost in cents (integer)", () => {
+    const cost = calculateOutputCostCents(1000, gpt4Pricing);
     expect(Number.isInteger(cost)).toBe(true);
-    expect(cost).toBe(1000 * 1000);
+    expect(cost).toBe(Math.ceil((1000 * 1000) / 1_000_000));
   });
 
-  it("keeps a single sub-cent token's exact micro-cost instead of rounding up", () => {
-    const cost = estimateInputCostMicroCents(1, gpt4Pricing);
-    expect(cost).toBe(250);
+  it("rounds up fractional cents", () => {
+    const cost = estimateInputCostCents(1, gpt4Pricing);
+    expect(cost).toBe(1);
   });
 
   it("handles zero tokens", () => {
-    const cost = estimateInputCostMicroCents(0, gpt4Pricing);
+    const cost = estimateInputCostCents(0, gpt4Pricing);
     expect(cost).toBe(0);
   });
 
-  it("uses integer micro-cents throughout", () => {
-    const inputCost = estimateInputCostMicroCents(5000, claudePricing);
-    const outputCost = calculateOutputCostMicroCents(5000, claudePricing);
+  it("uses integer cents throughout", () => {
+    const inputCost = estimateInputCostCents(5000, claudePricing);
+    const outputCost = calculateOutputCostCents(5000, claudePricing);
     expect(Number.isInteger(inputCost)).toBe(true);
     expect(Number.isInteger(outputCost)).toBe(true);
     expect(outputCost).toBeGreaterThan(inputCost);

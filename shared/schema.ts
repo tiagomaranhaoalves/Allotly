@@ -54,10 +54,9 @@ export const organizations = pgTable("organizations", {
   stripeCustomerId: text("stripe_customer_id").unique(),
   stripeSubId: text("stripe_subscription_id"),
   maxTeamAdmins: integer("max_team_admins").default(0).notNull(),
-  // MONEY UNIT: all *Cents columns store MICRO-CENTS (1 cent = 1_000_000),
-  // i.e. integer sub-cent precision. The wire/display/external-API contract
-  // is still whole cents; convert at the boundary (see server/lib/currency.ts
-  // microCentsToCents / centsToMicroCents).
+  // MONEY UNIT: all *Cents columns store whole integer USD CENTS. Columns are
+  // bigint(mode:"number") for headroom, but values are plain cents end-to-end
+  // (storage, compute, wire, display) with no sub-cent scaling.
   orgBudgetCeilingCents: bigint("org_budget_ceiling_cents", { mode: "number" }),
   defaultMemberBudgetCents: bigint("default_member_budget_cents", { mode: "number" }),
   currency: currencyEnum("currency").default("USD").notNull(),
