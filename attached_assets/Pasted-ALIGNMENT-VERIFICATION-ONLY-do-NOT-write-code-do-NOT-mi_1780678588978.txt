@@ -1,0 +1,29 @@
+ALIGNMENT & VERIFICATION ONLY — do NOT write code, do NOT migrate the DB, do NOT push. I want us aligned on two separate budget bugs before any implementation.
+
+Context. We previously shipped an "integer-cents → micro-cents" money migration (commit 8fcd166) to fix a billing-precision bug, then rolled it back because changing the unit of every …Cents field broke numbers across the frontend. Note: origin/main on GitHub still shows 8fcd166 (the micro-cent commit), so the rollback appears to be workspace-only and not committed/pushed. Your first job is to tell me the ground truth of what's actually running now.
+
+Step 0 — Confirm current state. In the current workspace, report:
+
+Is the micro-cent rollback committed? What does git log --oneline -5 show, and does it match origin/main?
+Are the money columns currently integer (whole cents) or bigint (micro-cents) in shared/schema.ts?
+Quote the current settlement function and the current reservation/estimate code (file + line + the actual lines). Everything below depends on what's really there now, not on what was in 8fcd166.
+Then verify each of these two DISTINCT bugs against the current code — tell me, with evidence (quoted code), whether each one currently EXISTS or is already mitigated.
+
+BUG 1 — Sub-cent settlement leak (compounding, unbounded).
+Settlement computes the real cost then rounds to whole cents (Math.round(trueCost)). Any request whose true cost is < 0.5¢ rounds to 0¢, so the entire pre-flight reservation is refunded and the ledger debits nothing. There's no reconciliation against the provider invoice, so each sub-cent loss is permanent and compounds without bound.
+
+Worked example: a request truly costing 0.3¢ settles to 0¢. 10,000 such requests = ~$30 of real provider spend recorded as $0; the member's cap never trips. This is ordinary cheap-model / short-request traffic — Allotly's core workload.
+Verify: Does the current settlement still round() the summed cost to whole cents? Does a sub-0.5¢ request currently settle to 0? Quote the exact code path. Does this bug persist right now? (We believe rolling back the micro-cent work reintroduced it.)
+BUG 2 — Cache-write under-reservation (bounded, self-correcting).
+Reservation prices the prompt at the base input rate (1×), but settlement prices Anthropic cache_creation_input_tokens at 1.25×. When the prompt is large and max_tokens is small (little output slack), settlement exceeds the reservation, and the post-call adjustment debits the shortfall after the request already succeeded — so a member can overshoot their cap by that gap.
+
+Worked example: Claude at $3/M input, $15/M output, 200k-token prompt, max_tokens=100. Reserved = ceil(200000×300/1e6)=60¢ + ceil(100×1500/1e6)=1¢ = 61¢. Settled (first call writes whole prompt to cache) = round(200000×300×1.25/1e6) = 75¢. Under-reserved by 14¢ → member overshoots by 14¢. (Cache reads at 0.1× only make settlement cheaper, so they're already safe — this is purely cache-write.)
+Verify: Does the current reservation/estimate use the plain input rate while settlement applies the 1.25× cache-write multiplier? Quote both. Does this bug persist right now?
+Our proposed fixes — react to each, flag concerns, tell us if you'd do it differently. Do NOT implement yet.
+
+For Bug 1 (Claude's proposal): hidden sub-cent carry accumulator. Keep ALL …Cents columns, Redis, Stripe, and the entire frontend exactly as they are — whole-cent integers, no unit change, no frontend edits. Add ONE new hidden column team_memberships.cost_remainder_micro_cents INTEGER NOT NULL DEFAULT 0 (no backfill). Change only settlement: accumulate the true cost in micro-cents into the remainder, debit whole cents only when the carry crosses 1¢, persist the leftover (<1e6). Net effect: nothing is lost, the cap trips correctly, and every displayed number stays a clean integer cent. The only imprecision is a bounded <1¢ lag, self-correcting. Zero the remainder on period reset. (Vouchers are memberships, so they're covered.)
+Confirm/critique: Is this compatible with the current settlement + reservation/refund flow? Where exactly would the carry read-modify-write live, and how do you guarantee atomicity under concurrent requests for one membership (DB row lock in the settlement txn, or a Redis micro-cent key)? Any place that would still read these …Cents fields as anything but whole cents?
+For Bug 2 (your proposal): reserve the prompt at worst-case 1.25×. Since 1.25× (cache write) ≥ 1× ≥ 0.1× (cache read), reserving input at 1.25× guarantees reservation ≥ settled prompt cost for any cache mix. Settlement untouched (billed amount and all displayed spend unchanged); the extra 25% is a temporary hold, refunded at settlement. We prefer your Option A (always 1.25×) over Option B (only when cache_control present) — A is a few lines with no false-negative risk and no body-parsing. Confirm you agree, and confirm A leaves settled/displayed spend identical.
+Key point we want you to confirm or correct: These are two independent bugs on opposite sides of the flow — Bug 1 is a settlement (precision) problem, Bug 2 is a reservation (overshoot) problem. Our plan is to fix both, since they compose cleanly ("reserve conservatively via 1.25×, settle exactly via the carry accumulator") and neither touches the frontend. Do you agree both are real and both worth fixing, or do you see overlap/conflict between the two fixes?
+
+Report back in ONE message: (1) current git/schema/settlement/reservation ground truth with quoted code; (2) for each bug: PERSISTS / ALREADY-FIXED, with the evidence; (3) your reaction to each proposed fix + any concerns; (4) your recommendation on sequencing. No code changes, no migration, no push — this is alignment only.
