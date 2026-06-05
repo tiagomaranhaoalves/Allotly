@@ -1,0 +1,40 @@
+BUILD — Bug 2: reserve the prompt at the worst-case cache-write rate (Option A). Green light to implement.
+
+What & why. A member can overshoot their budget cap on cached prompts. The pre-flight reservation prices the prompt at the base input rate (1×), but settlement prices Anthropic cache_creation_input_tokens at 1.25× (CACHE_WRITE_MULTIPLIER). When the prompt is large and max_tokens is small (little output slack), settled prompt cost exceeds what was reserved, and the post-call adjustment debits the shortfall after the request already ran — so the member exceeds their cap. Fix: hold the prompt at 1.25× in the reservation. Since 1.25× ≥ 1× ≥ 0.1×, this guarantees reserved ≥ settled for any cache mix. Settlement is untouched, so the actual billed/displayed amount never changes — the extra hold is refunded the instant real usage settles.
+
+Locked decisions (non-negotiable):
+
+Option A — always apply the 1.25× premium to the prompt-input portion of the reservation. Do not gate it on cache_control markers, do not parse the request body. (We explicitly rejected Option B.)
+Apply 1.25× only to the input/prompt tokens of the reservation. Output-token reservation stays exactly as-is (cache-write only affects input).
+Settlement is byte-for-byte unchanged. calculateSettledCostCents (server/lib/proxy/safeguards.ts:182-193) is not touched. Billed amount, recorded spend, budget bar, "Spend by Provider" — all identical.
+Reuse the existing exported CACHE_WRITE_MULTIPLIER constant — do not hardcode 1.25.
+Feed the same conservative (1.25×) input cost into clampMaxTokens (handler.ts:343) so the output-token cap stays coherent with the larger hold.
+This is the budget-reservation hold only. Do not change any user-facing estimate — estimate_cost MCP tool, recommend_model, or any displayed/quoted cost must keep using the base-rate estimate. We are not inflating what users see, only what we hold.
+Steps (cite real paths):
+
+In server/lib/proxy/safeguards.ts, next to estimateInputCostCents (lines 140-142), add a reservation-only helper:
+estimateInputReservationCents(inputTokens, pricing) = Math.ceil((inputTokens * pricing.inputPricePerMTok * CACHE_WRITE_MULTIPLIER) / 1_000_000)
+Switch the three reservation sites to the new helper for the budget hold: handler.ts:340, handler.ts:729, handler-messages.ts:471. Also grep for every other reservation-time caller of estimateInputCostCents (e.g. any streaming path) and switch those too — but leave any display/estimate caller (per locked decision #6) on the base rate. Tell me in your report exactly which call sites you changed and which you intentionally left.
+Pass the 1.25× input cost into clampMaxTokens at handler.ts:343 (and any sibling clamp call) so the output cap is computed against the same conservative hold.
+Leave adjustBudgetAfterResponse and all refund logic alone — it already returns the extra hold once the real cost settles.
+Out of scope — DO NOT TOUCH:
+
+The settlement math / sub-cent rounding (calculateSettledCostCents). That's the next task (Bug 1) — do not start it here.
+Whole-cent unit semantics anywhere (no micro-cents — that migration was rolled back deliberately).
+Frontend, any API response shape, the budget bar, "Spend by Provider", Stripe, Redis key formats/units.
+OAuth, the core processChatCompletion flow beyond the named reservation/clamp call sites.
+No schema change, no DB migration.
+Done looks like:
+
+For any request, the prompt budget hold ≥ the settled prompt cost, for any cache mix (write / read / none).
+The example — Claude $3/M in, $15/M out, 200k-token prompt, max_tokens=100 — now reserves ≥75¢ (was 61¢), so the first-call cache-write (75¢) no longer overshoots.
+Settled cost and all displayed/recorded spend are identical to before. The only observable change: a member right at the edge of budget using caching may get insufficient_budget slightly sooner; that extra hold is refunded at settlement.
+Tests (add to the proxy budget tests):
+
+Core assertion: reservedInputCents ≥ settledInputCents across scenarios — all cache-write, mixed write/read, cache-read-only, and no-cache — over a range of token sizes.
+Regression case: 200k input tokens, max_tokens=100, Claude pricing → assert reserved ≥ 75¢.
+Guard — settlement unchanged: call calculateSettledCostCents on representative requests and assert the values match pre-change (settlement must not move).
+Guard — clamp coherence: clampMaxTokens with the new conservative input cost still returns sane output caps (never allows more output than the hold covers).
+Acceptance: npm run check (tsc) clean · npx vitest run on the affected test files green · npm run build succeeds. Report the reserved-vs-settled numbers for the 200k example.
+
+Final report (one message): files modified; the new helper; exact call sites changed vs intentionally left; test counts + the key assertion outputs. Then STOP — do NOT Publish/deploy and do NOT push to GitHub automatically. Tiago will review and decide when to Publish.

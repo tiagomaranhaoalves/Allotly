@@ -14,7 +14,7 @@ import {
   getBundleRequestsRemaining,
   incrementBundleRequests,
   estimateInputTokens,
-  estimateInputCostCents,
+  estimateInputReservationCents,
   calculateOutputCostCents,
   calculateSettledCostCents,
   clampMaxTokens,
@@ -337,7 +337,7 @@ export async function processChatCompletion(
     }
 
     const inputTokens = estimateInputTokens(parsed.messages);
-    const inputCostCents = estimateInputCostCents(inputTokens, pricing);
+    const inputCostCents = estimateInputReservationCents(inputTokens, pricing);
     const remainingBudgetCents = membership.monthlyBudgetCents - membership.currentPeriodSpendCents;
     const clientTokenCap = (parsed as any).max_completion_tokens ?? parsed.max_tokens;
     const { effectiveMaxTokens, clamped } = clampMaxTokens(remainingBudgetCents, inputCostCents, pricing, clientTokenCap);
@@ -726,7 +726,7 @@ export async function handleChatCompletion(req: Request, res: Response) {
     }
 
     const inputTokens = estimateInputTokens(parsed.messages);
-    const inputCostCents = estimateInputCostCents(inputTokens, pricing);
+    const inputCostCents = estimateInputReservationCents(inputTokens, pricing);
 
     const remainingBudgetCents = membership.monthlyBudgetCents - membership.currentPeriodSpendCents;
     const clientTokenCap = (parsed as any).max_completion_tokens ?? parsed.max_tokens;

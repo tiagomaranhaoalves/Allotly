@@ -13,7 +13,7 @@ import {
   getBundleRequestsRemaining,
   incrementBundleRequests,
   estimateInputTokens,
-  estimateInputCostCents,
+  estimateInputReservationCents,
   calculateOutputCostCents,
   calculateSettledCostCents,
   clampMaxTokens,
@@ -468,7 +468,7 @@ export async function handleMessages(req: Request, res: Response) {
 
     // Token + budget accounting (parsed.max_tokens is required by Anthropic schema).
     const inputTokens = estimateInputTokens(parsed.messages as any[]);
-    const inputCostCents = estimateInputCostCents(inputTokens, pricing);
+    const inputCostCents = estimateInputReservationCents(inputTokens, pricing);
     const remainingBudgetCents = membership.monthlyBudgetCents - membership.currentPeriodSpendCents;
     const { effectiveMaxTokens, clamped } = clampMaxTokens(
       remainingBudgetCents, inputCostCents, pricing, parsed.max_tokens,

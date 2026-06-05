@@ -141,6 +141,23 @@ export function estimateInputCostCents(inputTokens: number, pricing: ModelPricin
   return Math.ceil((inputTokens * pricing.inputPricePerMTok) / 1_000_000);
 }
 
+/**
+ * Reservation-only prompt cost: prices the estimated prompt tokens at the
+ * worst-case Anthropic cache-write rate (1.25x the base input rate).
+ *
+ * Settlement charges `cache_creation_input_tokens` at CACHE_WRITE_MULTIPLIER,
+ * which is the most expensive of the three input buckets (write 1.25x >=
+ * uncached 1x >= read 0.1x). Holding the prompt at 1.25x therefore guarantees
+ * the reservation always covers the settled prompt cost for any cache mix, so a
+ * member can never overshoot their cap on a cached prompt. This affects only the
+ * pre-flight budget hold — settlement (`calculateSettledCostCents`) and every
+ * user-facing estimate stay on the base rate; the extra hold is refunded by
+ * `adjustBudgetAfterResponse` once the real cost settles.
+ */
+export function estimateInputReservationCents(inputTokens: number, pricing: ModelPricing): number {
+  return Math.ceil((inputTokens * pricing.inputPricePerMTok * CACHE_WRITE_MULTIPLIER) / 1_000_000);
+}
+
 export function calculateOutputCostCents(outputTokens: number, pricing: ModelPricing): number {
   return Math.ceil((outputTokens * pricing.outputPricePerMTok) / 1_000_000);
 }
