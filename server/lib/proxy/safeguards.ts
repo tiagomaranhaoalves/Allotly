@@ -209,6 +209,32 @@ export function calculateSettledCostCents(usage: SettledTokenUsage, pricing: Mod
   return Math.round(weightedCentsPerMTok / 1_000_000);
 }
 
+/**
+ * Settle the TRUE cost of a completed request in integer MICRO-cents
+ * (1 cent = 1_000_000 micro-cents), for the sub-cent carry accumulator.
+ *
+ * Identical token weighting to `calculateSettledCostCents`, but WITHOUT the
+ * final `/ 1_000_000` + round-to-whole-cents. `weightedCentsPerMTok` is already
+ * the cost expressed in micro-cents (tokens * cents-per-Mtok), so we only round
+ * the fractional micro-cent tail to an integer — Azure custom pricing can be
+ * fractional, and the carry column stores integers. This is the value fed into
+ * `storage.settleSpendWithCarry`, which debits whole cents to the member ledger
+ * only when the accumulated remainder crosses 1c. `calculateSettledCostCents`
+ * is unchanged for single-row display and every non-ledger caller.
+ */
+export function calculateSettledCostMicroCents(usage: SettledTokenUsage, pricing: ModelPricing): number {
+  const inputRate = pricing.inputPricePerMTok;
+  const outputRate = pricing.outputPricePerMTok;
+  const cacheWrite = usage.cacheWriteTokens ?? 0;
+  const cacheRead = usage.cacheReadTokens ?? 0;
+  const weightedCentsPerMTok =
+    usage.inputTokens * inputRate +
+    cacheWrite * inputRate * CACHE_WRITE_MULTIPLIER +
+    cacheRead * inputRate * CACHE_READ_MULTIPLIER +
+    usage.outputTokens * outputRate;
+  return Math.round(weightedCentsPerMTok);
+}
+
 export function clampMaxTokens(
   remainingBudgetCents: number,
   inputCostCents: number,

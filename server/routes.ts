@@ -1615,6 +1615,9 @@ export async function registerRoutes(
 
       const updateData: Record<string, any> = {
         currentPeriodSpendCents: 0,
+        // Reset the sub-cent carry alongside the spend so the new period starts
+        // clean (a stale remainder must not bleed into the next period).
+        costRemainderMicroCents: 0,
         periodStart: now,
         periodEnd: newPeriodEnd,
       };
@@ -5783,7 +5786,7 @@ export async function registerRoutes(
       const byProvider = await db.select({
         provider: proxyRequestLogs.provider,
         requests: count(),
-        totalCostCents: sql<number>`COALESCE(SUM(${proxyRequestLogs.costCents}), 0)`,
+        totalCostCents: sql<number>`COALESCE(FLOOR(SUM(CASE WHEN ${proxyRequestLogs.costMicroCents} = 0 AND ${proxyRequestLogs.costCents} > 0 THEN ${proxyRequestLogs.costCents} * 1000000 ELSE ${proxyRequestLogs.costMicroCents} END) / 1000000), 0)`,
         avgDurationMs: sql<number>`COALESCE(AVG(${proxyRequestLogs.durationMs}), 0)`,
       }).from(proxyRequestLogs)
         .groupBy(proxyRequestLogs.provider);
@@ -5792,7 +5795,7 @@ export async function registerRoutes(
         model: proxyRequestLogs.model,
         provider: proxyRequestLogs.provider,
         requests: count(),
-        totalCostCents: sql<number>`COALESCE(SUM(${proxyRequestLogs.costCents}), 0)`,
+        totalCostCents: sql<number>`COALESCE(FLOOR(SUM(CASE WHEN ${proxyRequestLogs.costMicroCents} = 0 AND ${proxyRequestLogs.costCents} > 0 THEN ${proxyRequestLogs.costCents} * 1000000 ELSE ${proxyRequestLogs.costMicroCents} END) / 1000000), 0)`,
       }).from(proxyRequestLogs)
         .groupBy(proxyRequestLogs.model, proxyRequestLogs.provider)
         .orderBy(desc(sql`count(*)`))

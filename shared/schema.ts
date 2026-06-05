@@ -116,6 +116,13 @@ export const teamMemberships = pgTable("team_memberships", {
   allowedModels: json("allowed_models"),
   allowedProviders: json("allowed_providers"),
   currentPeriodSpendCents: bigint("current_period_spend_cents", { mode: "number" }).default(0).notNull(),
+  // Hidden sub-cent carry accumulator (Bug 1). Settlement rounds true cost to
+  // whole cents; any sub-cent request would otherwise debit 0 and the spend
+  // would silently under-count. We accumulate the TRUE cost in micro-cents here
+  // and debit whole cents to current_period_spend_cents only when the carry
+  // crosses 1c. Always < 1_000_000 (one whole cent); written ONLY by
+  // storage.settleSpendWithCarry and zeroed on period reset. Never displayed.
+  costRemainderMicroCents: bigint("cost_remainder_micro_cents", { mode: "number" }).default(0).notNull(),
   periodStart: timestamp("period_start").notNull(),
   periodEnd: timestamp("period_end").notNull(),
   status: membershipStatusEnum("status").default("ACTIVE").notNull(),
@@ -232,6 +239,11 @@ export const proxyRequestLogs = pgTable("proxy_request_logs", {
   inputTokens: integer("input_tokens").notNull(),
   outputTokens: integer("output_tokens").notNull(),
   costCents: bigint("cost_cents", { mode: "number" }).notNull(),
+  // True per-request cost in micro-cents (Bug 1). cost_cents stays the rounded
+  // whole-cent value for single-row display; aggregate spend queries SUM this
+  // micro-cent column instead so sub-cent requests don't round to 0 and make
+  // the breakdowns under-report. DEFAULT 0; COALESCE covers pre-existing rows.
+  costMicroCents: bigint("cost_micro_cents", { mode: "number" }).default(0).notNull(),
   durationMs: integer("duration_ms").notNull(),
   statusCode: integer("status_code").notNull(),
   maxTokensApplied: integer("max_tokens_applied"),

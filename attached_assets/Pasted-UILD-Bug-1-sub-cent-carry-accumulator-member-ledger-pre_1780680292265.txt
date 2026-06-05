@@ -1,0 +1,77 @@
+UILD — Bug 1: sub-cent carry accumulator (member-ledger precision). CRITICAL money path — extra care, verify before you change anything.
+
+Invariant that must hold: a member can never be billed less than their true cumulative spend, the cap must always eventually trip, and every displayed number stays whole-cent (no micro-cent migration — that was rolled back on purpose; do NOT reintroduce it).
+
+What & why. Settlement does Math.round(weighted / 1_000_000), so any request truly costing < 0.5¢ settles to 0¢ and the member ledger debits nothing — an unbounded, compounding under-count (10k × 0.3¢ ≈ $30 recorded as $0; the cap never trips). Fix: accumulate the true sub-cent cost in a hidden remainder and debit whole cents only when it crosses 1¢. The unit of every visible field stays whole cents.
+
+Prerequisite/compat: this builds on the Bug 2 reservation change (already submitted). Bug 1 touches only settlement + the member ledger; Bug 2 touched only reservation. They don't collide — build on top.
+
+LOCKED DECISIONS (non-negotiable):
+
+Money stays whole integer cents everywhere visible — columns, Redis values, every API response, frontend, Stripe. No unit change to any …Cents field. No micro-cent migration.
+Add exactly ONE hidden column: team_memberships.cost_remainder_micro_cents as bigint(mode:"number") NOT NULL DEFAULT 0. Additive, no backfill, ships via Publish schema diff. Read/written only by the settlement helper.
+Accumulate true cost in micro-cents; debit whole cents to current_period_spend_cents only when the carry crosses 1¢; persist the <1,000,000 remainder.
+The carry update MUST be a single atomic SQL statement (CTE with FOR UPDATE), not a JS read-modify-write. This also fixes the existing lost-update race in the fire-and-forget spend write (handler.ts:468-472), which you will REPLACE.
+The value used to adjust the Redis budget (real-time cap) MUST be the crossed whole-cents returned by the atomic UPDATE — not Math.round(cost). Otherwise accumulated sub-cents never trip the cap.
+The settlement DB write becomes synchronous/awaited (was fire-and-forget setImmediate) because Redis now depends on its returned crossed-cents. This reordering is intended.
+All FOUR settlement sites route through ONE shared helper. No path bypasses it.
+Period reset zeroes cost_remainder_micro_cents alongside current_period_spend_cents.
+Round micro-cent cost to an integer before accumulating (Azure custom pricing can be fractional). Do the SQL math in bigint (overflow-safe); only <1e6 is ever stored.
+DESIGN — the canonical helper.
+Add calculateSettledCostMicroCents(usage, pricing): number in safeguards.ts — same math as calculateSettledCostCents but returns the integer micro-cent value (Math.round(weightedCentsPerMTok)), without the /1_000_000 + round-to-cents. Keep calculateSettledCostCents as-is for any non-ledger caller.
+
+Add settleSpendWithCarry(membershipId, costMicroCents): Promise<{ crossedCents: number; newSpendCents: number }> running ONE atomic statement:
+
+WITH prev AS (
+  SELECT cost_remainder_micro_cents AS old_rem
+  FROM team_memberships WHERE id = $1 FOR UPDATE
+), upd AS (
+  UPDATE team_memberships m
+  SET cost_remainder_micro_cents = (prev.old_rem + $2) % 1000000,
+      current_period_spend_cents = m.current_period_spend_cents
+                                 + (prev.old_rem + $2) / 1000000
+  FROM prev WHERE m.id = $1
+  RETURNING m.current_period_spend_cents AS new_spend
+)
+SELECT ((prev.old_rem + $2) / 1000000)::bigint AS crossed_cents, upd.new_spend
+FROM prev, upd;
+$2 = costMicroCents bound as bigint. RETURNING derives crossed_cents from the OLD remainder via the CTE (a plain UPDATE…RETURNING only sees post-update values — don't use that). old_rem + $2 is bigint so no INT overflow; only <1e6 is stored.
+
+Settlement flow — apply at all 4 sites (handler.ts:441/470, handler.ts:930/981, handler-messages.ts:~734, handler-streaming.ts:~582):
+
+const costMicro = calculateSettledCostMicroCents(usage, pricing)
+const { crossedCents } = await settleSpendWithCarry(membershipId, costMicro) — atomic; this is now the sole writer of current_period_spend_cents on settle. Remove the old getMembership → += actualCostCents → updateMembership setImmediate block.
+await adjustBudgetAfterResponse(membershipId, reservedCents, crossedCents) — Redis cap uses crossedCents as the "actual".
+PART B — analytics consistency (VERIFY FIRST, then implement only if needed).
+Before touching anything, report how the spend breakdowns compute their numbers: do getSpendByProvider / getDashboardStats / recent-usage SUM proxy_request_logs.cost_cents, or do they derive from team_memberships.current_period_spend_cents?
+
+If they derive from the member ledger → Part B is unnecessary (the carry already makes them accurate). Say so and skip.
+If they SUM per-request cost_cents (whole-cent → rounds sub-cent to 0) → those panels would still under-report (a visible echo of the same leak). Then: add cost_micro_cents bigint NOT NULL DEFAULT 0 to proxy_request_logs, write costMicro there at the 4 sites (keep cost_cents for single-row display), and update only the aggregate spend queries to round(SUM(COALESCE(cost_micro_cents, cost_cents*1000000)) / 1000000) (COALESCE covers old rows, no backfill). API response shape stays whole-cent …Cents — frontend untouched.
+Report which branch you took.
+OUT OF SCOPE — DO NOT TOUCH:
+
+The whole-cent unit of any field; no micro-cent migration anywhere.
+The reservation path (Bug 2, done) beyond reading reservedCents.
+Frontend, API response shapes, budget bar, Stripe, Redis key formats.
+OAuth, processChatCompletion core, model routing, estimate_cost / recommend_model.
+The schema diff must be purely additive — do NOT drop or alter any table (especially the session table). Confirm this explicitly.
+DONE LOOKS LIKE:
+
+1,000 requests each truly 0.18¢ → exactly 180¢ debited to current_period_spend_cents (±0), and the cap trips in Redis at the right point (an over-limit request returns insufficient_budget).
+A single sub-cent request leaves spend unchanged but raises the remainder; enough of them cross a whole cent.
+Concurrent settlements on one membership lose no carry.
+All spend views agree with the ledger (per Part B branch).
+A single >$21 request settles correctly; remainder always <1e6.
+Frontend renders identical whole-cent values; nothing looks 1e6-scaled.
+TESTS (be thorough — this is the critical part):
+
+No-leak/accumulation: 1000×0.18¢ ⇒ spend == 180, remainder == 0. Also 3×0.3¢ ⇒ spend 0 / remainder 900000; 4th ⇒ spend 1 / remainder 200000.
+Cap-trips-in-Redis: accumulate sub-cent spend up to budget; assert a subsequent reserve returns insufficient_budget (the cap actually enforces, not just the DB ledger).
+Concurrency/atomicity: N parallel settlements for one membership ⇒ total debited == sum of true costs (proves no lost updates / race fixed).
+Equivalence: ≥1¢ no-cache requests debit the same whole cents as before (no regression).
+Overflow guard: a single >~$21 request settles correctly; remainder <1e6.
+Period reset zeroes the remainder.
+(If Part B) provider breakdown sum == member ledger sum, 0¢ drift.
+ACCEPTANCE: npm run check clean · npx vitest run (affected files) green · npm run build ok · schema-sync (db:push/Publish diff) shows only additive columns, no destructive ops.
+
+FINAL REPORT (one message): real line numbers you changed (adjust from the numbers above to the actual current code, and note any drift); the helper + SQL used; whether Part B was needed and which branch; explicit confirmation the reservation path and all …Cents units are untouched and the schema diff is additive-only; test counts + the 1000×0.18¢ and cap-trips outputs. THEN STOP — do NOT Publish/deploy, do NOT push to GitHub. Tiago will review.

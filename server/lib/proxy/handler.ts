@@ -17,6 +17,7 @@ import {
   estimateInputReservationCents,
   calculateOutputCostCents,
   calculateSettledCostCents,
+  calculateSettledCostMicroCents,
   clampMaxTokens,
   reserveBudget,
   refundBudget,
@@ -438,13 +439,23 @@ export async function processChatCompletion(
       ), membership, tier);
     }
 
-    const actualCostCents = calculateSettledCostCents({
+    const settleUsage = {
       inputTokens: actualInputTokens,
       outputTokens: actualOutputTokens,
       cacheWriteTokens: openaiResponse.usage?.cache_creation_input_tokens,
       cacheReadTokens: openaiResponse.usage?.cache_read_input_tokens,
-    }, pricing);
-    await adjustBudgetAfterResponse(membershipId, reservedCostCents, actualCostCents);
+    };
+    const actualCostCents = calculateSettledCostCents(settleUsage, pricing);
+    const actualCostMicroCents = calculateSettledCostMicroCents(settleUsage, pricing);
+    // Settle the member ledger FIRST (atomic carry) so the Redis real-time cap
+    // is adjusted by the whole cents that actually crossed 1c, not the rounded
+    // per-request cost (which is 0 for sub-cent requests and would never trip).
+    const { crossedCents } = await storage.settleSpendWithCarry(membershipId, actualCostMicroCents);
+    await adjustBudgetAfterResponse(membershipId, reservedCostCents, crossedCents);
+    // The reservation is now reconciled. Zero it BEFORE any further awaits so a
+    // later throw (e.g. releaseConcurrency) cannot trigger the outer catch's
+    // refund a second time and inflate the Redis budget (double-refund leak).
+    reservedCostCents = 0;
     await releaseConcurrency(membershipId, requestId);
     concurrencyAcquired = false;
 
@@ -460,17 +471,12 @@ export async function processChatCompletion(
           inputTokens: actualInputTokens,
           outputTokens: actualOutputTokens,
           costCents: actualCostCents,
+          costMicroCents: actualCostMicroCents,
           durationMs,
           statusCode: 200,
           maxTokensApplied: clamped ? effectiveMaxTokens : null,
           deploymentName: provider === "AZURE_OPENAI" && azureDeployment ? azureDeployment.deploymentName : null,
         });
-        const freshMembership = await storage.getMembership(membershipId);
-        if (freshMembership) {
-          await storage.updateMembership(membershipId, {
-            currentPeriodSpendCents: freshMembership.currentPeriodSpendCents + actualCostCents,
-          });
-        }
         await incrementBundleRequests(membership);
       } catch (err) {
         console.error("[mcp-proxy] post-processing error:", err);
@@ -927,27 +933,38 @@ export async function handleChatCompletion(req: Request, res: Response) {
       res.json(openaiResponse);
     }
 
-    actualCostCents = calculateSettledCostCents({
+    const restSettleUsage = {
       inputTokens: actualInputTokens,
       outputTokens: actualOutputTokens,
       cacheWriteTokens: actualCacheWriteTokens,
       cacheReadTokens: actualCacheReadTokens,
-    }, pricing);
+    };
+    actualCostCents = calculateSettledCostCents(restSettleUsage, pricing);
+    const actualCostMicroCents = calculateSettledCostMicroCents(restSettleUsage, pricing);
 
-    await adjustBudgetAfterResponse(membershipId, reservedCostCents, actualCostCents);
+    // Atomic carry settle BEFORE adjusting Redis; crossedCents drives the cap,
+    // newSpendCents is the authoritative post-settle ledger total used below for
+    // the budget-alert / exhaustion thresholds.
+    const { crossedCents, newSpendCents } = await storage.settleSpendWithCarry(membershipId!, actualCostMicroCents);
+    await adjustBudgetAfterResponse(membershipId, reservedCostCents, crossedCents);
+    // Capture the reserved amount for the observability log, then zero the live
+    // reservation BEFORE any further awaits so a later throw (e.g.
+    // releaseConcurrency) cannot make the outer catch refund it a second time.
+    const reservedForLog = reservedCostCents;
+    reservedCostCents = 0;
     await releaseConcurrency(membershipId, requestId);
     concurrencyAcquired = false;
 
     const durationMs = Date.now() - startTime;
-    const reservationDeltaCents = reservedCostCents - actualCostCents;
-    const reservationRatio = reservedCostCents > 0 ? (actualCostCents / reservedCostCents).toFixed(2) : "N/A";
+    const reservationDeltaCents = reservedForLog - actualCostCents;
+    const reservationRatio = reservedForLog > 0 ? (actualCostCents / reservedForLog).toFixed(2) : "N/A";
     console.log(
       `[budget-obs]` +
       ` model=${provider === "AZURE_OPENAI" && azureDeployment ? azureDeployment.modelId : parsed.model}` +
       ` provider=${provider.toLowerCase()}` +
       ` est_out_tokens=${budgetEstimateTokens}` +
       ` actual_out_tokens=${actualOutputTokens}` +
-      ` reserved_cents=${reservedCostCents}` +
+      ` reserved_cents=${reservedForLog}` +
       ` actual_cents=${actualCostCents}` +
       ` delta_cents=${reservationDeltaCents}` +
       ` ratio=${reservationRatio}` +
@@ -969,18 +986,19 @@ export async function handleChatCompletion(req: Request, res: Response) {
           inputTokens: actualInputTokens,
           outputTokens: actualOutputTokens,
           costCents: actualCostCents,
+          costMicroCents: actualCostMicroCents,
           durationMs,
           statusCode: 200,
           maxTokensApplied: clamped ? effectiveMaxTokens : null,
           deploymentName: provider === "AZURE_OPENAI" && azureDeployment ? azureDeployment.deploymentName : null,
         });
 
+        // The member ledger was already settled atomically above
+        // (settleSpendWithCarry); newSpendCents is the authoritative post-settle
+        // total. Re-fetch only for budget/team metadata, never to re-add cost.
         const freshMembership = await storage.getMembership(membershipId!);
         if (freshMembership) {
-          const newSpend = freshMembership.currentPeriodSpendCents + actualCostCents;
-          await storage.updateMembership(membershipId!, {
-            currentPeriodSpendCents: newSpend,
-          });
+          const newSpend = newSpendCents;
 
           const spendPercent = (newSpend / freshMembership.monthlyBudgetCents) * 100;
           const budgetDollars = (freshMembership.monthlyBudgetCents / 100).toFixed(2);

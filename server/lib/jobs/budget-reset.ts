@@ -29,6 +29,9 @@ export async function runBudgetReset(): Promise<{ membersReset: number; membersR
 
         const updateData: any = {
           currentPeriodSpendCents: 0,
+          // New billing period starts with a clean sub-cent carry; otherwise a
+          // leftover remainder from last period could prematurely cross 1c.
+          costRemainderMicroCents: 0,
           periodStart: newPeriodStart,
           periodEnd: newPeriodEnd,
         };

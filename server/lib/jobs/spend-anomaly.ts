@@ -20,7 +20,7 @@ export async function runSpendAnomalyCheck(): Promise<void> {
           sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
           const dailyCosts = await db.select({
-            dayCost: sql<number>`SUM(${proxyRequestLogs.costCents})`,
+            dayCost: sql<number>`COALESCE(FLOOR(SUM(CASE WHEN ${proxyRequestLogs.costMicroCents} = 0 AND ${proxyRequestLogs.costCents} > 0 THEN ${proxyRequestLogs.costCents} * 1000000 ELSE ${proxyRequestLogs.costMicroCents} END) / 1000000), 0)`,
           }).from(proxyRequestLogs)
             .where(and(
               eq(proxyRequestLogs.membershipId, membership.id),
@@ -37,7 +37,7 @@ export async function runSpendAnomalyCheck(): Promise<void> {
           today.setHours(0, 0, 0, 0);
 
           const [todayResult] = await db.select({
-            totalCost: sql<number>`COALESCE(SUM(${proxyRequestLogs.costCents}), 0)`,
+            totalCost: sql<number>`COALESCE(FLOOR(SUM(CASE WHEN ${proxyRequestLogs.costMicroCents} = 0 AND ${proxyRequestLogs.costCents} > 0 THEN ${proxyRequestLogs.costCents} * 1000000 ELSE ${proxyRequestLogs.costMicroCents} END) / 1000000), 0)`,
           }).from(proxyRequestLogs)
             .where(and(
               eq(proxyRequestLogs.membershipId, membership.id),

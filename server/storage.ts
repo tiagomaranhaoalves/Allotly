@@ -100,6 +100,7 @@ export interface IStorage {
   getUsageSnapshotsByMembership(membershipId: string, limit?: number): Promise<UsageSnapshot[]>;
 
   createProxyRequestLog(data: any): Promise<ProxyRequestLog>;
+  settleSpendWithCarry(membershipId: string, costMicroCents: number): Promise<{ crossedCents: number; newSpendCents: number }>;
   getProxyRequestLogsByMembership(membershipId: string, limit?: number): Promise<ProxyRequestLog[]>;
 
   getAllOrganizations(): Promise<Organization[]>;
@@ -525,6 +526,56 @@ export class DrizzleStorage implements IStorage {
     return result;
   }
 
+  /**
+   * Sub-cent carry settlement (Bug 1). Accumulates the TRUE per-request cost
+   * (in integer micro-cents) into team_memberships.cost_remainder_micro_cents
+   * and debits the WHOLE cents that cross 1c to current_period_spend_cents — in
+   * a SINGLE atomic statement.
+   *
+   * Why one CTE with FOR UPDATE rather than a JS read-modify-write: this is the
+   * sole writer of current_period_spend_cents on settle, and concurrent proxy
+   * requests for one membership (MCP retries, parallel calls) would otherwise
+   * lose updates. The row lock in `prev` serialises concurrent settlements, so
+   * no carry is ever dropped.
+   *
+   * `crossed_cents` is derived from the OLD remainder via the CTE — a plain
+   * UPDATE ... RETURNING only sees post-update values. The arithmetic runs in
+   * bigint (overflow-safe even for a single >$21 request); only the <1_000_000
+   * remainder is ever stored. The returned `crossedCents` is what the caller
+   * feeds to adjustBudgetAfterResponse so the Redis real-time cap decrements by
+   * true accumulated whole-cents (not Math.round(cost), which would let sub-cent
+   * spend never trip the cap).
+   */
+  async settleSpendWithCarry(membershipId: string, costMicroCents: number): Promise<{ crossedCents: number; newSpendCents: number }> {
+    // Defensive: settlement must never DECREASE spend. Costs are always >= 0
+    // (Math.round of a non-negative weighted token sum), but a negative input
+    // would make Postgres' truncating `/` and sign-following `%` corrupt the
+    // remainder invariant (0 <= rem < 1_000_000). Clamp to a safe integer.
+    const micro = Number.isFinite(costMicroCents) ? Math.max(0, Math.round(costMicroCents)) : 0;
+    const result: any = await db.execute(sql`
+      WITH prev AS (
+        SELECT cost_remainder_micro_cents AS old_rem
+        FROM team_memberships WHERE id = ${membershipId} FOR UPDATE
+      ), upd AS (
+        UPDATE team_memberships m
+        SET cost_remainder_micro_cents = (prev.old_rem + ${micro}::bigint) % 1000000,
+            current_period_spend_cents = m.current_period_spend_cents
+              + (prev.old_rem + ${micro}::bigint) / 1000000,
+            updated_at = NOW()
+        FROM prev WHERE m.id = ${membershipId}
+        RETURNING m.current_period_spend_cents AS new_spend
+      )
+      SELECT ((prev.old_rem + ${micro}::bigint) / 1000000)::bigint AS crossed_cents,
+             upd.new_spend
+      FROM prev, upd
+    `);
+    const row = (result.rows ?? result)[0];
+    return {
+      crossedCents: Number(row?.crossed_cents ?? 0),
+      newSpendCents: Number(row?.new_spend ?? 0),
+    };
+  }
+
   async getProxyRequestLogsByMembership(membershipId: string, limit = 50): Promise<ProxyRequestLog[]> {
     return db.select().from(proxyRequestLogs).where(eq(proxyRequestLogs.membershipId, membershipId)).orderBy(desc(proxyRequestLogs.createdAt)).limit(limit);
   }
@@ -642,7 +693,7 @@ export class DrizzleStorage implements IStorage {
     const mIds = membershipIds.map(m => m.id);
     const rows = await db.select({
       provider: proxyRequestLogs.provider,
-      total: sql<number>`COALESCE(SUM(${proxyRequestLogs.costCents}), 0)`,
+      total: sql<number>`COALESCE(FLOOR(SUM(CASE WHEN ${proxyRequestLogs.costMicroCents} = 0 AND ${proxyRequestLogs.costCents} > 0 THEN ${proxyRequestLogs.costCents} * 1000000 ELSE ${proxyRequestLogs.costMicroCents} END) / 1000000), 0)`,
     }).from(proxyRequestLogs)
       .where(inArray(proxyRequestLogs.membershipId, mIds))
       .groupBy(proxyRequestLogs.provider);

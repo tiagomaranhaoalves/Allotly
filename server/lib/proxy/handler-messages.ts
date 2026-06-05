@@ -16,6 +16,7 @@ import {
   estimateInputReservationCents,
   calculateOutputCostCents,
   calculateSettledCostCents,
+  calculateSettledCostMicroCents,
   clampMaxTokens,
   reserveBudget,
   refundBudget,
@@ -698,14 +699,24 @@ export async function handleMessages(req: Request, res: Response) {
       res.json(anthropicResponse);
     }
 
-    actualCostCents = calculateSettledCostCents({
+    const settleUsage = {
       inputTokens: actualInputTokens,
       outputTokens: actualOutputTokens,
       cacheWriteTokens: actualCacheWriteTokens,
       cacheReadTokens: actualCacheReadTokens,
-    }, pricing);
+    };
+    actualCostCents = calculateSettledCostCents(settleUsage, pricing);
+    const actualCostMicroCents = calculateSettledCostMicroCents(settleUsage, pricing);
 
-    await adjustBudgetAfterResponse(membershipId, reservedCostCents, actualCostCents);
+    // Atomic carry settle BEFORE adjusting Redis; the cap decrements by the
+    // whole cents that actually crossed 1c (sub-cent spend accumulates instead
+    // of rounding to 0).
+    const { crossedCents } = await storage.settleSpendWithCarry(membershipId!, actualCostMicroCents);
+    await adjustBudgetAfterResponse(membershipId, reservedCostCents, crossedCents);
+    // Reservation reconciled — zero it BEFORE any further awaits so a later
+    // throw (e.g. releaseConcurrency) cannot make the outer catch refund the
+    // reservation a second time (double-refund leak).
+    reservedCostCents = 0;
     await releaseConcurrency(membershipId, requestId);
     concurrencyAcquired = false;
 
@@ -722,18 +733,13 @@ export async function handleMessages(req: Request, res: Response) {
           inputTokens: actualInputTokens,
           outputTokens: actualOutputTokens,
           costCents: actualCostCents,
+          costMicroCents: actualCostMicroCents,
           durationMs,
           statusCode: 200,
           maxTokensApplied: clamped ? effectiveMaxTokens : null,
           deploymentName: provider === "AZURE_OPENAI" && azureDeployment ? azureDeployment.deploymentName : null,
         });
 
-        const freshMembership = await storage.getMembership(membershipId!);
-        if (freshMembership) {
-          await storage.updateMembership(membershipId!, {
-            currentPeriodSpendCents: freshMembership.currentPeriodSpendCents + actualCostCents,
-          });
-        }
         await incrementBundleRequests(membership);
       } catch (err) {
         console.error("[proxy-messages] async post-processing error:", err);

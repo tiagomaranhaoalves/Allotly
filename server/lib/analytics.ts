@@ -40,7 +40,7 @@ export async function getCostPerModel(orgId: string, teamId?: string, days = 30)
   const proxyData = await db.select({
     model: proxyRequestLogs.model,
     provider: proxyRequestLogs.provider,
-    costCents: sql<number>`COALESCE(SUM(${proxyRequestLogs.costCents}), 0)`,
+    costCents: sql<number>`COALESCE(FLOOR(SUM(CASE WHEN ${proxyRequestLogs.costMicroCents} = 0 AND ${proxyRequestLogs.costCents} > 0 THEN ${proxyRequestLogs.costCents} * 1000000 ELSE ${proxyRequestLogs.costMicroCents} END) / 1000000), 0)`,
     requests: sql<number>`COUNT(*)`,
     inputTokens: sql<number>`COALESCE(SUM(${proxyRequestLogs.inputTokens}), 0)`,
     outputTokens: sql<number>`COALESCE(SUM(${proxyRequestLogs.outputTokens}), 0)`,
@@ -105,7 +105,7 @@ export async function getSpendForecast(orgId: string, teamId?: string) {
 
   const proxyDaily = await db.select({
     day: sql<string>`DATE(${proxyRequestLogs.createdAt})`,
-    costCents: sql<number>`COALESCE(SUM(${proxyRequestLogs.costCents}), 0)`,
+    costCents: sql<number>`COALESCE(FLOOR(SUM(CASE WHEN ${proxyRequestLogs.costMicroCents} = 0 AND ${proxyRequestLogs.costCents} > 0 THEN ${proxyRequestLogs.costCents} * 1000000 ELSE ${proxyRequestLogs.costMicroCents} END) / 1000000), 0)`,
   }).from(proxyRequestLogs)
     .where(and(
       inArray(proxyRequestLogs.membershipId, membershipIds),
@@ -237,7 +237,7 @@ export async function getOptimizationRecommendations(orgId: string, teamId?: str
   const modelUsage = await db.select({
     model: proxyRequestLogs.model,
     provider: proxyRequestLogs.provider,
-    totalCost: sql<number>`COALESCE(SUM(${proxyRequestLogs.costCents}), 0)`,
+    totalCost: sql<number>`COALESCE(FLOOR(SUM(CASE WHEN ${proxyRequestLogs.costMicroCents} = 0 AND ${proxyRequestLogs.costCents} > 0 THEN ${proxyRequestLogs.costCents} * 1000000 ELSE ${proxyRequestLogs.costMicroCents} END) / 1000000), 0)`,
     totalRequests: sql<number>`COUNT(*)`,
     uniqueMembers: sql<number>`COUNT(DISTINCT ${proxyRequestLogs.membershipId})`,
   }).from(proxyRequestLogs)

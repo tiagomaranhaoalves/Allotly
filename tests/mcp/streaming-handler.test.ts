@@ -50,6 +50,7 @@ vi.mock("../../server/storage", () => ({
     getMembership: vi.fn(),
     updateMembership: vi.fn(),
     createProxyRequestLog: vi.fn(),
+    settleSpendWithCarry: vi.fn(),
   },
 }));
 
@@ -129,6 +130,12 @@ function setupHappyDeps() {
   (storage.getMembership as any).mockResolvedValue(makeMembership());
   (storage.updateMembership as any).mockResolvedValue(undefined);
   (storage.createProxyRequestLog as any).mockResolvedValue(undefined);
+  // Mirror the real carry from a zero remainder: crossedCents = floor(micro/1c).
+  // The handler now feeds crossedCents (not the rounded display cost) to
+  // adjustBudgetAfterResponse, so the cap decrements by true whole-cents.
+  (storage.settleSpendWithCarry as any).mockImplementation((_id: string, micro: number) =>
+    Promise.resolve({ crossedCents: Math.floor(micro / 1_000_000), newSpendCents: Math.floor(micro / 1_000_000) }),
+  );
 
   safeguardCalls.checkConcurrency.mockResolvedValue(null);
   safeguardCalls.checkRateLimit.mockResolvedValue(null);

@@ -41,6 +41,7 @@ import {
   estimateInputReservationCents,
   calculateOutputCostCents,
   calculateSettledCostCents,
+  calculateSettledCostMicroCents,
   clampMaxTokens,
   reserveBudget,
   refundBudget,
@@ -547,13 +548,20 @@ export async function processChatCompletionStreaming(
       );
     }
 
-    const actualCostCents = calculateSettledCostCents({
+    const settleUsage = {
       inputTokens: actualInputTokens,
       outputTokens: actualOutputTokens,
       cacheWriteTokens: finalUsage?.cache_creation_input_tokens,
       cacheReadTokens: finalUsage?.cache_read_input_tokens,
-    }, pricing);
-    await adjustBudgetAfterResponse(membershipId, reservedCostCents, actualCostCents);
+    };
+    const actualCostCents = calculateSettledCostCents(settleUsage, pricing);
+    const actualCostMicroCents = calculateSettledCostMicroCents(settleUsage, pricing);
+
+    // Atomic carry settle BEFORE adjusting Redis; the cap decrements by the
+    // whole cents that actually crossed 1c (sub-cent spend accumulates instead
+    // of rounding to 0).
+    const { crossedCents } = await storage.settleSpendWithCarry(membershipId, actualCostMicroCents);
+    await adjustBudgetAfterResponse(membershipId, reservedCostCents, crossedCents);
     reservedCostCents = 0;
 
     await releaseConcurrency(membershipId, requestId);
@@ -571,17 +579,12 @@ export async function processChatCompletionStreaming(
           inputTokens: actualInputTokens,
           outputTokens: actualOutputTokens,
           costCents: actualCostCents,
+          costMicroCents: actualCostMicroCents,
           durationMs,
           statusCode: 200,
           maxTokensApplied: clamped ? effectiveMaxTokens : null,
           deploymentName: provider === "AZURE_OPENAI" && azureDeployment ? azureDeployment.deploymentName : null,
         });
-        const fresh = await storage.getMembership(membershipId);
-        if (fresh) {
-          await storage.updateMembership(membershipId, {
-            currentPeriodSpendCents: fresh.currentPeriodSpendCents + actualCostCents,
-          });
-        }
         await incrementBundleRequests(membership);
       } catch (postErr) {
         console.error("[mcp-streaming] post-processing error:", postErr);

@@ -347,7 +347,7 @@ describe("M4 — handler-streaming parity with handler.ts", () => {
     // settle (i.e. before adjustBudgetAfterResponse is called for the
     // happy path).
     const emptyIdx = src.indexOf("empty_response");
-    const settleIdx = src.indexOf("adjustBudgetAfterResponse(membershipId, reservedCostCents, actualCostCents)");
+    const settleIdx = src.indexOf("adjustBudgetAfterResponse(membershipId, reservedCostCents, crossedCents)");
     expect(emptyIdx).toBeGreaterThan(0);
     expect(settleIdx).toBeGreaterThan(emptyIdx);
   });
