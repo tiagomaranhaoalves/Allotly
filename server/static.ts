@@ -1,6 +1,7 @@
-import express, { type Express } from "express";
+import express, { type Express, type Request, type Response } from "express";
 import fs from "fs";
 import path from "path";
+import { injectLocaleMetadata, getBaseUrl } from "./lib/locale-html";
 
 // SPA routes that should be served with HTTP 200.
 // Dynamic segments use a simple :param notation; prefix entries ending in /*
@@ -28,6 +29,8 @@ const SPA_ROUTES: Array<string | RegExp> = [
   /^\/oauth\//,
   /^\/dashboard(\/.*)?$/,
   /^\/admin(\/.*)?$/,
+  /^\/es(\/.*)?$/,
+  /^\/pt-br(\/.*)?$/,
 ];
 
 function matchesSpaRoute(urlPath: string): boolean {
@@ -129,6 +132,21 @@ const ROUTE_META: Record<string, RouteMeta> = {
   },
 };
 
+const LOCALE_URL_PREFIXES: Record<string, string> = {
+  es: "es",
+  "pt-br": "pt-br",
+};
+
+function stripLocalePrefix(pathname: string): { urlLocale: string | null; basePath: string } {
+  const segments = pathname.split("/").filter(Boolean);
+  const first = segments[0]?.toLowerCase();
+  if (first && LOCALE_URL_PREFIXES[first]) {
+    const rest = segments.slice(1).join("/");
+    return { urlLocale: first, basePath: rest ? `/${rest}` : "/" };
+  }
+  return { urlLocale: null, basePath: pathname || "/" };
+}
+
 function escAttr(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 }
@@ -165,6 +183,7 @@ function injectRouteMeta(html: string, meta: RouteMeta, canonicalUrl: string): s
     `$1${escAttr(meta.description)}$2`,
   );
 
+  // Replace canonical injected by injectLocaleMetadata (or any existing one)
   out = out.replace(
     /(<link\s+rel="canonical"\s+href=")[^"]*(")/,
     `$1${escAttr(canonicalUrl)}$2`,
@@ -192,20 +211,30 @@ export function serveStatic(app: Express) {
   });
 
   // Serve index.html for known SPA routes with HTTP 200, injecting per-route
-  // metadata so crawlers and social bots see the correct title/description.
+  // metadata and locale hreflang/lang so crawlers see the correct metadata.
   // All other paths get HTTP 404 so crawlers see the correct status code.
-  app.use("/{*path}", (req, res) => {
-    const pathname = req.path.replace(/\/$/, "") || "/";
-    const meta = ROUTE_META[pathname];
+  app.use("/{*path}", (req: Request, res: Response) => {
+    const pathname = req.originalUrl.split("?")[0];
+    const normalised = pathname.replace(/\/$/, "") || "/";
 
+    // Strip locale prefix to find the canonical base path for ROUTE_META lookup
+    const { urlLocale, basePath } = stripLocalePrefix(normalised);
+
+    // Apply locale metadata first (lang attr, hreflang alternates, og:locale)
+    const requestBaseUrl = getBaseUrl(req);
+    let html = injectLocaleMetadata(baseHtml, req.originalUrl, requestBaseUrl);
+
+    // Look up route meta by the base (locale-stripped) path
+    const meta = ROUTE_META[basePath];
     if (meta) {
-      const canonicalUrl = `${BASE_URL}${pathname === "/" ? "/" : pathname}`;
-      const injected = injectRouteMeta(baseHtml, meta, canonicalUrl);
-      res.setHeader("Content-Type", "text/html; charset=utf-8");
-      res.send(injected);
-    } else {
-      const status = matchesSpaRoute(pathname) ? 200 : 404;
-      res.status(status).sendFile(indexPath);
+      // Build a locale-aware canonical using the production BASE_URL
+      const localeSuffix = urlLocale ? `/${urlLocale}` : "";
+      const canonicalPath = basePath === "/" ? "/" : basePath;
+      const canonicalUrl = `${BASE_URL}${localeSuffix}${canonicalPath === "/" ? "" : canonicalPath}`;
+      html = injectRouteMeta(html, meta, canonicalUrl);
     }
+
+    const status = matchesSpaRoute(normalised) ? 200 : 404;
+    res.status(status).set({ "Content-Type": "text/html; charset=utf-8" }).end(html);
   });
 }

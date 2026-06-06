@@ -8,6 +8,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SUPPORTED_LANGUAGES, LANGUAGE_LABELS, type SupportedLanguage } from "@/i18n";
+import { useLocation } from "wouter";
+import { getLocaleFromPath, buildLocalePath } from "@/App";
 
 interface Props {
   variant?: "light" | "dark";
@@ -21,6 +23,7 @@ const SHORT_LABELS: Record<SupportedLanguage, string> = {
 
 export function LanguageSwitcher({ variant = "light" }: Props) {
   const { i18n, t } = useTranslation();
+  const [location, navigate] = useLocation();
   const current = (SUPPORTED_LANGUAGES as readonly string[]).includes(i18n.resolvedLanguage || "")
     ? (i18n.resolvedLanguage as SupportedLanguage)
     : "en";
@@ -29,6 +32,15 @@ export function LanguageSwitcher({ variant = "light" }: Props) {
     variant === "dark"
       ? "gap-1.5 h-8 px-2.5 text-white/70 hover:text-white hover:bg-white/5"
       : "gap-1.5 h-8 px-2.5 text-muted-foreground hover:text-foreground";
+
+  function handleSelect(lng: SupportedLanguage) {
+    i18n.changeLanguage(lng);
+    const { basePath } = getLocaleFromPath(location);
+    const newPath = buildLocalePath(basePath, lng);
+    if (newPath !== location) {
+      navigate(newPath);
+    }
+  }
 
   return (
     <DropdownMenu>
@@ -48,7 +60,7 @@ export function LanguageSwitcher({ variant = "light" }: Props) {
         {SUPPORTED_LANGUAGES.map((lng) => (
           <DropdownMenuItem
             key={lng}
-            onClick={() => i18n.changeLanguage(lng)}
+            onClick={() => handleSelect(lng)}
             className="flex items-center justify-between gap-3 cursor-pointer"
             data-testid={`menuitem-lang-${lng}`}
           >

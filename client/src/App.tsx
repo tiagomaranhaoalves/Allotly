@@ -1,5 +1,5 @@
-import { lazy, Suspense } from "react";
-import { Switch, Route } from "wouter";
+import { lazy, Suspense, useEffect } from "react";
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider } from "@/lib/auth";
 import { DashboardShell } from "@/components/dashboard-shell";
+import { useTranslation } from "react-i18next";
 import { ErrorBoundary } from "@/components/error-boundary";
 
 const NotFound = lazy(() => import("@/pages/not-found"));
@@ -58,6 +59,37 @@ function DashboardRoute({ component: Component }: { component: React.ComponentTy
   );
 }
 
+const LOCALE_MAP: Record<string, string> = {
+  es: "es",
+  "pt-br": "pt-BR",
+};
+
+function LocaleRoute({ locale, component: Component }: { locale: string; component: React.ComponentType }) {
+  const { i18n } = useTranslation();
+  useEffect(() => {
+    if (i18n.resolvedLanguage !== locale) {
+      i18n.changeLanguage(locale);
+    }
+  }, [locale, i18n]);
+  return <Component />;
+}
+
+export function getLocaleFromPath(path: string): { urlLocale: string | null; basePath: string } {
+  const segments = path.split("/").filter(Boolean);
+  const first = segments[0]?.toLowerCase();
+  if (first && LOCALE_MAP[first]) {
+    const rest = segments.slice(1).join("/");
+    return { urlLocale: first, basePath: rest ? `/${rest}` : "/" };
+  }
+  return { urlLocale: null, basePath: path || "/" };
+}
+
+export function buildLocalePath(basePath: string, locale: string): string {
+  if (locale === "en") return basePath;
+  const urlPrefix = locale === "pt-BR" ? "pt-br" : locale;
+  return `/${urlPrefix}${basePath === "/" ? "" : basePath}`;
+}
+
 function Router() {
   return (
     <Suspense fallback={null}>
@@ -78,6 +110,23 @@ function Router() {
         <Route path="/privacy" component={PrivacyPage} />
         <Route path="/terms" component={TermsPage} />
         <Route path="/security" component={SecurityPage} />
+
+        <Route path="/es">{() => <LocaleRoute locale="es" component={LandingPage} />}</Route>
+        <Route path="/es/about">{() => <LocaleRoute locale="es" component={AboutPage} />}</Route>
+        <Route path="/es/careers">{() => <LocaleRoute locale="es" component={CareersPage} />}</Route>
+        <Route path="/es/contact">{() => <LocaleRoute locale="es" component={ContactPage} />}</Route>
+        <Route path="/es/privacy">{() => <LocaleRoute locale="es" component={PrivacyPage} />}</Route>
+        <Route path="/es/terms">{() => <LocaleRoute locale="es" component={TermsPage} />}</Route>
+        <Route path="/es/security">{() => <LocaleRoute locale="es" component={SecurityPage} />}</Route>
+
+        <Route path="/pt-br">{() => <LocaleRoute locale="pt-BR" component={LandingPage} />}</Route>
+        <Route path="/pt-br/about">{() => <LocaleRoute locale="pt-BR" component={AboutPage} />}</Route>
+        <Route path="/pt-br/careers">{() => <LocaleRoute locale="pt-BR" component={CareersPage} />}</Route>
+        <Route path="/pt-br/contact">{() => <LocaleRoute locale="pt-BR" component={ContactPage} />}</Route>
+        <Route path="/pt-br/privacy">{() => <LocaleRoute locale="pt-BR" component={PrivacyPage} />}</Route>
+        <Route path="/pt-br/terms">{() => <LocaleRoute locale="pt-BR" component={TermsPage} />}</Route>
+        <Route path="/pt-br/security">{() => <LocaleRoute locale="pt-BR" component={SecurityPage} />}</Route>
+
         <Route path="/dpa" component={DpaPage} />
         <Route path="/subprocessors" component={SubprocessorsPage} />
         <Route path="/components" component={ComponentsShowcase} />
