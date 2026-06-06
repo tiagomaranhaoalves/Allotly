@@ -122,6 +122,7 @@
     "card3Subtitle": "Lista para cumplimiento",
     "card3Desc": "Cifrado AES-256-GCM para claves almacenadas. Trazabilidad completa de cada acción administrativa. Arquitectura compatible con GDPR.",
     "badge1": "AES-256-GCM",
+    "badge2": "Registro de Auditoría",
     "badge3": "Compatible con GDPR",
     "badge4": "Cero Retención de Datos"
   },
@@ -899,6 +900,8 @@
       "createdOn": "Creado el {{date}}",
       "membersLabel": "miembros",
       "editTeam": "Editar Equipo",
+      "saveChanges": "Guardar cambios",
+      "saving": "Guardando...",
       "editTeamDesc": "Actualiza el nombre y la descripción del equipo.",
       "ceilingLabel": "Límite de presupuesto (USD)",
       "ceilingPlaceholder": "Ilimitado",

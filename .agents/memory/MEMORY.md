@@ -7,3 +7,4 @@
 - [Sub-cent carry ledger & settlement](settlement-carry-ledger.md) — settle via carry, feed crossedCents to the cap, and zero reservedCostCents right after adjust (before any await) or the catch double-refunds.
 - [Vite manualChunks React white-screen](vite-manualchunks-react.md) — hand-rolled vendor manualChunks splitting React crashes prod build ("Cannot set properties of undefined (Children)"); dev hides it; verify built bundle renders via Playwright before publishing.
 - [Flaky tests under full-suite load](flaky-tests.md) — oauth/voucher-key-display i18n case times out / FK-teardown-races only under the full build run; passes isolated. Re-run in isolation before treating as a regression.
+- [Diagnosing raw i18n keys](i18n-missing-keys.md) — UI shows a literal dotted key = that exact path missing from locale JSON; leaf names are duplicated across many parents (grep the FULL path); scan must skip i18next plurals (_one/_other) and defaultValue calls.

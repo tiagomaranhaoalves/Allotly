@@ -122,6 +122,7 @@
     "card3Subtitle": "Pronta para conformidade",
     "card3Desc": "Criptografia AES-256-GCM para chaves armazenadas. Trilha de auditoria completa para cada ação administrativa. Arquitetura compatível com a LGPD/GDPR.",
     "badge1": "AES-256-GCM",
+    "badge2": "Trilha de Auditoria",
     "badge3": "Compatível com LGPD/GDPR",
     "badge4": "Zero Retenção de Dados"
   },
@@ -899,6 +900,8 @@
       "createdOn": "Criado em {{date}}",
       "membersLabel": "membros",
       "editTeam": "Editar Time",
+      "saveChanges": "Salvar alterações",
+      "saving": "Salvando...",
       "editTeamDesc": "Atualize o nome e a descrição do time.",
       "ceilingLabel": "Teto de orçamento (USD)",
       "ceilingPlaceholder": "Ilimitado",

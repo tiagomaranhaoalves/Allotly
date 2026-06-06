@@ -122,6 +122,7 @@
     "card3Subtitle": "Built for compliance",
     "card3Desc": "AES-256-GCM encryption for stored keys. Full audit trail for every admin action. GDPR-compliant architecture.",
     "badge1": "AES-256-GCM",
+    "badge2": "Audit Trail",
     "badge3": "GDPR Compliant",
     "badge4": "Zero Data Retention"
   },
@@ -899,6 +900,8 @@
       "createdOn": "Created {{date}}",
       "membersLabel": "members",
       "editTeam": "Edit Team",
+      "saveChanges": "Save Changes",
+      "saving": "Saving...",
       "editTeamDesc": "Update the team name and description.",
       "ceilingLabel": "Budget Ceiling (USD)",
       "ceilingPlaceholder": "Unlimited",
