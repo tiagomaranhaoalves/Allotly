@@ -1537,13 +1537,6 @@ export async function registerRoutes(
         }
       }
 
-      if (userName || userEmail) {
-        const userUpdate: Record<string, any> = {};
-        if (userName) userUpdate.name = userName;
-        if (userEmail) userUpdate.email = userEmail;
-        await storage.updateUser(membership.userId, userUpdate);
-      }
-
       let updated;
       try {
         updated = await db.transaction(async (tx) => {
@@ -1551,6 +1544,14 @@ export async function registerRoutes(
           // no-ops on non-positive deltas, so shrinks/no-change skip the lock.
           const deltaCents = (membershipData.monthlyBudgetCents ?? membership.monthlyBudgetCents) - membership.monthlyBudgetCents;
           await assertTeamAllocationWithin(tx, membership.teamId, deltaCents);
+          // Profile updates ride INSIDE the ceiling tx so a 409 rejection rolls
+          // back name/email too (no partial mutation when the budget is denied).
+          if (userName || userEmail) {
+            const userUpdate: Record<string, any> = {};
+            if (userName) userUpdate.name = userName;
+            if (userEmail) userUpdate.email = userEmail;
+            await storage.updateUser(membership.userId, userUpdate, tx);
+          }
           return storage.updateMembership(membership.id, membershipData, tx);
         });
       } catch (e) {

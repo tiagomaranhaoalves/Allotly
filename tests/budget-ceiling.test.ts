@@ -21,6 +21,8 @@ import {
   ceilingErrorResponse,
 } from "../server/lib/budget-ceiling";
 import { claimVoucherSlot } from "../server/lib/vouchers/redeem-inline";
+import { storage } from "../server/storage";
+import { createMemberHandler } from "../server/lib/members/create-member";
 
 /**
  * Hierarchical budget-CEILING (allocation cap) enforcement.
@@ -419,3 +421,138 @@ async function mkMemberInTx(tx: any, teamId: string, budgetCents: number) {
     status: "ACTIVE",
   });
 }
+
+// --- ceiling-rejection atomicity (no orphaned side effects on 409) ---
+
+function mockRes() {
+  const r: any = {
+    statusCode: 200,
+    body: undefined as any,
+    status(c: number) { this.statusCode = c; return this; },
+    json(b: any) { this.body = b; return this; },
+    send(b: any) { this.body = b; return this; },
+  };
+  return r;
+}
+
+function mockReq(opts: { body?: any; session?: any } = {}) {
+  return {
+    body: opts.body || {},
+    session: opts.session || {},
+    protocol: "http",
+    get(_h: string) { return "localhost"; },
+  } as any;
+}
+
+async function mkEnterpriseOrg(): Promise<string> {
+  const [o] = await db
+    .insert(organizations)
+    .values({
+      name: `ceil-atom-${TAG}-${Math.random().toString(36).slice(2, 6)}`,
+      // ENTERPRISE so plan member limits never interfere with the route flow.
+      plan: "ENTERPRISE",
+      orgBudgetCeilingCents: null,
+    })
+    .returning();
+  createdOrgIds.push(o.id);
+  return o.id;
+}
+
+async function mkUserIn(oid: string, role: "ROOT_ADMIN" | "TEAM_ADMIN" | "MEMBER", name = "U"): Promise<any> {
+  const [u] = await db
+    .insert(users)
+    .values({
+      email: `atom-${role.toLowerCase()}-${TAG}-${Math.random().toString(36).slice(2, 10)}@allotly.test`,
+      name,
+      passwordHash: "x",
+      orgId: oid,
+      orgRole: role,
+      status: "ACTIVE",
+    })
+    .returning();
+  return u;
+}
+
+async function mkTeamIn(oid: string, adminId: string, ceilingCents: number | null): Promise<any> {
+  const [t] = await db
+    .insert(teams)
+    .values({ name: `atom-team-${TAG}-${Math.random().toString(36).slice(2, 6)}`, orgId: oid, adminId, monthlyBudgetCeilingCents: ceilingCents })
+    .returning();
+  return t;
+}
+
+describe("ceiling-rejection atomicity (no orphaned side effects on 409)", () => {
+  it("create-member: a ceiling 409 rolls back the invited user row (no orphan)", async () => {
+    const oid = await mkEnterpriseOrg();
+    const root = await mkUserIn(oid, "ROOT_ADMIN", "Atom Root");
+    const tAdmin = await mkUserIn(oid, "TEAM_ADMIN", "Atom TAdmin");
+    const team = await mkTeamIn(oid, tAdmin.id, 1000);
+
+    // Fill the team to its ceiling: one member at 1000c => allocation == ceiling.
+    const fillUser = await mkUserIn(oid, "MEMBER", "Fill");
+    const now = new Date();
+    await db.insert(teamMemberships).values({
+      userId: fillUser.id,
+      teamId: team.id,
+      accessType: "TEAM",
+      monthlyBudgetCents: 1000,
+      currentPeriodSpendCents: 0,
+      periodStart: now,
+      periodEnd: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
+      status: "ACTIVE",
+    });
+
+    const newEmail = `atom-new-${TAG}-${Math.random().toString(36).slice(2, 10)}@allotly.test`;
+    const res = mockRes();
+    await createMemberHandler(
+      mockReq({ session: { userId: root.id }, body: { email: newEmail, name: "New One", teamId: team.id, budgetCents: 500 } }),
+      res,
+    );
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body?.code).toBe("BUDGET_CEILING_EXCEEDED");
+    // The invited user row must NOT persist after the rejection (rolled back
+    // because createUser now runs inside the ceiling tx).
+    const orphan = await db.select().from(users).where(eq(users.email, newEmail));
+    expect(orphan.length).toBe(0);
+  });
+
+  it("member budget update: a ceiling 409 rolls back the profile (name) write", async () => {
+    // Mirrors PATCH /api/members/:id/budget: the profile (updateUser) write and
+    // the ceiling-checked membership update share ONE tx. Write the profile
+    // FIRST then trip the ceiling to prove TRUE rollback (not just fail-fast).
+    const oid = await mkEnterpriseOrg();
+    const tAdmin = await mkUserIn(oid, "TEAM_ADMIN", "Atom2 TAdmin");
+    const team = await mkTeamIn(oid, tAdmin.id, 1000);
+    const memberUser = await mkUserIn(oid, "MEMBER", "Original Name");
+
+    const now = new Date();
+    const [m] = await db
+      .insert(teamMemberships)
+      .values({
+        userId: memberUser.id,
+        teamId: team.id,
+        accessType: "TEAM",
+        monthlyBudgetCents: 800,
+        currentPeriodSpendCents: 0,
+        periodStart: now,
+        periodEnd: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
+        status: "ACTIVE",
+      })
+      .returning();
+
+    await expect(
+      db.transaction(async (tx) => {
+        await storage.updateUser(memberUser.id, { name: "Changed Name" }, tx);
+        const deltaCents = 5000 - m.monthlyBudgetCents; // 800 -> 5000 exceeds 1000 ceiling
+        await assertTeamAllocationWithin(tx, team.id, deltaCents);
+        await storage.updateMembership(m.id, { monthlyBudgetCents: 5000 }, tx);
+      }),
+    ).rejects.toBeInstanceOf(CeilingExceededError);
+
+    const afterUser = await db.select().from(users).where(eq(users.id, memberUser.id));
+    expect(afterUser[0].name).toBe("Original Name");
+    const afterM = await db.select().from(teamMemberships).where(eq(teamMemberships.id, m.id));
+    expect(afterM[0].monthlyBudgetCents).toBe(800);
+  });
+});

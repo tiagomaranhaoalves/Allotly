@@ -286,8 +286,15 @@ describe("processChatCompletionStreaming — behavioural accounting", () => {
     expect(errArg.errorBody.code).toBe("client_disconnected");
     expect(errArg.status).toBe(499);
     expect(errArg.errorCode).toBe(-32099);
-    // Settled to actual-so-far (NOT a refund).
+    // Settled to actual-so-far via the sub-cent carry ledger (NOT a refund,
+    // and NOT a freshly-rounded cents figure) — parity with the success path.
+    expect(storage.settleSpendWithCarry).toHaveBeenCalledTimes(1);
     expect(safeguardCalls.adjustBudgetAfterResponse).toHaveBeenCalledTimes(1);
+    // The Redis cap must be decremented by the crossedCents the carry ledger
+    // returned, never a separately-rounded value.
+    const carryCrossed = (storage.settleSpendWithCarry as any).mock.results[0].value;
+    const crossedResolved = carryCrossed instanceof Promise ? await carryCrossed : carryCrossed;
+    expect(safeguardCalls.adjustBudgetAfterResponse.mock.calls[0][2]).toBe(crossedResolved.crossedCents);
     expect(safeguardCalls.refundBudget).not.toHaveBeenCalled();
     // Concurrency released, RPM kept (real upstream work happened).
     expect(safeguardCalls.releaseConcurrency).toHaveBeenCalledTimes(1);
@@ -295,6 +302,67 @@ describe("processChatCompletionStreaming — behavioural accounting", () => {
     // First chunk did make it to the caller before the abort.
     expect(onChunk).toHaveBeenCalled();
     expect(errArg.emittedChunks).toBe(true);
+  });
+
+  it("provider-interrupted mid-stream with sub-cent spend: settles via carry ledger (no under-bill), keeps RPM", async () => {
+    // Sub-cent pricing: 10 input + a few output tokens at low per-MTok rates
+    // produces a fraction of a cent. The interrupted path MUST settle via
+    // settleSpendWithCarry so the sub-cent spend accumulates instead of
+    // rounding to 0 and silently under-billing.
+    (storage.getModelPricingByProvider as any).mockResolvedValue([
+      { modelId: "gpt-4o-mini", inputPricePerMTok: 100, outputPricePerMTok: 200, isActive: true, maxOutputTokens: null },
+    ]);
+    // 30 micro-cents in -> 0 whole cents crossed (all carry, no round-up).
+    (storage.settleSpendWithCarry as any).mockResolvedValue({ crossedCents: 0 });
+
+    // Stream emits a usage frame (so we have real token counts) then the
+    // upstream itself fails WITHOUT a client abort -> provider_stream_interrupted.
+    const encoder = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: "Hi" } }], usage: { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12 } })}\n\n`));
+        setTimeout(() => {
+          try { controller.error(new Error("upstream exploded")); } catch {}
+        }, 20);
+      },
+    });
+    const fetchMock = vi.fn().mockResolvedValue(new Response(body, {
+      status: 200, headers: { "content-type": "text/event-stream" },
+    }) as any);
+    (globalThis as any).fetch = fetchMock;
+
+    const onError = vi.fn();
+    const ac = new AbortController(); // never aborted -> provider interrupt branch
+
+    await processChatCompletionStreaming(
+      {
+        membership: makeMembership(),
+        userId: "u-1",
+        apiKeyId: null,
+        body: { model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }], max_tokens: 50 },
+        requestId: "r-interrupt",
+        abortSignal: ac.signal,
+      },
+      vi.fn(), vi.fn(), onError,
+    );
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    const errArg = onError.mock.calls[0][0];
+    expect(errArg.errorBody.code).toBe("provider_stream_interrupted");
+    expect(errArg.status).toBe(502);
+    // Settlement went through the carry ledger with the true micro-cent cost.
+    expect(storage.settleSpendWithCarry).toHaveBeenCalledTimes(1);
+    const microArg = (storage.settleSpendWithCarry as any).mock.calls[0][1] as number;
+    // 10 in × 100/MTok + 2 out × 200/MTok = 1000 + 400 = 1400 micro-cents
+    // (sub-cent), proving we settle on true cost, not a rounded 0/1 cent.
+    expect(microArg).toBe(1400);
+    // Cap decremented by the crossedCents the ledger returned (0 here).
+    expect(safeguardCalls.adjustBudgetAfterResponse).toHaveBeenCalledTimes(1);
+    expect(safeguardCalls.adjustBudgetAfterResponse.mock.calls[0][2]).toBe(0);
+    expect(safeguardCalls.refundBudget).not.toHaveBeenCalled();
+    // Real upstream work happened: concurrency released, RPM kept.
+    expect(safeguardCalls.releaseConcurrency).toHaveBeenCalledTimes(1);
+    expect(safeguardCalls.releaseRateLimit).not.toHaveBeenCalled();
   });
 
   it("pre-upstream rate-limit rejection: refunds nothing, releases concurrency only (no reservation made yet)", async () => {

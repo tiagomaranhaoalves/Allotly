@@ -347,7 +347,11 @@ describe("M4 — handler-streaming parity with handler.ts", () => {
     // settle (i.e. before adjustBudgetAfterResponse is called for the
     // happy path).
     const emptyIdx = src.indexOf("empty_response");
-    const settleIdx = src.indexOf("adjustBudgetAfterResponse(membershipId, reservedCostCents, crossedCents)");
+    // NB: the carry-aware settle call (adjustBudgetAfterResponse(..., crossedCents))
+    // now appears twice — once in the shared mid-stream helper (defined earlier)
+    // and once on the success path. Anchor on the LAST occurrence so we assert
+    // the SUCCESS-path settle, which must follow the empty-response check.
+    const settleIdx = src.lastIndexOf("adjustBudgetAfterResponse(membershipId, reservedCostCents, crossedCents)");
     expect(emptyIdx).toBeGreaterThan(0);
     expect(settleIdx).toBeGreaterThan(emptyIdx);
   });

@@ -53,8 +53,9 @@ export async function createMemberHandler(req: any, res: any) {
     }
 
     const existingUser = await storage.getUserByEmail(email);
-    let memberUser;
+    let memberUser: any;
     let isExistingUser = false;
+    let newUserPasswordHash: string | null = null;
 
     if (existingUser) {
       if (existingUser.orgId !== user.orgId) {
@@ -70,17 +71,10 @@ export async function createMemberHandler(req: any, res: any) {
       memberUser = existingUser;
       isExistingUser = true;
     } else {
+      // Hash outside the tx (CPU-bound, no DB); the user row itself is
+      // created INSIDE the ceiling tx below so a 409 rejection rolls it back.
       const randomPassword = crypto.randomBytes(32).toString("hex");
-      const passwordHash = await hashPassword(randomPassword);
-      memberUser = await storage.createUser({
-        email,
-        name: name || email.split("@")[0],
-        passwordHash,
-        orgId: user.orgId,
-        orgRole: "MEMBER",
-        status: "INVITED",
-        isVoucherUser: false,
-      });
+      newUserPasswordHash = await hashPassword(randomPassword);
     }
 
     const now = new Date();
@@ -90,6 +84,19 @@ export async function createMemberHandler(req: any, res: any) {
     let membership;
     try {
       membership = await db.transaction(async (tx) => {
+        // Create the invited user inside the same tx as the ceiling check so a
+        // CeilingExceededError rolls back the user row (no orphaned INVITED user).
+        if (!isExistingUser) {
+          memberUser = await storage.createUser({
+            email,
+            name: name || email.split("@")[0],
+            passwordHash: newUserPasswordHash!,
+            orgId: user.orgId,
+            orgRole: "MEMBER",
+            status: "INVITED",
+            isVoucherUser: false,
+          }, tx);
+        }
         // Budget-ceiling: new allocation = the member's monthly budget.
         await assertTeamAllocationWithin(tx, targetTeamId!, budgetCents);
         return storage.createMembership({

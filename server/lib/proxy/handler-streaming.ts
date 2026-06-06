@@ -474,13 +474,18 @@ export async function processChatCompletionStreaming(
       const u = upstreamUsage as UpstreamUsage | null;
       const actualOutput = u?.completion_tokens ?? outputTokensSoFar;
       const actualInput = u?.prompt_tokens ?? inputTokens;
-      const actualCost = calculateSettledCostCents({
+      // Mirror the success path: settle via the sub-cent carry ledger so
+      // interrupted streams never under-bill, then decrement the Redis cap by
+      // the whole cents that actually crossed 1c (crossedCents), not a freshly
+      // rounded figure.
+      const actualCostMicroCents = calculateSettledCostMicroCents({
         inputTokens: actualInput,
         outputTokens: actualOutput,
         cacheWriteTokens: u?.cache_creation_input_tokens,
         cacheReadTokens: u?.cache_read_input_tokens,
       }, pricing);
-      await adjustBudgetAfterResponse(membershipId, reservedCostCents, actualCost);
+      const { crossedCents } = await storage.settleSpendWithCarry(membershipId, actualCostMicroCents);
+      await adjustBudgetAfterResponse(membershipId, reservedCostCents, crossedCents);
       reservedCostCents = 0;
       if (concurrencyAcquired) {
         await releaseConcurrency(membershipId, requestId).catch(() => {});

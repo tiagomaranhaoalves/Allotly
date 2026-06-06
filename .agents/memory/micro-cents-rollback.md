@@ -5,10 +5,18 @@ description: Why Allotly money is whole integer USD-cents (not micro-cents), and
 
 # Money is whole integer USD-cents (micro-cents migration reverted)
 
-**Rule:** All `*_cents` columns and all money compute use whole integer USD-CENTS
-end-to-end (storage, settlement, wire, display). Columns are `bigint(mode:"number")`
-for headroom but hold plain cents. Settlement rounds to cents once in
-`server/lib/proxy/safeguards.ts`. There is NO cents↔micro-cents conversion layer.
+**Rule:** All `*_cents` columns and all money on the wire/display are whole integer
+USD-CENTS end-to-end. Columns are `bigint(mode:"number")` for headroom but hold
+plain cents. There is NO micro-cents *column re-basing* (that migration was reverted).
+
+**Caveat (not a contradiction):** settlement does an *internal* micro-cents
+computation purely for sub-cent precision — `calculateSettledCostMicroCents` plus a
+per-membership carry ledger (`storage.settleSpendWithCarry`). It accumulates the
+sub-cent remainder and decrements the real-time cap only by the whole cents that
+actually cross 1¢ (`crossedCents`), so tiny spends never round to 0 and under-bill.
+Stored balances/budgets stay whole cents; the micro-cents value is a transient
+compute detail, NOT a stored scale. Both the success path and the mid-stream
+interruption path MUST settle through this carry ledger (kept in parity).
 
 **Why:** A migration re-based money to micro-cents (1¢ = 1,000,000) for exact
 sub-cent billing, but it shipped incompletely on two fronts and broke production:
