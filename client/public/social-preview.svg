@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f0f1a"/>
+      <stop offset="100%" style="stop-color:#0d1117"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#6366f1"/>
+      <stop offset="100%" style="stop-color:#06b6d4"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1;stop-opacity:0.15"/>
+      <stop offset="100%" style="stop-color:#06b6d4;stop-opacity:0.05"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)"/>
+
+  <ellipse cx="300" cy="200" rx="400" ry="300" fill="url(#glow)" opacity="0.6"/>
+  <ellipse cx="1000" cy="480" rx="350" ry="250" fill="url(#glow)" opacity="0.4"/>
+
+  <rect x="80" y="200" width="4" height="230" rx="2" fill="url(#accent)" opacity="0.8"/>
+
+  <text x="116" y="272" font-family="system-ui,-apple-system,sans-serif" font-size="76" font-weight="800" letter-spacing="-3" fill="#ffffff">Allotly</text>
+
+  <rect x="116" y="300" width="700" height="3" rx="1.5" fill="url(#accent)" opacity="0.4"/>
+
+  <text x="116" y="370" font-family="system-ui,-apple-system,sans-serif" font-size="32" font-weight="400" fill="#a1a1aa" letter-spacing="0">One key. Every model. One budget.</text>
+
+  <text x="116" y="430" font-family="system-ui,-apple-system,sans-serif" font-size="22" font-weight="400" fill="#52525b">Real-time AI API budget enforcement for teams and vouchers.</text>
+
+  <g transform="translate(116, 490)">
+    <rect width="160" height="40" rx="6" fill="#6366f1" opacity="0.15"/>
+    <text x="12" y="26" font-family="system-ui,-apple-system,sans-serif" font-size="16" fill="#818cf8">OpenAI</text>
+    <text x="72" y="26" font-family="system-ui,-apple-system,sans-serif" font-size="16" fill="#52525b">·</text>
+  </g>
+  <g transform="translate(292, 490)">
+    <rect width="185" height="40" rx="6" fill="#6366f1" opacity="0.15"/>
+    <text x="12" y="26" font-family="system-ui,-apple-system,sans-serif" font-size="16" fill="#818cf8">Anthropic</text>
+  </g>
+  <g transform="translate(493, 490)">
+    <rect width="165" height="40" rx="6" fill="#6366f1" opacity="0.15"/>
+    <text x="12" y="26" font-family="system-ui,-apple-system,sans-serif" font-size="16" fill="#818cf8">Gemini</text>
+  </g>
+  <g transform="translate(674, 490)">
+    <rect width="140" height="40" rx="6" fill="#6366f1" opacity="0.15"/>
+    <text x="12" y="26" font-family="system-ui,-apple-system,sans-serif" font-size="16" fill="#818cf8">Azure</text>
+  </g>
+
+  <text x="1120" y="590" font-family="system-ui,-apple-system,sans-serif" font-size="18" font-weight="500" fill="#3f3f5a" text-anchor="end">allotly.ai</text>
+</svg>

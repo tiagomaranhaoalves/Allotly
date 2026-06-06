@@ -8,8 +8,13 @@ import { useState } from "react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowRight, CheckCircle, AlertTriangle } from "lucide-react";
+import { usePageMeta } from "@/hooks/use-page-meta";
 
 export default function ResetPasswordPage() {
+  usePageMeta({
+    title: "Set New Password | Allotly",
+    description: "Set a new password for your Allotly account.",
+  });
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);

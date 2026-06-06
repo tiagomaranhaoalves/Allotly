@@ -72,7 +72,6 @@ function Router() {
         <Route path="/invite/:token" component={InvitePage} />
         <Route path="/docs" component={DocsPage} />
         <Route path="/mcp/docs" component={McpDocsPage} />
-        <Route path="/docs/mcp" component={McpDocsPage} />
         <Route path="/about" component={AboutPage} />
         <Route path="/careers" component={CareersPage} />
         <Route path="/contact" component={ContactPage} />

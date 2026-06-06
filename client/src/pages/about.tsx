@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { Shield, Unlock, Layers, ArrowRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { usePageMeta } from "@/hooks/use-page-meta";
 
 const principles = [
   { id: "dataPath", testSlug: "your-data-path-not-ours-", icon: Shield },
@@ -38,6 +39,11 @@ const ABOUT_SCHEMA = {
 
 export default function About() {
   const { t } = useTranslation();
+  usePageMeta({
+    title: "About | Allotly",
+    description:
+      "Learn about Allotly — the AI Spend Control Plane that gives your organization real-time budget enforcement and visibility across OpenAI, Anthropic, Gemini, and Azure.",
+  });
   return (
     <PublicLayout>
       <JsonLd schema={ABOUT_SCHEMA} />

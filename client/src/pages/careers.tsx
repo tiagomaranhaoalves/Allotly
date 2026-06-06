@@ -2,6 +2,7 @@ import PublicLayout from "@/components/public-layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Rocket, Lightbulb, Handshake, Wrench } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { usePageMeta } from "@/hooks/use-page-meta";
 
 const values = [
   { id: "shipFast", testSlug: "ship-fast", icon: Rocket },
@@ -12,6 +13,10 @@ const values = [
 
 export default function Careers() {
   const { t } = useTranslation();
+  usePageMeta({
+    title: "Careers | Allotly",
+    description: "Join the Allotly team and help build the AI access governance platform of the future.",
+  });
   return (
     <PublicLayout>
       <section className="relative overflow-hidden">

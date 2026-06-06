@@ -1,8 +1,13 @@
 import PublicLayout from "@/components/public-layout";
 import { useTranslation } from "react-i18next";
+import { usePageMeta } from "@/hooks/use-page-meta";
 
 export default function TermsPage() {
   const { t } = useTranslation();
+  usePageMeta({
+    title: "Terms of Service | Allotly",
+    description: "Allotly's terms of service — the agreement governing your use of the Allotly platform.",
+  });
   const sec3Bullets = ["teams", "vouchers"] as const;
   const sec4Bullets = ["free", "team", "enterprise"] as const;
   const sec5Raw = t("pages.terms.sec5.bullets", { returnObjects: true });

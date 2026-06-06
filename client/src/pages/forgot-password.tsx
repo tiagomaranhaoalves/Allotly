@@ -8,8 +8,13 @@ import { useState } from "react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Mail, CheckCircle } from "lucide-react";
+import { usePageMeta } from "@/hooks/use-page-meta";
 
 export default function ForgotPasswordPage() {
+  usePageMeta({
+    title: "Reset Password | Allotly",
+    description: "Reset your Allotly account password.",
+  });
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);

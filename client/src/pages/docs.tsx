@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { useTheme } from "@/components/theme-provider";
 import { Link } from "wouter";
 import { useState, useEffect, useRef, useCallback } from "react";
+import { usePageMeta } from "@/hooks/use-page-meta";
 import {
   BookOpen, Key, Ticket, Shield, Zap, BarChart3, Code,
   ChevronRight, ChevronDown, ArrowRight, Sun, Moon, Terminal, Users,
@@ -228,6 +229,11 @@ function Sidebar({
 }
 
 export default function DocsPage() {
+  usePageMeta({
+    title: "Documentation | Allotly",
+    description:
+      "Complete API documentation for Allotly — authentication, team management, budget controls, and AI model access for OpenAI, Anthropic, Gemini, and Azure.",
+  });
   const { theme, toggleTheme } = useTheme();
   const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
   const [activeId, setActiveId] = useState("what-is-allotly");

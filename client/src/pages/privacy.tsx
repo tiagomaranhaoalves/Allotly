@@ -1,5 +1,6 @@
 import PublicLayout from "@/components/public-layout";
 import { useTranslation } from "react-i18next";
+import { usePageMeta } from "@/hooks/use-page-meta";
 
 const LEGAL_ENTITY = "DivBZ Ventures Ltd";
 const JURISDICTION = "England and Wales";
@@ -7,6 +8,10 @@ const REGISTERED_ADDRESS = "71-75 Shelton Street, Covent Garden, London, WC2H 9J
 
 export default function PrivacyPage() {
   const { t } = useTranslation();
+  usePageMeta({
+    title: "Privacy Policy | Allotly",
+    description: "Allotly's privacy policy — how we collect, use, and protect your personal data.",
+  });
   const sec1Bullets = ["account", "org", "usage", "billing"] as const;
   const sec2Raw = t("pages.privacy.sec2.bullets", { returnObjects: true });
   const sec2Bullets: string[] = Array.isArray(sec2Raw) ? sec2Raw : [];

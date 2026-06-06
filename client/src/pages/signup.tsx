@@ -9,8 +9,13 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowRight, Shield, Users, Ticket } from "lucide-react";
 import { TurnstileWidget, isTurnstileConfigured, type TurnstileWidgetHandle } from "@/components/turnstile-widget";
+import { usePageMeta } from "@/hooks/use-page-meta";
 
 export default function SignupPage() {
+  usePageMeta({
+    title: "Sign Up | Allotly",
+    description: "Create an Allotly account to start managing AI API access with real-time budget controls for your team.",
+  });
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

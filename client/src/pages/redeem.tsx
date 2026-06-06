@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "react-i18next";
+import { usePageMeta } from "@/hooks/use-page-meta";
 import { Link } from "wouter";
 import { useState, useEffect, useRef } from "react";
 import { apiRequest } from "@/lib/queryClient";
@@ -54,6 +55,10 @@ function formatCode(raw: string): string {
 }
 
 export default function RedeemPage() {
+  usePageMeta({
+    title: "Redeem Voucher | Allotly",
+    description: "Redeem your Allotly voucher to get access to AI APIs with pre-set budgets.",
+  });
   const { t } = useTranslation();
   const { toast } = useToast();
   const { user } = useAuth();

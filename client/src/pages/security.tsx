@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Shield, Lock, Eye, EyeOff, Server, FileCheck, Database, AlertTriangle } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { usePageMeta } from "@/hooks/use-page-meta";
 
 const architectureCards = [
   { id: "teamsZero", testSlug: "teams-zero-data-path", icon: Shield },
@@ -22,6 +23,11 @@ const infrastructureItems = [
 
 export default function SecurityPage() {
   const { t } = useTranslation();
+  usePageMeta({
+    title: "Security | Allotly",
+    description:
+      "Allotly's security practices — encryption, access controls, and responsible disclosure for the AI access governance platform.",
+  });
   const dataStoredRaw = t("pages.security.dataStored", { returnObjects: true });
   const dataNotStoredRaw = t("pages.security.dataNotStored", { returnObjects: true });
   const dataStored: string[] = Array.isArray(dataStoredRaw) ? dataStoredRaw : [];

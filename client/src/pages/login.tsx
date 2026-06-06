@@ -8,8 +8,13 @@ import { useState } from "react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowRight, Lock } from "lucide-react";
+import { usePageMeta } from "@/hooks/use-page-meta";
 
 export default function LoginPage() {
+  usePageMeta({
+    title: "Sign In | Allotly",
+    description: "Sign in to Allotly to manage your AI API access, budgets, and team members.",
+  });
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);

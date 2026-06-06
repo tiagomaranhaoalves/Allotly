@@ -14,7 +14,6 @@ const SPA_ROUTES: Array<string | RegExp> = [
   "/reset-password",
   "/docs",
   "/mcp/docs",
-  "/docs/mcp",
   "/about",
   "/careers",
   "/contact",
@@ -42,6 +41,138 @@ function matchesSpaRoute(urlPath: string): boolean {
   return false;
 }
 
+interface RouteMeta {
+  title: string;
+  description: string;
+}
+
+const BASE_URL = "https://allotly.ai";
+
+const ROUTE_META: Record<string, RouteMeta> = {
+  "/": {
+    title: "Allotly — One key. Every model. One budget.",
+    description:
+      "One API key for OpenAI, Anthropic, Gemini, and Azure — with real-time budget enforcement per person, per model, per project.",
+  },
+  "/docs": {
+    title: "Documentation | Allotly",
+    description:
+      "Complete API documentation for Allotly — authentication, team management, budget controls, and AI model access for OpenAI, Anthropic, Gemini, and Azure.",
+  },
+  "/mcp/docs": {
+    title: "MCP Server Documentation | Allotly",
+    description:
+      "Connect Claude Desktop, Cursor, VS Code, ChatGPT, or Gemini to Allotly's hosted MCP server. Setup snippets, OAuth flows, available tools, and troubleshooting.",
+  },
+  "/about": {
+    title: "About | Allotly",
+    description:
+      "Learn about Allotly — the AI Spend Control Plane that gives your organization real-time budget enforcement and visibility across OpenAI, Anthropic, Gemini, and Azure.",
+  },
+  "/careers": {
+    title: "Careers | Allotly",
+    description:
+      "Join the Allotly team and help build the AI access governance platform of the future.",
+  },
+  "/contact": {
+    title: "Contact | Allotly",
+    description:
+      "Get in touch with the Allotly team for sales, support, or general inquiries.",
+  },
+  "/privacy": {
+    title: "Privacy Policy | Allotly",
+    description:
+      "Allotly's privacy policy — how we collect, use, and protect your personal data.",
+  },
+  "/terms": {
+    title: "Terms of Service | Allotly",
+    description:
+      "Allotly's terms of service — the agreement governing your use of the Allotly platform.",
+  },
+  "/security": {
+    title: "Security | Allotly",
+    description:
+      "Allotly's security practices — encryption, access controls, and responsible disclosure for the AI access governance platform.",
+  },
+  "/dpa": {
+    title: "Data Processing Agreement | Allotly",
+    description:
+      "Allotly's Data Processing Agreement (DPA). Article 28 GDPR compliant terms for customers processing personal data through the Allotly AI access governance platform.",
+  },
+  "/subprocessors": {
+    title: "Sub-processors | Allotly",
+    description:
+      "List of third-party sub-processors engaged by Allotly to provide the AI access governance platform, including hosting, database, payment, and email infrastructure.",
+  },
+  "/login": {
+    title: "Sign In | Allotly",
+    description:
+      "Sign in to Allotly to manage your AI API access, budgets, and team members.",
+  },
+  "/signup": {
+    title: "Sign Up | Allotly",
+    description:
+      "Create an Allotly account to start managing AI API access with real-time budget controls for your team.",
+  },
+  "/redeem": {
+    title: "Redeem Voucher | Allotly",
+    description:
+      "Redeem your Allotly voucher to get access to AI APIs with pre-set budgets.",
+  },
+  "/forgot-password": {
+    title: "Reset Password | Allotly",
+    description: "Reset your Allotly account password.",
+  },
+  "/reset-password": {
+    title: "Set New Password | Allotly",
+    description: "Set a new password for your Allotly account.",
+  },
+};
+
+function escAttr(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+}
+
+function injectRouteMeta(html: string, meta: RouteMeta, canonicalUrl: string): string {
+  let out = html;
+
+  out = out.replace(/<title>[^<]*<\/title>/, `<title>${escAttr(meta.title)}</title>`);
+
+  out = out.replace(
+    /(<meta\s+name="description"\s+content=")[^"]*(")/,
+    `$1${escAttr(meta.description)}$2`,
+  );
+
+  out = out.replace(
+    /(<meta\s+property="og:title"\s+content=")[^"]*(")/,
+    `$1${escAttr(meta.title)}$2`,
+  );
+  out = out.replace(
+    /(<meta\s+property="og:description"\s+content=")[^"]*(")/,
+    `$1${escAttr(meta.description)}$2`,
+  );
+  out = out.replace(
+    /(<meta\s+property="og:url"\s+content=")[^"]*(")/,
+    `$1${escAttr(canonicalUrl)}$2`,
+  );
+
+  out = out.replace(
+    /(<meta\s+name="twitter:title"\s+content=")[^"]*(")/,
+    `$1${escAttr(meta.title)}$2`,
+  );
+  out = out.replace(
+    /(<meta\s+name="twitter:description"\s+content=")[^"]*(")/,
+    `$1${escAttr(meta.description)}$2`,
+  );
+
+  out = out.replace(
+    /(<link\s+rel="canonical"\s+href=")[^"]*(")/,
+    `$1${escAttr(canonicalUrl)}$2`,
+  );
+
+  return out;
+}
+
 export function serveStatic(app: Express) {
   const distPath = path.resolve(__dirname, "public");
   if (!fs.existsSync(distPath)) {
@@ -52,12 +183,29 @@ export function serveStatic(app: Express) {
 
   app.use(express.static(distPath));
 
-  // Serve index.html for known SPA routes with HTTP 200.
-  // All other paths get a real HTTP 404 so crawlers and search engines
-  // see the correct status code instead of a misleading 200.
+  const indexPath = path.resolve(distPath, "index.html");
+  const baseHtml = fs.readFileSync(indexPath, "utf-8");
+
+  // Redirect the old /docs/mcp alias to the canonical /mcp/docs URL.
+  app.get("/docs/mcp", (_req, res) => {
+    res.redirect(301, "/mcp/docs");
+  });
+
+  // Serve index.html for known SPA routes with HTTP 200, injecting per-route
+  // metadata so crawlers and social bots see the correct title/description.
+  // All other paths get HTTP 404 so crawlers see the correct status code.
   app.use("/{*path}", (req, res) => {
-    const urlPath = req.path;
-    const status = matchesSpaRoute(urlPath) ? 200 : 404;
-    res.status(status).sendFile(path.resolve(distPath, "index.html"));
+    const pathname = req.path.replace(/\/$/, "") || "/";
+    const meta = ROUTE_META[pathname];
+
+    if (meta) {
+      const canonicalUrl = `${BASE_URL}${pathname === "/" ? "/" : pathname}`;
+      const injected = injectRouteMeta(baseHtml, meta, canonicalUrl);
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.send(injected);
+    } else {
+      const status = matchesSpaRoute(pathname) ? 200 : 404;
+      res.status(status).sendFile(indexPath);
+    }
   });
 }

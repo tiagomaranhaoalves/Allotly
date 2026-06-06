@@ -12,6 +12,7 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useTranslation } from "react-i18next";
 import { TurnstileWidget, isTurnstileConfigured, type TurnstileWidgetHandle } from "@/components/turnstile-widget";
+import { usePageMeta } from "@/hooks/use-page-meta";
 
 const contacts = [
   { id: "general", testSlug: "general-inquiries", icon: Mail, email: "hello@allotly.ai" },
@@ -21,6 +22,10 @@ const contacts = [
 
 export default function ContactPage() {
   const { t } = useTranslation();
+  usePageMeta({
+    title: "Contact | Allotly",
+    description: "Get in touch with the Allotly team for sales, support, or general inquiries.",
+  });
   const [submitted, setSubmitted] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const turnstileRef = useRef<TurnstileWidgetHandle | null>(null);
