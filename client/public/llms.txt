@@ -1,0 +1,28 @@
+# Allotly
+
+Allotly is a SaaS platform for managing and distributing AI API access with real-time budget controls. Teams use Allotly to provision, meter, and enforce spending limits on AI provider keys — across OpenAI, Anthropic, and other providers — without exposing raw credentials to end users.
+
+## What Allotly does
+
+- Real-time budget enforcement for AI API usage at the team and individual member level
+- Unified proxy that meters every AI request and blocks over-budget calls instantly
+- Voucher-based access distribution: grant time-limited or spend-limited AI access without sharing raw keys
+- Configurable tiered rate limiting and concurrency controls
+- Project-level API keys for granular usage tracking
+- Audit logging with detailed metadata and change diffs
+- Multi-currency display and multi-team membership support
+- MCP (Model Context Protocol) server integration for AI agent workflows
+
+## Key pages
+
+- Home: https://allotly.com/
+- Documentation: https://allotly.com/docs
+- MCP Integration Docs: https://allotly.com/mcp/docs
+- About: https://allotly.com/about
+- Contact: https://allotly.com/contact
+- Security: https://allotly.com/security
+- Privacy Policy: https://allotly.com/privacy
+- Terms of Service: https://allotly.com/terms
+- Data Processing Agreement: https://allotly.com/dpa
+- Sub-processors: https://allotly.com/subprocessors
+- Model Arena: https://allotly.com/arena

@@ -1,0 +1,17 @@
+User-agent: *
+Allow: /
+
+Disallow: /login
+Disallow: /signup
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /redeem
+Disallow: /invite/
+Disallow: /oauth/
+Disallow: /dashboard/
+Disallow: /admin/
+Disallow: /admin
+Disallow: /api/
+Disallow: /components
+
+Sitemap: https://allotly.com/sitemap.xml
