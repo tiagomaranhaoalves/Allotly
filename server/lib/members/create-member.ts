@@ -1,11 +1,13 @@
 import crypto from "crypto";
 import { z } from "zod";
+import { db } from "../../db";
 import { storage } from "../../storage";
 import { hashPassword } from "../password";
 import { generateAllotlyKey } from "../keys";
 import { redisSet, REDIS_KEYS } from "../redis";
 import { checkPlanLimit } from "../plan-limits";
 import { sendEmail, emailTemplates } from "../email";
+import { assertTeamAllocationWithin, CeilingExceededError, ceilingErrorResponse } from "../budget-ceiling";
 
 export const addMemberSchema = z.object({
   email: z.string().email(),
@@ -85,18 +87,31 @@ export async function createMemberHandler(req: any, res: any) {
     const periodEnd = new Date(now);
     periodEnd.setMonth(periodEnd.getMonth() + 1);
 
-    const membership = await storage.createMembership({
-      teamId: targetTeamId,
-      userId: memberUser.id,
-      accessType: accessType || "TEAM",
-      monthlyBudgetCents: budgetCents,
-      allowedModels: allowedModels || null,
-      allowedProviders: allowedProviders || null,
-      currentPeriodSpendCents: 0,
-      periodStart: now,
-      periodEnd,
-      status: "ACTIVE",
-    });
+    let membership;
+    try {
+      membership = await db.transaction(async (tx) => {
+        // Budget-ceiling: new allocation = the member's monthly budget.
+        await assertTeamAllocationWithin(tx, targetTeamId!, budgetCents);
+        return storage.createMembership({
+          teamId: targetTeamId!,
+          userId: memberUser.id,
+          accessType: accessType || "TEAM",
+          monthlyBudgetCents: budgetCents,
+          allowedModels: allowedModels || null,
+          allowedProviders: allowedProviders || null,
+          currentPeriodSpendCents: 0,
+          periodStart: now,
+          periodEnd,
+          status: "ACTIVE",
+        }, tx);
+      });
+    } catch (e) {
+      if (e instanceof CeilingExceededError) {
+        const r = ceilingErrorResponse(e);
+        return res.status(r.status).json(r.body);
+      }
+      throw e;
+    }
 
     const { key: rawKey, hash: keyHash, prefix: keyPrefix } = generateAllotlyKey();
     await storage.createAllotlyApiKey({

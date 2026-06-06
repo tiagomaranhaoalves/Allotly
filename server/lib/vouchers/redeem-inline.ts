@@ -58,97 +58,6 @@ export async function claimVoucherSlot(
   return updated ?? null;
 }
 
-/**
- * Atomically claim one slot on a voucher and (if applicable) one slot in its
- * backing bundle, in a single transaction. Either both claims commit or
- * neither does, so a successful voucher claim cannot leak when the bundle
- * pool is exhausted (and vice-versa).
- */
-type ClaimOutcome =
-  | { ok: true; voucher: Voucher; bundle: VoucherBundle | null }
-  | { ok: false; code: "voucher_fully_redeemed" | "bundle_exhausted" };
-
-/**
- * Best-effort compensation: undo a successful `claimVoucherAndBundle` when a
- * downstream side effect (user/membership/redemption-row creation, Redis
- * write, etc.) fails. The voucher counter is decremented and `FULLY_REDEEMED`
- * is reverted to `ACTIVE` if-and-only-if the row is currently FULLY_REDEEMED
- * *and* the new counter would be below the limit. Same logic for the bundle.
- *
- * Performed in a transaction so the two decrements either both happen or
- * neither does. Errors during release are swallowed (logged) so they cannot
- * mask the original error the caller is propagating.
- */
-async function releaseVoucherSlot(voucherId: string, bundleId: string | null): Promise<void> {
-  try {
-    await db.transaction(async (tx) => {
-      await tx
-        .update(vouchers)
-        .set({
-          currentRedemptions: sql`GREATEST(${vouchers.currentRedemptions} - 1, 0)`,
-          status: sql`CASE WHEN ${vouchers.status} = 'FULLY_REDEEMED' AND (${vouchers.currentRedemptions} - 1) < ${vouchers.maxRedemptions} THEN 'ACTIVE' ELSE ${vouchers.status} END`,
-          updatedAt: new Date(),
-        })
-        .where(eq(vouchers.id, voucherId));
-      if (bundleId) {
-        await tx
-          .update(voucherBundles)
-          .set({
-            usedRedemptions: sql`GREATEST(${voucherBundles.usedRedemptions} - 1, 0)`,
-            status: sql`CASE WHEN ${voucherBundles.status} = 'EXHAUSTED' AND (${voucherBundles.usedRedemptions} - 1) < ${voucherBundles.totalRedemptions} THEN 'ACTIVE' ELSE ${voucherBundles.status} END`,
-            updatedAt: new Date(),
-          })
-          .where(eq(voucherBundles.id, bundleId));
-      }
-    });
-  } catch (releaseErr) {
-    console.error("[redeem-inline] failed to release voucher slot after downstream error", { voucherId, bundleId, err: releaseErr });
-  }
-}
-
-async function claimVoucherAndBundle(voucher: Voucher): Promise<ClaimOutcome> {
-  const SENTINEL = Symbol("claim_failed");
-  type Failure = { sentinel: typeof SENTINEL; code: "voucher_fully_redeemed" | "bundle_exhausted" };
-  try {
-    return await db.transaction(async (tx) => {
-      const claimed = await claimVoucherSlot(tx, voucher.id);
-      if (!claimed) {
-        const fail: Failure = { sentinel: SENTINEL, code: "voucher_fully_redeemed" };
-        throw fail;
-      }
-      let bundle: VoucherBundle | null = null;
-      if (voucher.bundleId) {
-        const [b] = await tx
-          .update(voucherBundles)
-          .set({
-            usedRedemptions: sql`${voucherBundles.usedRedemptions} + 1`,
-            status: sql`CASE WHEN ${voucherBundles.usedRedemptions} + 1 >= ${voucherBundles.totalRedemptions} THEN 'EXHAUSTED' ELSE ${voucherBundles.status} END`,
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(voucherBundles.id, voucher.bundleId),
-              sql`${voucherBundles.usedRedemptions} < ${voucherBundles.totalRedemptions}`,
-              eq(voucherBundles.status, "ACTIVE"),
-            ),
-          )
-          .returning();
-        if (!b) {
-          const fail: Failure = { sentinel: SENTINEL, code: "bundle_exhausted" };
-          throw fail;
-        }
-        bundle = b;
-      }
-      return { ok: true as const, voucher: claimed, bundle };
-    });
-  } catch (e) {
-    if (e && typeof e === "object" && (e as Failure).sentinel === SENTINEL) {
-      return { ok: false, code: (e as Failure).code };
-    }
-    throw e;
-  }
-}
-
 export type RedeemInlineFailureCode =
   | "voucher_invalid"
   | "voucher_expired"
@@ -252,100 +161,131 @@ export async function redeemVoucherInline(input: RedeemInlineInput): Promise<Red
     return { ok: false, code: "member_limit", message: "This team has reached its member limit", orgId: voucher.orgId, voucherId: voucher.id, actorId: voucher.createdById };
   }
 
-  // Atomically reserve the voucher (and bundle) slot up front, before we
-  // create any user/membership/redemption rows. Two concurrent redemptions
-  // racing on the same last slot will both pass the read-time check above —
-  // only one will pass this conditional UPDATE. The other gets a clean
-  // "fully redeemed" response with zero side effects.
-  const claim = await claimVoucherAndBundle(voucher);
-  if (!claim.ok) {
-    const message =
-      claim.code === "voucher_fully_redeemed"
-        ? "Voucher is fully redeemed"
-        : "Bundle redemption pool is exhausted";
-    return {
-      ok: false,
-      code: claim.code,
-      message,
-      orgId: voucher.orgId,
-      voucherId: voucher.id,
-      actorId: voucher.createdById,
-    };
+  // Pre-compute the synthetic/real credentials BEFORE opening the transaction:
+  // hashPassword is deliberately slow (scrypt) and must not run while we hold
+  // the voucher/bundle row locks.
+  const isSynthetic = Boolean(instant) || !email;
+  let userEmail: string;
+  let userPassword: string;
+  if (isSynthetic) {
+    // crypto.randomBytes (CSPRNG) — Math.random was the prior weakness; for
+    // synthetic accounts the password is never shared but the email forms
+    // part of audit logs, so we keep it unpredictable.
+    const rand = crypto.randomBytes(4).toString("hex");
+    userEmail = `voucher-${code.slice(0, 8)}-${rand}@allotly.local`;
+    userPassword = crypto.randomBytes(16).toString("base64url");
+  } else {
+    userEmail = email!;
+    userPassword = password || "changeme123";
   }
-  const claimedBundle = claim.bundle;
+  const passwordHash = await hashPassword(userPassword);
 
-  // Compensation barrier: anything that throws between the atomic claim and
-  // the persistence of the durable redemption row must release the reserved
-  // voucher (and bundle) slot — otherwise the voucher's capacity is
-  // permanently consumed without a successful redemption. Once
-  // `createVoucherRedemption` has committed, the redemption is "real" and
-  // we MUST NOT release the slot, even if a later side effect (Redis,
-  // Allotly key, audit row) fails — releasing would re-open capacity that
-  // a persisted redemption row already occupies, allowing genuine
-  // over-redemption on retry.
-  //
-  // Storage operations here do not share a single transaction (the
-  // IStorage interface targets the global db pool), so transactional
-  // all-or-nothing isn't currently feasible without a wider refactor.
-  // The release-only-while-pre-persistence window is the pragmatic
-  // alternative; #55 tracks the larger transactional refactor.
-  let redemptionPersisted = false;
+  // #55 — Atomic redemption. The voucher (and bundle) slot claim, the user,
+  // the membership, and the durable redemption row all commit inside ONE
+  // transaction. Previously the slot claim and the redemption row committed
+  // separately, leaving a window where currentRedemptions had incremented but
+  // the membership/redemption did not yet exist (a transient over-count of the
+  // pool, and on crash a permanently consumed slot with no redemption). Now
+  // either the whole redemption persists or nothing does — Postgres rolls the
+  // claim back on any failure, so no compensation/release path is needed.
+  // Post-persist side effects (Redis seed, API key, audit, email) stay OUTSIDE
+  // the transaction and are best-effort: a redeemed voucher with a missing key
+  // is a degraded-but-real redemption, never a re-openable slot.
+  const SENTINEL = Symbol("claim_failed");
+  type Failure = { sentinel: typeof SENTINEL; code: "voucher_fully_redeemed" | "bundle_exhausted" };
+  let txResult: {
+    voucher: Voucher;
+    bundle: VoucherBundle | null;
+    voucherUser: User;
+    membership: TeamMembership;
+  };
   try {
-    const isSynthetic = Boolean(instant) || !email;
+    txResult = await db.transaction(async (tx) => {
+      const claimed = await claimVoucherSlot(tx, voucher.id);
+      if (!claimed) {
+        const fail: Failure = { sentinel: SENTINEL, code: "voucher_fully_redeemed" };
+        throw fail;
+      }
 
-    let userEmail: string;
-    let userPassword: string;
-    if (isSynthetic) {
-      // crypto.randomBytes (CSPRNG) — Math.random was the prior weakness; for
-      // synthetic accounts the password is never shared but the email forms
-      // part of audit logs, so we keep it unpredictable.
-      const rand = crypto.randomBytes(4).toString("hex");
-      userEmail = `voucher-${code.slice(0, 8)}-${rand}@allotly.local`;
-      userPassword = crypto.randomBytes(16).toString("base64url");
-    } else {
-      userEmail = email!;
-      userPassword = password || "changeme123";
+      let bundle: VoucherBundle | null = null;
+      if (voucher.bundleId) {
+        const [b] = await tx
+          .update(voucherBundles)
+          .set({
+            usedRedemptions: sql`${voucherBundles.usedRedemptions} + 1`,
+            status: sql`CASE WHEN ${voucherBundles.usedRedemptions} + 1 >= ${voucherBundles.totalRedemptions} THEN 'EXHAUSTED' ELSE ${voucherBundles.status} END`,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(voucherBundles.id, voucher.bundleId),
+              sql`${voucherBundles.usedRedemptions} < ${voucherBundles.totalRedemptions}`,
+              eq(voucherBundles.status, "ACTIVE"),
+            ),
+          )
+          .returning();
+        if (!b) {
+          const fail: Failure = { sentinel: SENTINEL, code: "bundle_exhausted" };
+          throw fail;
+        }
+        bundle = b;
+      }
+
+      const newUser: InsertUser = {
+        email: userEmail,
+        name: name || "Voucher User",
+        passwordHash,
+        orgId: voucher.orgId,
+        orgRole: "MEMBER",
+        status: "ACTIVE",
+        isVoucherUser: true,
+      };
+      const voucherUser = await storage.createUser(newUser, tx);
+
+      const now = new Date();
+      const newMembership: InsertTeamMembership = {
+        teamId: voucher.teamId,
+        userId: voucherUser.id,
+        accessType: "VOUCHER",
+        monthlyBudgetCents: voucher.budgetCents,
+        // JSON columns: voucher.allowedModels is `unknown`, membership column
+        // accepts the same shape. Cast through unknown to satisfy drizzle-zod's
+        // inferred Json type without `any`.
+        allowedModels: voucher.allowedModels as InsertTeamMembership["allowedModels"],
+        allowedProviders: voucher.allowedProviders as InsertTeamMembership["allowedProviders"],
+        currentPeriodSpendCents: 0,
+        periodStart: now,
+        periodEnd: new Date(voucher.expiresAt),
+        status: "ACTIVE",
+        voucherRedemptionId: voucher.id,
+      };
+      const membership = await storage.createMembership(newMembership, tx);
+
+      await storage.createVoucherRedemption({ voucherId: voucher.id, userId: voucherUser.id }, tx);
+
+      return { voucher: claimed, bundle, voucherUser, membership };
+    });
+  } catch (e) {
+    if (e && typeof e === "object" && (e as Failure).sentinel === SENTINEL) {
+      const code = (e as Failure).code;
+      const message =
+        code === "voucher_fully_redeemed"
+          ? "Voucher is fully redeemed"
+          : "Bundle redemption pool is exhausted";
+      return { ok: false, code, message, orgId: voucher.orgId, voucherId: voucher.id, actorId: voucher.createdById };
     }
+    // A real DB error rolled the whole transaction back: no slot consumed, no
+    // user/membership/redemption created. Nothing to compensate.
+    throw e;
+  }
 
-    const passwordHash = await hashPassword(userPassword);
-    const newUser: InsertUser = {
-      email: userEmail,
-      name: name || "Voucher User",
-      passwordHash,
-      orgId: voucher.orgId,
-      orgRole: "MEMBER",
-      status: "ACTIVE",
-      isVoucherUser: true,
-    };
-    const voucherUser = await storage.createUser(newUser);
+  const { voucherUser, membership, bundle: claimedBundle } = txResult;
 
-    const now = new Date();
-    const newMembership: InsertTeamMembership = {
-      teamId: voucher.teamId,
-      userId: voucherUser.id,
-      accessType: "VOUCHER",
-      monthlyBudgetCents: voucher.budgetCents,
-      // JSON columns: voucher.allowedModels is `unknown`, membership column
-      // accepts the same shape. Cast through unknown to satisfy drizzle-zod's
-      // inferred Json type without `any`.
-      allowedModels: voucher.allowedModels as InsertTeamMembership["allowedModels"],
-      allowedProviders: voucher.allowedProviders as InsertTeamMembership["allowedProviders"],
-      currentPeriodSpendCents: 0,
-      periodStart: now,
-      periodEnd: new Date(voucher.expiresAt),
-      status: "ACTIVE",
-      voucherRedemptionId: voucher.id,
-    };
-    const membership = await storage.createMembership(newMembership);
-
-    await storage.createVoucherRedemption({ voucherId: voucher.id, userId: voucherUser.id });
-    // Past this point the redemption is durably persisted: any later failure
-    // is a degraded-but-real redemption, not a candidate for slot release.
-    redemptionPersisted = true;
-
-    // Voucher counter + bundle counter were already incremented atomically by
-    // claimVoucherAndBundle above. All that remains is the (non-racy) Redis
-    // bookkeeping for the bundle.
+  // Best-effort post-persistence side effects. The redemption is already
+  // durable; failures here degrade the redemption (missing key/seed/audit) but
+  // must never re-open the now-consumed voucher slot.
+  try {
+    // Redis bundle bookkeeping (non-racy; counters were committed in the tx).
     if (claimedBundle) {
       const bundleReqKey = REDIS_KEYS.bundleRequests(claimedBundle.id);
       const existingReqs = await redisGet(bundleReqKey);
@@ -394,7 +334,7 @@ export async function redeemVoucherInline(input: RedeemInlineInput): Promise<Red
       ok: true,
       user: voucherUser,
       membership,
-      voucher: claim.voucher,
+      voucher: txResult.voucher,
       apiKey: key,
       keyPrefix: prefix,
       budgetCents: voucher.budgetCents,
@@ -405,18 +345,15 @@ export async function redeemVoucherInline(input: RedeemInlineInput): Promise<Red
       isSynthetic,
     };
   } catch (err) {
-    if (!redemptionPersisted) {
-      await releaseVoucherSlot(voucher.id, claimedBundle?.id ?? null);
-    } else {
-      // Late failure after the redemption row was committed: the voucher
-      // slot is genuinely consumed, so we leave the counters alone. Log so
-      // the partial-redemption can be reconciled (missing API key / audit
-      // log / Redis seed) rather than silently re-opening capacity.
-      console.error(
-        "[redeem-inline] post-persistence failure; voucher slot retained",
-        { voucherId: voucher.id, bundleId: claimedBundle?.id ?? null, err },
-      );
-    }
+    // The redemption is already durably committed; a failure in these
+    // best-effort side effects (Redis seed, API key, audit row, email) leaves a
+    // degraded-but-real redemption. We MUST NOT release the consumed slot —
+    // doing so would re-open capacity a persisted redemption already occupies.
+    // Re-throw so the caller can surface the partial-redemption for reconcile.
+    console.error(
+      "[redeem-inline] post-persistence side-effect failure; redemption retained",
+      { voucherId: voucher.id, bundleId: claimedBundle?.id ?? null, err },
+    );
     throw err;
   }
 }

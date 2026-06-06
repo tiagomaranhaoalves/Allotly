@@ -14,31 +14,37 @@ import {
 import { db } from "./db";
 import { eq, and, desc, sql, asc, gte, lte, count, inArray } from "drizzle-orm";
 
+// Lets allocating writes run inside a caller-supplied transaction so a budget
+// ceiling check and the write it guards commit atomically. Defaults to `db`.
+type DbExecutor =
+  | typeof db
+  | Parameters<Parameters<typeof db.transaction>[0]>[0];
+
 export interface IStorage {
   createOrganization(org: InsertOrganization): Promise<Organization>;
   getOrganization(id: string): Promise<Organization | undefined>;
-  updateOrganization(id: string, data: Partial<Organization>): Promise<Organization | undefined>;
+  updateOrganization(id: string, data: Partial<Organization>, executor?: DbExecutor): Promise<Organization | undefined>;
 
-  createUser(user: InsertUser): Promise<User>;
+  createUser(user: InsertUser, executor?: DbExecutor): Promise<User>;
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   getUsersByOrg(orgId: string): Promise<User[]>;
-  updateUser(id: string, data: Partial<User>): Promise<User | undefined>;
+  updateUser(id: string, data: Partial<User>, executor?: DbExecutor): Promise<User | undefined>;
 
   createTeam(team: InsertTeam): Promise<Team>;
   getTeam(id: string): Promise<Team | undefined>;
   getTeamsByOrg(orgId: string): Promise<Team[]>;
   getTeamByAdmin(adminId: string): Promise<Team | undefined>;
-  updateTeam(id: string, data: Partial<Team>): Promise<Team | undefined>;
+  updateTeam(id: string, data: Partial<Team>, executor?: DbExecutor): Promise<Team | undefined>;
   deleteTeam(id: string): Promise<void>;
 
-  createMembership(membership: InsertTeamMembership): Promise<TeamMembership>;
+  createMembership(membership: InsertTeamMembership, executor?: DbExecutor): Promise<TeamMembership>;
   getMembership(id: string): Promise<TeamMembership | undefined>;
   getMembershipByUser(userId: string): Promise<TeamMembership | undefined>;
   getMembershipsByUser(userId: string): Promise<TeamMembership[]>;
   getMembershipByUserAndTeam(userId: string, teamId: string): Promise<TeamMembership | undefined>;
   getMembershipsByTeam(teamId: string): Promise<TeamMembership[]>;
-  updateMembership(id: string, data: Partial<TeamMembership>): Promise<TeamMembership | undefined>;
+  updateMembership(id: string, data: Partial<TeamMembership>, executor?: DbExecutor): Promise<TeamMembership | undefined>;
 
   createProviderConnection(conn: InsertProviderConnection): Promise<ProviderConnection>;
   getProviderConnection(id: string): Promise<ProviderConnection | undefined>;
@@ -46,7 +52,7 @@ export interface IStorage {
   updateProviderConnection(id: string, data: Partial<ProviderConnection>): Promise<ProviderConnection | undefined>;
   deleteProviderConnection(id: string): Promise<void>;
 
-  createVoucher(voucher: InsertVoucher): Promise<Voucher>;
+  createVoucher(voucher: InsertVoucher, executor?: DbExecutor): Promise<Voucher>;
   getVoucher(id: string): Promise<Voucher | undefined>;
   getVoucherByCode(code: string): Promise<Voucher | undefined>;
   getVouchersByOrg(orgId: string): Promise<Voucher[]>;
@@ -54,22 +60,22 @@ export interface IStorage {
   getVouchersByBundle(bundleId: string): Promise<Voucher[]>;
   getActiveVoucherCountByOrg(orgId: string): Promise<number>;
   getActiveVoucherCountByCreator(createdById: string): Promise<number>;
-  updateVoucher(id: string, data: Partial<Voucher>): Promise<Voucher | undefined>;
-  bulkCreateVouchers(voucherData: InsertVoucher[]): Promise<Voucher[]>;
-  getMembershipsByVoucherId(voucherId: string): Promise<TeamMembership[]>;
+  updateVoucher(id: string, data: Partial<Voucher>, executor?: DbExecutor): Promise<Voucher | undefined>;
+  bulkCreateVouchers(voucherData: InsertVoucher[], executor?: DbExecutor): Promise<Voucher[]>;
+  getMembershipsByVoucherId(voucherId: string, executor?: DbExecutor): Promise<TeamMembership[]>;
   getVouchersFiltered(orgId: string, filters: { status?: string; bundleId?: string; createdAfter?: string; createdBefore?: string }): Promise<Voucher[]>;
 
-  createVoucherRedemption(data: { voucherId: string; userId: string }): Promise<VoucherRedemption>;
+  createVoucherRedemption(data: { voucherId: string; userId: string }, executor?: DbExecutor): Promise<VoucherRedemption>;
   getVoucherRedemptionsByVoucherId(voucherId: string): Promise<(VoucherRedemption & { user?: User })[]>;
 
-  createVoucherBundle(data: any): Promise<VoucherBundle>;
+  createVoucherBundle(data: any, executor?: DbExecutor): Promise<VoucherBundle>;
   getVoucherBundle(id: string): Promise<VoucherBundle | undefined>;
   getVoucherBundlesByOrg(orgId: string): Promise<VoucherBundle[]>;
   updateVoucherBundle(id: string, data: Partial<VoucherBundle>): Promise<VoucherBundle | undefined>;
 
   getMemberCountByTeam(teamId: string): Promise<number>;
   getMemberCountByOrg(orgId: string): Promise<number>;
-  deleteMembership(id: string): Promise<void>;
+  deleteMembership(id: string, executor?: DbExecutor): Promise<void>;
   deleteUser(id: string): Promise<void>;
 
   createAllotlyApiKey(data: { userId: string; membershipId: string; keyHash: string; keyPrefix: string; projectId?: string }): Promise<AllotlyApiKey>;
@@ -144,13 +150,13 @@ export class DrizzleStorage implements IStorage {
     return result;
   }
 
-  async updateOrganization(id: string, data: Partial<Organization>): Promise<Organization | undefined> {
-    const [result] = await db.update(organizations).set({ ...data, updatedAt: new Date() }).where(eq(organizations.id, id)).returning();
+  async updateOrganization(id: string, data: Partial<Organization>, executor: DbExecutor = db): Promise<Organization | undefined> {
+    const [result] = await executor.update(organizations).set({ ...data, updatedAt: new Date() }).where(eq(organizations.id, id)).returning();
     return result;
   }
 
-  async createUser(user: InsertUser): Promise<User> {
-    const [result] = await db.insert(users).values(user).returning();
+  async createUser(user: InsertUser, executor: DbExecutor = db): Promise<User> {
+    const [result] = await executor.insert(users).values(user).returning();
     return result;
   }
 
@@ -168,8 +174,8 @@ export class DrizzleStorage implements IStorage {
     return db.select().from(users).where(eq(users.orgId, orgId));
   }
 
-  async updateUser(id: string, data: Partial<User>): Promise<User | undefined> {
-    const [result] = await db.update(users).set({ ...data, updatedAt: new Date() }).where(eq(users.id, id)).returning();
+  async updateUser(id: string, data: Partial<User>, executor: DbExecutor = db): Promise<User | undefined> {
+    const [result] = await executor.update(users).set({ ...data, updatedAt: new Date() }).where(eq(users.id, id)).returning();
     return result;
   }
 
@@ -192,8 +198,8 @@ export class DrizzleStorage implements IStorage {
     return result;
   }
 
-  async updateTeam(id: string, data: Partial<Team>): Promise<Team | undefined> {
-    const [result] = await db.update(teams).set({ ...data, updatedAt: new Date() }).where(eq(teams.id, id)).returning();
+  async updateTeam(id: string, data: Partial<Team>, executor: DbExecutor = db): Promise<Team | undefined> {
+    const [result] = await executor.update(teams).set({ ...data, updatedAt: new Date() }).where(eq(teams.id, id)).returning();
     return result;
   }
 
@@ -202,8 +208,8 @@ export class DrizzleStorage implements IStorage {
     await db.delete(teams).where(eq(teams.id, id));
   }
 
-  async createMembership(membership: InsertTeamMembership): Promise<TeamMembership> {
-    const [result] = await db.insert(teamMemberships).values(membership).returning();
+  async createMembership(membership: InsertTeamMembership, executor: DbExecutor = db): Promise<TeamMembership> {
+    const [result] = await executor.insert(teamMemberships).values(membership).returning();
     return result;
   }
 
@@ -257,8 +263,8 @@ export class DrizzleStorage implements IStorage {
     return db.select().from(teamMemberships).where(eq(teamMemberships.teamId, teamId));
   }
 
-  async updateMembership(id: string, data: Partial<TeamMembership>): Promise<TeamMembership | undefined> {
-    const [result] = await db.update(teamMemberships).set({ ...data, updatedAt: new Date() }).where(eq(teamMemberships.id, id)).returning();
+  async updateMembership(id: string, data: Partial<TeamMembership>, executor: DbExecutor = db): Promise<TeamMembership | undefined> {
+    const [result] = await executor.update(teamMemberships).set({ ...data, updatedAt: new Date() }).where(eq(teamMemberships.id, id)).returning();
     return result;
   }
 
@@ -285,8 +291,8 @@ export class DrizzleStorage implements IStorage {
     await db.delete(providerConnections).where(eq(providerConnections.id, id));
   }
 
-  async createVoucher(voucher: InsertVoucher): Promise<Voucher> {
-    const [result] = await db.insert(vouchers).values(voucher).returning();
+  async createVoucher(voucher: InsertVoucher, executor: DbExecutor = db): Promise<Voucher> {
+    const [result] = await executor.insert(vouchers).values(voucher).returning();
     return result;
   }
 
@@ -322,18 +328,18 @@ export class DrizzleStorage implements IStorage {
     return result?.count || 0;
   }
 
-  async updateVoucher(id: string, data: Partial<Voucher>): Promise<Voucher | undefined> {
-    const [result] = await db.update(vouchers).set({ ...data, updatedAt: new Date() }).where(eq(vouchers.id, id)).returning();
+  async updateVoucher(id: string, data: Partial<Voucher>, executor: DbExecutor = db): Promise<Voucher | undefined> {
+    const [result] = await executor.update(vouchers).set({ ...data, updatedAt: new Date() }).where(eq(vouchers.id, id)).returning();
     return result;
   }
 
-  async bulkCreateVouchers(voucherData: InsertVoucher[]): Promise<Voucher[]> {
+  async bulkCreateVouchers(voucherData: InsertVoucher[], executor: DbExecutor = db): Promise<Voucher[]> {
     if (voucherData.length === 0) return [];
-    return db.insert(vouchers).values(voucherData).returning();
+    return executor.insert(vouchers).values(voucherData).returning();
   }
 
-  async getMembershipsByVoucherId(voucherId: string): Promise<TeamMembership[]> {
-    return db.select().from(teamMemberships).where(eq(teamMemberships.voucherRedemptionId, voucherId));
+  async getMembershipsByVoucherId(voucherId: string, executor: DbExecutor = db): Promise<TeamMembership[]> {
+    return executor.select().from(teamMemberships).where(eq(teamMemberships.voucherRedemptionId, voucherId));
   }
 
   async getVouchersFiltered(orgId: string, filters: { status?: string; bundleId?: string; createdAfter?: string; createdBefore?: string }): Promise<Voucher[]> {
@@ -363,13 +369,13 @@ export class DrizzleStorage implements IStorage {
     return results;
   }
 
-  async createVoucherRedemption(data: { voucherId: string; userId: string }): Promise<VoucherRedemption> {
-    const [result] = await db.insert(voucherRedemptions).values(data).returning();
+  async createVoucherRedemption(data: { voucherId: string; userId: string }, executor: DbExecutor = db): Promise<VoucherRedemption> {
+    const [result] = await executor.insert(voucherRedemptions).values(data).returning();
     return result;
   }
 
-  async createVoucherBundle(data: any): Promise<VoucherBundle> {
-    const [result] = await db.insert(voucherBundles).values(data).returning();
+  async createVoucherBundle(data: any, executor: DbExecutor = db): Promise<VoucherBundle> {
+    const [result] = await executor.insert(voucherBundles).values(data).returning();
     return result;
   }
 
@@ -401,9 +407,9 @@ export class DrizzleStorage implements IStorage {
     return total;
   }
 
-  async deleteMembership(id: string): Promise<void> {
-    await db.delete(allotlyApiKeys).where(eq(allotlyApiKeys.membershipId, id));
-    await db.delete(teamMemberships).where(eq(teamMemberships.id, id));
+  async deleteMembership(id: string, executor: DbExecutor = db): Promise<void> {
+    await executor.delete(allotlyApiKeys).where(eq(allotlyApiKeys.membershipId, id));
+    await executor.delete(teamMemberships).where(eq(teamMemberships.id, id));
   }
 
   async deleteUser(id: string): Promise<void> {

@@ -47,6 +47,7 @@ import { requireTurnstile } from "./lib/turnstile";
 import { createVoucherValidateHandler } from "./lib/voucher-validate";
 import { redeemVoucherInline } from "./lib/vouchers/redeem-inline";
 import { createMemberHandler } from "./lib/members/create-member";
+import { assertTeamAllocationWithin, assertTeamAllocationNotExceeded, assertTeamCeilingChange, assertOrgCeilingChange, CeilingExceededError, ceilingErrorResponse } from "./lib/budget-ceiling";
 import crypto from "crypto";
 import { z } from "zod";
 import { cascadeDeleteOrganization, cascadeDeleteTeam, cascadeDeleteMember, cascadeDeleteVoucher } from "./lib/cascade-delete";
@@ -1463,7 +1464,26 @@ export async function registerRoutes(
     if (!team || team.orgId !== user.orgId) return res.status(404).json({ message: "Not found" });
     if (user.orgRole === "TEAM_ADMIN" && team.adminId !== user.id) return res.status(403).json({ message: "Forbidden" });
 
-    await storage.updateMembership(membership.id, { status: "ACTIVE" });
+    // Reactivating an EXPIRED membership re-introduces its budget into the team
+    // pool (the pool excludes EXPIRED). Other statuses (SUSPENDED, etc.) already
+    // count, so only the EXPIRED transition can grow allocation and needs the
+    // ceiling guard. Write then assert inside one tx so a breach rolls back.
+    try {
+      if (membership.status === "EXPIRED") {
+        await db.transaction(async (tx) => {
+          await storage.updateMembership(membership.id, { status: "ACTIVE" }, tx);
+          await assertTeamAllocationNotExceeded(tx, membership.teamId);
+        });
+      } else {
+        await storage.updateMembership(membership.id, { status: "ACTIVE" });
+      }
+    } catch (e) {
+      if (e instanceof CeilingExceededError) {
+        const r = ceilingErrorResponse(e);
+        return res.status(r.status).json(r.body);
+      }
+      throw e;
+    }
 
     await storage.createAuditLog({
       orgId: user.orgId,
@@ -1524,7 +1544,22 @@ export async function registerRoutes(
         await storage.updateUser(membership.userId, userUpdate);
       }
 
-      const updated = await storage.updateMembership(membership.id, membershipData);
+      let updated;
+      try {
+        updated = await db.transaction(async (tx) => {
+          // Budget-ceiling: only a budget RAISE adds allocation. The helper
+          // no-ops on non-positive deltas, so shrinks/no-change skip the lock.
+          const deltaCents = (membershipData.monthlyBudgetCents ?? membership.monthlyBudgetCents) - membership.monthlyBudgetCents;
+          await assertTeamAllocationWithin(tx, membership.teamId, deltaCents);
+          return storage.updateMembership(membership.id, membershipData, tx);
+        });
+      } catch (e) {
+        if (e instanceof CeilingExceededError) {
+          const r = ceilingErrorResponse(e);
+          return res.status(r.status).json(r.body);
+        }
+        throw e;
+      }
 
       if (membershipData.monthlyBudgetCents && membershipData.monthlyBudgetCents !== membership.monthlyBudgetCents) {
         const budgetKey = REDIS_KEYS.budget(membership.id);
@@ -1897,40 +1932,60 @@ export async function registerRoutes(
       const memberUser = await storage.getUser(membership.userId);
       if (!memberUser) return res.status(404).json({ message: "Member user not found" });
 
+      // Capture the source membership's keys up front (for post-commit cache
+      // invalidation). The actual key rows are removed atomically by
+      // deleteMembership inside the transaction below, so we must NOT mutate keys
+      // or Redis before the tx — a ceiling-rejected transfer (409) must leave the
+      // member's access fully intact.
       const existingKeys = await storage.getApiKeysByMembership(membership.id);
-      for (const key of existingKeys) {
-        if (key.status === "ACTIVE") {
-          await storage.updateAllotlyApiKey(key.id, { status: "REVOKED" });
-          await redisDel(REDIS_KEYS.apiKeyCache(key.keyHash));
-        }
-      }
-
-      await redisDel(REDIS_KEYS.budget(membership.id));
-      await redisDel(REDIS_KEYS.concurrent(membership.id));
-      await redisDel(REDIS_KEYS.ratelimit(membership.id));
-
-      await storage.deleteMembership(membership.id);
-
-      if (isCrossOrg) {
-        await storage.updateUser(memberUser.id, { orgId: targetOrgId } as any);
-      }
 
       const now = new Date();
       const periodEnd = new Date(now);
       periodEnd.setMonth(periodEnd.getMonth() + 1);
 
-      const newMembership = await storage.createMembership({
-        teamId: targetTeamId,
-        userId: memberUser.id,
-        accessType: "TEAM",
-        monthlyBudgetCents: newBudgetCents,
-        allowedModels: newAllowedModels || null,
-        allowedProviders: newAllowedProviders || null,
-        currentPeriodSpendCents: 0,
-        periodStart: now,
-        periodEnd,
-        status: "ACTIVE",
-      });
+      // Atomic transfer: drop the source membership and create the target one in
+      // a single transaction. Budget-ceiling is checked on the TARGET team only
+      // (the source release never breaches). The source allocation drops inside
+      // the same tx, so a same-org A->B move is consistent even though the check
+      // targets B.
+      let newMembership;
+      try {
+        newMembership = await db.transaction(async (tx) => {
+          await storage.deleteMembership(membership.id, tx);
+          if (isCrossOrg) {
+            await storage.updateUser(memberUser.id, { orgId: targetOrgId } as any, tx);
+          }
+          await assertTeamAllocationWithin(tx, targetTeamId, newBudgetCents);
+          return storage.createMembership({
+            teamId: targetTeamId,
+            userId: memberUser.id,
+            accessType: "TEAM",
+            monthlyBudgetCents: newBudgetCents,
+            allowedModels: newAllowedModels || null,
+            allowedProviders: newAllowedProviders || null,
+            currentPeriodSpendCents: 0,
+            periodStart: now,
+            periodEnd,
+            status: "ACTIVE",
+          }, tx);
+        });
+      } catch (e) {
+        if (e instanceof CeilingExceededError) {
+          const r = ceilingErrorResponse(e);
+          return res.status(r.status).json(r.body);
+        }
+        throw e;
+      }
+
+      // Transfer committed: now safe to invalidate the source membership's caches
+      // (its key rows were cascade-deleted inside the tx). Doing this post-commit
+      // means a rejected transfer never disrupts the member's existing access.
+      for (const key of existingKeys) {
+        await redisDel(REDIS_KEYS.apiKeyCache(key.keyHash));
+      }
+      await redisDel(REDIS_KEYS.budget(membership.id));
+      await redisDel(REDIS_KEYS.concurrent(membership.id));
+      await redisDel(REDIS_KEYS.ratelimit(membership.id));
 
       const { key: rawKey, hash, prefix } = generateAllotlyKey();
       await storage.createAllotlyApiKey({
@@ -2630,9 +2685,16 @@ export async function registerRoutes(
       const editSchema = z.object({
         name: z.string().min(1).max(100).optional(),
         description: z.string().max(500).nullable().optional(),
+        // null = unlimited team ceiling. Budget-ceiling (allocation cap).
+        monthlyBudgetCeilingCents: z.number().int().min(0).nullable().optional(),
       });
       const parsed = editSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.errors });
+
+      const ceilingProvided = parsed.data.monthlyBudgetCeilingCents !== undefined;
+      if (ceilingProvided && user.orgRole !== "ROOT_ADMIN") {
+        return res.status(403).json({ message: "Only Root Admin can change a team's budget ceiling" });
+      }
 
       if (parsed.data.name && parsed.data.name !== team.name) {
         const orgTeams = await storage.getTeamsByOrg(user.orgId);
@@ -2640,9 +2702,24 @@ export async function registerRoutes(
         if (duplicate) return res.status(409).json({ message: "A team with that name already exists" });
       }
 
-      const before = { name: team.name, description: team.description };
-      const updated = await storage.updateTeam(team.id, parsed.data);
-      const after = { name: updated?.name, description: updated?.description };
+      const before = { name: team.name, description: team.description, monthlyBudgetCeilingCents: team.monthlyBudgetCeilingCents };
+      let updated;
+      try {
+        updated = await db.transaction(async (tx) => {
+          if (ceilingProvided) {
+            // Floor (>= live allocation) + reserve (Σ team ceilings <= org ceiling).
+            await assertTeamCeilingChange(tx, team.orgId, team.id, parsed.data.monthlyBudgetCeilingCents ?? null);
+          }
+          return storage.updateTeam(team.id, parsed.data, tx);
+        });
+      } catch (e) {
+        if (e instanceof CeilingExceededError) {
+          const r = ceilingErrorResponse(e);
+          return res.status(r.status).json(r.body);
+        }
+        throw e;
+      }
+      const after = { name: updated?.name, description: updated?.description, monthlyBudgetCeilingCents: updated?.monthlyBudgetCeilingCents };
 
       const changes: Record<string, { from: any; to: any }> = {};
       for (const key of Object.keys(parsed.data) as Array<keyof typeof before>) {
@@ -2972,21 +3049,35 @@ export async function registerRoutes(
         return res.status(500).json({ message: "Failed to generate unique voucher code. Please try again." });
       }
 
-      const voucher = await storage.createVoucher({
-        code,
-        orgId: user.orgId,
-        teamId: targetTeamId,
-        createdById: user.id,
-        bundleId: bundleId || null,
-        label: label || null,
-        budgetCents,
-        allowedProviders,
-        allowedModels: allowedModels || null,
-        expiresAt: new Date(expiresAt),
-        maxRedemptions: maxRedemptions || 1,
-        currentRedemptions: 0,
-        status: "ACTIVE",
-      });
+      let voucher;
+      try {
+        voucher = await db.transaction(async (tx) => {
+          // Budget-ceiling: a voucher reserves its FULL exposure up front =
+          // budget * maxRedemptions (every slot, redeemed or not).
+          await assertTeamAllocationWithin(tx, targetTeamId!, budgetCents * (maxRedemptions || 1));
+          return storage.createVoucher({
+            code,
+            orgId: user.orgId,
+            teamId: targetTeamId!,
+            createdById: user.id,
+            bundleId: bundleId || null,
+            label: label || null,
+            budgetCents,
+            allowedProviders,
+            allowedModels: allowedModels || null,
+            expiresAt: new Date(expiresAt),
+            maxRedemptions: maxRedemptions || 1,
+            currentRedemptions: 0,
+            status: "ACTIVE",
+          }, tx);
+        });
+      } catch (e) {
+        if (e instanceof CeilingExceededError) {
+          const r = ceilingErrorResponse(e);
+          return res.status(r.status).json(r.body);
+        }
+        throw e;
+      }
 
       await storage.createAuditLog({
         orgId: user.orgId,
@@ -3130,7 +3221,26 @@ export async function registerRoutes(
       if (parsed.data.allowedModels !== undefined) updateData.allowedModels = parsed.data.allowedModels;
       if (parsed.data.maxRedemptions !== undefined) updateData.maxRedemptions = parsed.data.maxRedemptions;
 
-      const updated = await storage.updateVoucher(voucher.id, updateData);
+      // Budget-ceiling: editing is only allowed pre-redemption (guarded above),
+      // so exposure = budget * maxRedemptions. Check the delta vs. the old
+      // exposure; a shrink no-ops.
+      const newBudget = parsed.data.budgetCents ?? voucher.budgetCents;
+      const newMax = parsed.data.maxRedemptions ?? voucher.maxRedemptions;
+      const exposureDelta = newBudget * newMax - voucher.budgetCents * voucher.maxRedemptions;
+
+      let updated;
+      try {
+        updated = await db.transaction(async (tx) => {
+          await assertTeamAllocationWithin(tx, voucher.teamId, exposureDelta);
+          return storage.updateVoucher(voucher.id, updateData, tx);
+        });
+      } catch (e) {
+        if (e instanceof CeilingExceededError) {
+          const r = ceilingErrorResponse(e);
+          return res.status(r.status).json(r.body);
+        }
+        throw e;
+      }
 
       const changes: Record<string, { from: any; to: any }> = {};
       for (const key of Object.keys(parsed.data)) {
@@ -3326,7 +3436,21 @@ export async function registerRoutes(
         bundleId: bundleId || null,
       }));
 
-      const created = await storage.bulkCreateVouchers(voucherData);
+      let created;
+      try {
+        created = await db.transaction(async (tx) => {
+          // Budget-ceiling: each code reserves budgetCents * 1 (maxRedemptions=1);
+          // the whole batch reserves count * budgetCents up front.
+          await assertTeamAllocationWithin(tx, targetTeamId!, count * budgetCents);
+          return storage.bulkCreateVouchers(voucherData, tx);
+        });
+      } catch (e) {
+        if (e instanceof CeilingExceededError) {
+          const r = ceilingErrorResponse(e);
+          return res.status(r.status).json(r.body);
+        }
+        throw e;
+      }
 
       await storage.createAuditLog({
         orgId: user.orgId,
@@ -3389,14 +3513,33 @@ export async function registerRoutes(
       }
 
       const oldExpiresAt = voucher.expiresAt;
-      const updated = await storage.updateVoucher(voucher.id, { expiresAt: newExpiry });
-
-      const memberships = await storage.getMembershipsByVoucherId(voucher.id);
-      for (const membership of memberships) {
-        await storage.updateMembership(membership.id, {
-          voucherExpiresAt: newExpiry,
-          periodEnd: newExpiry,
+      // Extending a voucher whose expiry already lapsed (status still ACTIVE in
+      // the cron-lag window) re-introduces its unredeemed exposure AND its
+      // VOUCHER memberships (period_end past now) into the team pool. Write
+      // first, then assert the resulting allocation fits the ceiling, all in one
+      // tx so a breach rolls back the extension. Re-add can never breach when
+      // the voucher was already counted (expiry in the future), in which case
+      // the assertion is a cheap no-op.
+      let updated;
+      try {
+        updated = await db.transaction(async (tx) => {
+          const v = await storage.updateVoucher(voucher.id, { expiresAt: newExpiry }, tx);
+          const memberships = await storage.getMembershipsByVoucherId(voucher.id, tx);
+          for (const membership of memberships) {
+            await storage.updateMembership(membership.id, {
+              voucherExpiresAt: newExpiry,
+              periodEnd: newExpiry,
+            }, tx);
+          }
+          await assertTeamAllocationNotExceeded(tx, voucher.teamId);
+          return v;
         });
+      } catch (e) {
+        if (e instanceof CeilingExceededError) {
+          const r = ceilingErrorResponse(e);
+          return res.status(r.status).json(r.body);
+        }
+        throw e;
       }
 
       await storage.createAuditLog({
@@ -3453,15 +3596,32 @@ export async function registerRoutes(
       const oldBudget = voucher.budgetCents;
       const newBudget = oldBudget + additionalBudgetCents;
 
-      const updated = await storage.updateVoucher(voucher.id, { budgetCents: newBudget });
-
       const memberships = await storage.getMembershipsByVoucherId(voucher.id);
+
+      // Budget-ceiling: a top-up raises every slot's budget. Total added exposure
+      // = additional * maxRedemptions (unredeemed voucher term grows by
+      // additional*(max-current); each redeemed membership grows by additional).
+      let updated;
+      try {
+        updated = await db.transaction(async (tx) => {
+          await assertTeamAllocationWithin(tx, voucher.teamId, additionalBudgetCents * voucher.maxRedemptions);
+          const v = await storage.updateVoucher(voucher.id, { budgetCents: newBudget }, tx);
+          for (const membership of memberships) {
+            const newMemberBudget = (membership.monthlyBudgetCents || 0) + additionalBudgetCents;
+            await storage.updateMembership(membership.id, { monthlyBudgetCents: newMemberBudget }, tx);
+          }
+          return v;
+        });
+      } catch (e) {
+        if (e instanceof CeilingExceededError) {
+          const r = ceilingErrorResponse(e);
+          return res.status(r.status).json(r.body);
+        }
+        throw e;
+      }
+
       for (const membership of memberships) {
         const newMemberBudget = (membership.monthlyBudgetCents || 0) + additionalBudgetCents;
-        await storage.updateMembership(membership.id, {
-          monthlyBudgetCents: newMemberBudget,
-        });
-
         const budgetKey = REDIS_KEYS.budget(membership.id);
         const currentBudget = await redisGet(budgetKey);
         if (currentBudget !== null) {
@@ -4521,7 +4681,23 @@ export async function registerRoutes(
       updateData.settings = merged;
     }
 
-    const updated = await storage.updateOrganization(user.orgId, updateData);
+    let updated;
+    try {
+      updated = await db.transaction(async (tx) => {
+        if (orgBudgetCeilingCents !== undefined) {
+          // Budget-ceiling FLOOR: org ceiling must be >= Σ team ceilings, and a
+          // finite org ceiling is incompatible with any NULL (unlimited) team.
+          await assertOrgCeilingChange(tx, user.orgId, orgBudgetCeilingCents ?? null);
+        }
+        return storage.updateOrganization(user.orgId, updateData, tx);
+      });
+    } catch (e) {
+      if (e instanceof CeilingExceededError) {
+        const r = ceilingErrorResponse(e);
+        return res.status(r.status).json(r.body);
+      }
+      throw e;
+    }
 
     const changes: Record<string, { from: any; to: any }> = {};
     if (before) {
@@ -4796,32 +4972,49 @@ export async function registerRoutes(
           }
 
           const tempPassword = await hashPassword(generateAllotlyKey().key.slice(0, 32));
-          memberUser = await storage.createUser({
-            email: memberReq.email,
-            name: memberReq.name || memberReq.email.split("@")[0],
-            passwordHash: tempPassword,
-            orgId: user.orgId,
-            orgRole: "MEMBER",
-            status: "INVITED",
-            isVoucherUser: false,
-          });
-
           const budgetCents = memberReq.budgetCents || defaultBudget;
           const now = new Date();
           const periodEnd = new Date(now);
           periodEnd.setMonth(periodEnd.getMonth() + 1);
 
-          const membership = await storage.createMembership({
-            userId: memberUser.id,
-            teamId: team.id,
-            accessType: "TEAM",
-            monthlyBudgetCents: budgetCents,
-            currentPeriodSpendCents: 0,
-            periodStart: now,
-            periodEnd: periodEnd,
-            allowedModels: defaultModels,
-            status: "ACTIVE",
-          });
+          // Budget-ceiling: each member adds budgetCents to the team allocation.
+          // The check runs per-member inside its own tx so a ceiling breach skips
+          // just that member instead of failing the whole batch.
+          let membership;
+          try {
+            const result = await db.transaction(async (tx) => {
+              const mu = await storage.createUser({
+                email: memberReq.email,
+                name: memberReq.name || memberReq.email.split("@")[0],
+                passwordHash: tempPassword,
+                orgId: user.orgId,
+                orgRole: "MEMBER",
+                status: "INVITED",
+                isVoucherUser: false,
+              }, tx);
+              await assertTeamAllocationWithin(tx, team.id, budgetCents);
+              const m = await storage.createMembership({
+                userId: mu.id,
+                teamId: team.id,
+                accessType: "TEAM",
+                monthlyBudgetCents: budgetCents,
+                currentPeriodSpendCents: 0,
+                periodStart: now,
+                periodEnd: periodEnd,
+                allowedModels: defaultModels,
+                status: "ACTIVE",
+              }, tx);
+              return { mu, m };
+            });
+            memberUser = result.mu;
+            membership = result.m;
+          } catch (e) {
+            if (e instanceof CeilingExceededError) {
+              skipped.push({ email: memberReq.email, reason: "Team budget ceiling exceeded" });
+              continue;
+            }
+            throw e;
+          }
 
           const { key: rawKey, hash: keyHash, prefix: keyPrefix } = generateAllotlyKey();
           await storage.createAllotlyApiKey({
