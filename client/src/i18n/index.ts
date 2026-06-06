@@ -3,8 +3,6 @@ import { initReactI18next } from "react-i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 
 import en from "./locales/en.json";
-import ptBR from "./locales/pt-BR.json";
-import es from "./locales/es.json";
 
 export const SUPPORTED_LANGUAGES = ["en", "pt-BR", "es"] as const;
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
@@ -15,14 +13,17 @@ export const LANGUAGE_LABELS: Record<SupportedLanguage, string> = {
   es: "Español",
 };
 
+const LOCALE_LOADERS: Record<string, () => Promise<{ default: unknown }>> = {
+  "pt-BR": () => import("./locales/pt-BR.json"),
+  es: () => import("./locales/es.json"),
+};
+
 i18n
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
     resources: {
       en: { translation: en },
-      "pt-BR": { translation: ptBR },
-      es: { translation: es },
     },
     fallbackLng: "en",
     supportedLngs: SUPPORTED_LANGUAGES as unknown as string[],
@@ -36,12 +37,30 @@ i18n
     react: { useSuspense: false },
   });
 
+async function loadLanguage(lng: string) {
+  const loader = LOCALE_LOADERS[lng];
+  if (loader && !i18n.hasResourceBundle(lng, "translation")) {
+    const mod = await loader();
+    const translations = (mod as any).default ?? mod;
+    i18n.addResourceBundle(lng, "translation", translations, true, true);
+  }
+}
+
 function syncHtmlLang(lng: string) {
   if (typeof document !== "undefined") {
     document.documentElement.lang = lng;
   }
 }
-syncHtmlLang(i18n.resolvedLanguage || i18n.language || "en");
-i18n.on("languageChanged", syncHtmlLang);
+
+const initialLng = i18n.resolvedLanguage || i18n.language || "en";
+syncHtmlLang(initialLng);
+if (initialLng !== "en") {
+  loadLanguage(initialLng);
+}
+
+i18n.on("languageChanged", (lng) => {
+  syncHtmlLang(lng);
+  loadLanguage(lng);
+});
 
 export default i18n;
