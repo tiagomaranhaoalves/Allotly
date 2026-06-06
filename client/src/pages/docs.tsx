@@ -1,3 +1,4 @@
+import JsonLd from "@/components/json-ld";
 import { LogoFull } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -275,8 +276,64 @@ export default function DocsPage() {
     }
   };
 
+  const FAQ_SCHEMA = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: [
+      {
+        "@type": "Question",
+        name: "What if Allotly goes down?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: "All requests route through Allotly's unified proxy, so they would be unavailable if the proxy is down. Service resumes automatically when the proxy recovers. We monitor uptime 24/7 and target 99.9% availability. The proxy runs on auto-scaling infrastructure that spins up additional instances under load, and provider connections are validated regularly.",
+        },
+      },
+      {
+        "@type": "Question",
+        name: "Do you store prompts?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: "Never. The proxy processes requests in-flight and only logs metadata: token counts, estimated costs, timestamps, model names, and status codes. Your prompts and AI responses are never written to disk, logged, or stored in any database. They pass through memory only and are discarded after the response is delivered.",
+        },
+      },
+      {
+        "@type": "Question",
+        name: "How accurate are budgets?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: "Budget enforcement is real-time per-request for both Teams and Vouchers. The proxy reserves budget before forwarding each request, then adjusts based on actual token usage from the provider response. Accuracy is within a fraction of a cent. Redis-backed counters are reconciled with the database every 60 seconds to prevent drift.",
+        },
+      },
+      {
+        "@type": "Question",
+        name: "Can I use Allotly with LangChain, Cursor, or other tools?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: "Yes. The Allotly proxy is fully OpenAI-compatible, so any tool that supports custom OpenAI base URLs will work. This includes LangChain (set the openai_api_base parameter to your Allotly proxy URL), Cursor (configure a custom API endpoint in settings with your Allotly key), and any OpenAI SDK (set base_url and api_key in the client constructor).",
+        },
+      },
+      {
+        "@type": "Question",
+        name: "When should I use Teams vs Vouchers?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: "Use Teams when you want to give ongoing AI access to internal team members with monthly resetting budgets — developers, data scientists, and engineers. Use Vouchers when you want to distribute temporary, budget-capped AI access to people outside your organization — workshop attendees, hackathon participants, external contractors, students, or beta testers. Many organizations use both: Teams for their internal engineering team and Vouchers for external distribution.",
+        },
+      },
+      {
+        "@type": "Question",
+        name: "What are the different voucher tiers?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: "Allotly offers three voucher tiers. Free plan vouchers allow 1 active code with 2 redemptions, up to $5 budget per recipient, and 1-day max expiry. Team plan vouchers (included with subscription) allow 5 codes per admin with 5 redemptions each, up to $20 budget per recipient, and 30-day max expiry. Bundle vouchers ($10 one-time purchase, available on any plan) provide 10 codes with 50 pooled redemptions, up to $25 per recipient, and 90-day max expiry — ideal for hackathons and large training sessions.",
+        },
+      },
+    ],
+  };
+
   return (
     <div className="min-h-screen bg-background">
+      <JsonLd schema={FAQ_SCHEMA} />
       <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4 flex-wrap">

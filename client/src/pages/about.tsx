@@ -1,3 +1,4 @@
+import JsonLd from "@/components/json-ld";
 import PublicLayout from "@/components/public-layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,10 +12,35 @@ const principles = [
   { id: "providerNative", testSlug: "provider-native-not-lock-in", icon: Layers },
 ] as const;
 
+const ABOUT_SCHEMA = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: "Allotly",
+  url: "https://allotly.ai",
+  logo: "https://allotly.ai/logo.png",
+  description: "Allotly is a SaaS platform for managing and distributing AI API access with real-time budget controls for teams and voucher recipients.",
+  foundingDate: "2021",
+  legalName: "DivBZ Ventures Ltd",
+  address: {
+    "@type": "PostalAddress",
+    streetAddress: "71-75 Shelton Street, Covent Garden",
+    addressLocality: "London",
+    postalCode: "WC2H 9JQ",
+    addressCountry: "GB",
+  },
+  contactPoint: [
+    { "@type": "ContactPoint", contactType: "customer support", email: "support@allotly.ai" },
+    { "@type": "ContactPoint", contactType: "sales", email: "sales@allotly.ai" },
+    { "@type": "ContactPoint", contactType: "general", email: "hello@allotly.ai" },
+  ],
+  sameAs: ["https://divbz.co.uk/"],
+};
+
 export default function About() {
   const { t } = useTranslation();
   return (
     <PublicLayout>
+      <JsonLd schema={ABOUT_SCHEMA} />
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 via-transparent to-cyan-500/5 dark:from-indigo-500/10 dark:to-cyan-500/10" />
         <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-24 sm:py-32 text-center">

@@ -1,3 +1,4 @@
+import JsonLd from "@/components/json-ld";
 import PublicLayout from "@/components/public-layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -56,8 +57,42 @@ export default function ContactPage() {
     contactMutation.mutate({ name, email, message, ...(turnstileToken ? { turnstile_token: turnstileToken } : {}) });
   }
 
+  const CONTACT_SCHEMA = {
+    "@context": "https://schema.org",
+    "@type": "ContactPage",
+    name: "Contact Allotly",
+    url: "https://allotly.ai/contact",
+    description: "Get in touch with the Allotly team for general inquiries, sales, or support.",
+    mainEntity: {
+      "@type": "Organization",
+      name: "Allotly",
+      url: "https://allotly.ai",
+      contactPoint: [
+        {
+          "@type": "ContactPoint",
+          contactType: "customer service",
+          email: "hello@allotly.ai",
+          description: "General inquiries",
+        },
+        {
+          "@type": "ContactPoint",
+          contactType: "sales",
+          email: "sales@allotly.ai",
+          description: "Sales inquiries",
+        },
+        {
+          "@type": "ContactPoint",
+          contactType: "technical support",
+          email: "support@allotly.ai",
+          description: "Technical support",
+        },
+      ],
+    },
+  };
+
   return (
     <PublicLayout>
+      <JsonLd schema={CONTACT_SCHEMA} />
       <section className="py-20 sm:py-28">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-2xl mx-auto mb-16">

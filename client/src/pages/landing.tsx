@@ -1,3 +1,4 @@
+import JsonLd from "@/components/json-ld";
 import { LogoFull, LogoMono } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -1006,9 +1007,54 @@ function ArenaCallout() {
   );
 }
 
+const LANDING_SCHEMA = [
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: "Allotly",
+    url: "https://allotly.ai",
+    logo: "https://allotly.ai/logo.png",
+    description: "Allotly is a SaaS platform for managing and distributing AI API access with real-time budget controls.",
+    contactPoint: [
+      { "@type": "ContactPoint", contactType: "customer support", email: "support@allotly.ai" },
+      { "@type": "ContactPoint", contactType: "sales", email: "sales@allotly.ai" },
+    ],
+    parentOrganization: {
+      "@type": "Organization",
+      name: "DivBZ Ventures Ltd",
+      url: "https://divbz.co.uk/",
+    },
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "Allotly",
+    url: "https://allotly.ai",
+    applicationCategory: "BusinessApplication",
+    operatingSystem: "Web",
+    description: "Real-time AI API budget enforcement and access distribution for teams and vouchers. Manage OpenAI, Anthropic, and Google AI costs with a unified proxy, configurable budgets, and granular usage tracking.",
+    offers: {
+      "@type": "Offer",
+      price: "0",
+      priceCurrency: "USD",
+      description: "Free plan available. Paid plans for teams.",
+    },
+    featureList: [
+      "Real-time AI API budget enforcement",
+      "Unified proxy for OpenAI, Anthropic, and Google AI",
+      "Team and voucher-based access distribution",
+      "Configurable rate and concurrency limiting",
+      "Audit logging with detailed metadata",
+      "Multi-currency display options",
+      "Dynamic AI model discovery per provider key",
+    ],
+  },
+];
+
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background overflow-x-hidden" style={{ scrollBehavior: "smooth" }}>
+      <JsonLd schema={LANDING_SCHEMA} />
       <Header />
       <Hero />
       <ProblemStrip />
