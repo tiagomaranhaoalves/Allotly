@@ -332,6 +332,8 @@ export default function DocsPage() {
 
         <main ref={mainRef} className="flex-1 min-w-0 max-w-3xl px-6 lg:px-12 py-8 leading-relaxed">
 
+          <h1 className="text-3xl font-bold tracking-tight mb-6">Allotly Documentation</h1>
+
           <Link
             href="/mcp/docs"
             className="not-prose flex items-center justify-between gap-4 mb-8 p-4 rounded-lg border border-indigo-500/30 bg-indigo-500/5 hover:bg-indigo-500/10 hover:border-indigo-500/50 transition-colors"
