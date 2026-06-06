@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { parseDollarsToCents } from "@/lib/currency";
 import { useToast } from "@/hooks/use-toast";
 import { Textarea } from "@/components/ui/textarea";
 import { Users, Plus, Shield, DollarSign, Trash2, User, ChevronRight, CreditCard, Pencil } from "lucide-react";
@@ -24,6 +25,8 @@ function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string, confir
   const { t } = useTranslation();
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isRootAdmin = user?.orgRole === "ROOT_ADMIN";
   const { data: stats } = useQuery<any>({
     queryKey: ["/api/teams", team.id, "stats"],
     queryFn: async () => {
@@ -38,13 +41,24 @@ function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string, confir
   const [editOpen, setEditOpen] = useState(false);
   const [editName, setEditName] = useState(team.name);
   const [editDescription, setEditDescription] = useState(team.description || "");
+  const [editCeiling, setEditCeiling] = useState(
+    team.monthlyBudgetCeilingCents != null ? String(team.monthlyBudgetCeilingCents / 100) : "",
+  );
 
   const editMutation = useMutation({
     mutationFn: async () => {
-      await apiRequest("PATCH", `/api/teams/${team.id}`, {
+      const body: Record<string, unknown> = {
         name: editName,
         description: editDescription || null,
-      });
+      };
+      if (isRootAdmin) {
+        const ceilingCents = parseDollarsToCents(editCeiling);
+        if (ceilingCents === undefined) {
+          throw new Error(t("dashboard.teams.ceilingInvalid"));
+        }
+        body.monthlyBudgetCeilingCents = ceilingCents;
+      }
+      await apiRequest("PATCH", `/api/teams/${team.id}`, body);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
@@ -108,7 +122,7 @@ function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string, confir
           </div>
 
           <div className="flex items-center gap-1">
-            <Dialog open={editOpen} onOpenChange={(o) => { setEditOpen(o); if (o) { setEditName(team.name); setEditDescription(team.description || ""); } }}>
+            <Dialog open={editOpen} onOpenChange={(o) => { setEditOpen(o); if (o) { setEditName(team.name); setEditDescription(team.description || ""); setEditCeiling(team.monthlyBudgetCeilingCents != null ? String(team.monthlyBudgetCeilingCents / 100) : ""); } }}>
               <DialogTrigger asChild>
                 <Button
                   size="sm"
@@ -134,6 +148,22 @@ function TeamCard({ team, onDelete }: { team: any; onDelete: (id: string, confir
                     <Textarea placeholder={t("dashboard.teams.descriptionPlaceholder")} value={editDescription} onChange={e => setEditDescription(e.target.value)} data-testid="input-edit-team-description" maxLength={500} rows={3} />
                     <p className="text-xs text-muted-foreground">{t("dashboard.teams.characterCount", { count: editDescription.length })}</p>
                   </div>
+                  {isRootAdmin && (
+                    <div className="space-y-2">
+                      <Label>{t("dashboard.teams.ceilingLabel")}</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        inputMode="decimal"
+                        placeholder={t("dashboard.teams.ceilingPlaceholder")}
+                        value={editCeiling}
+                        onChange={e => setEditCeiling(e.target.value)}
+                        data-testid="input-edit-team-ceiling"
+                      />
+                      <p className="text-xs text-muted-foreground">{t("dashboard.teams.ceilingHelper")}</p>
+                    </div>
+                  )}
                   <Button className="w-full" onClick={() => editMutation.mutate()} disabled={!editName || editMutation.isPending} data-testid="button-save-team-edit">
                     {editMutation.isPending ? t("dashboard.teams.saving") : t("dashboard.teams.saveChanges")}
                   </Button>

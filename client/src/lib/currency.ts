@@ -33,6 +33,21 @@ export function normalizeCurrency(c: string | null | undefined): SupportedCurren
   return (SUPPORTED_CURRENCIES as string[]).includes(up) ? (up as SupportedCurrency) : "USD";
 }
 
+/**
+ * Parse a user-entered USD dollar string into whole integer USD-cents for the
+ * wire. Returns `null` for a blank field (meaning "unlimited" ceiling), an
+ * integer cents value for a valid amount, or `undefined` when the input is a
+ * non-empty but invalid/non-finite number (e.g. "-", ".", "1e"). Callers MUST
+ * treat `undefined` as a validation error and NOT send it — JSON-encoding a
+ * `NaN` becomes `null`, which would silently clear the ceiling to unlimited.
+ */
+export function parseDollarsToCents(input: string): number | null | undefined {
+  if (input.trim() === "") return null;
+  const dollars = parseFloat(input);
+  if (!Number.isFinite(dollars) || dollars < 0) return undefined;
+  return Math.round(dollars * 100);
+}
+
 /** Convert USD-cents (canonical wire unit) to target-currency minor units. */
 export function convertFromUsdCents(usdCents: number, target: SupportedCurrency, rate?: number): number {
   if (target === "USD") return Math.round(usdCents);

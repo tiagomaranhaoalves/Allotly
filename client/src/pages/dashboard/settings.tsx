@@ -23,7 +23,7 @@ import {
   Clock, Zap, Plus, Trash2, Bell, SlidersHorizontal,
   KeyRound, Unplug, Download, Wrench, RefreshCcw, Globe,
 } from "lucide-react";
-import { SUPPORTED_CURRENCIES, CURRENCY_LABELS, CURRENCY_SYMBOLS, normalizeCurrency, formatUsdCents, type SupportedCurrency } from "@/lib/currency";
+import { SUPPORTED_CURRENCIES, CURRENCY_LABELS, CURRENCY_SYMBOLS, normalizeCurrency, formatUsdCents, parseDollarsToCents, type SupportedCurrency } from "@/lib/currency";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
@@ -52,6 +52,7 @@ export default function SettingsPage() {
   const [orgName, setOrgName] = useState("");
   const [billingEmail, setBillingEmail] = useState("");
   const [description, setDescription] = useState("");
+  const [orgCeiling, setOrgCeiling] = useState("");
   const [currency, setCurrency] = useState<SupportedCurrency>("USD");
   const [seatCount, setSeatCount] = useState("1");
   const [addSeatsCount, setAddSeatsCount] = useState("1");
@@ -81,6 +82,7 @@ export default function SettingsPage() {
       setOrgName(orgData.name);
       setBillingEmail(orgData.billingEmail || "");
       setDescription(orgData.description || "");
+      setOrgCeiling(orgData.orgBudgetCeilingCents != null ? String(orgData.orgBudgetCeilingCents / 100) : "");
       setCurrency(normalizeCurrency(orgData.currency));
       const s = orgData.settings || {};
       if (s.notifications) {
@@ -117,10 +119,15 @@ export default function SettingsPage() {
 
   const updateMutation = useMutation({
     mutationFn: async () => {
+      const ceilingCents = parseDollarsToCents(orgCeiling);
+      if (ceilingCents === undefined) {
+        throw new Error(t("dashboard.settings.orgCeilingInvalid"));
+      }
       await apiRequest("PATCH", "/api/org/settings", {
         name: orgName,
         billingEmail: billingEmail || null,
         description: description || null,
+        orgBudgetCeilingCents: ceilingCents,
       });
     },
     onSuccess: () => {
@@ -378,6 +385,22 @@ export default function SettingsPage() {
                 <Input placeholder={t("dashboard.settings.descriptionPlaceholder")} value={description} onChange={e => setDescription(e.target.value)} data-testid="input-org-description" maxLength={500} />
                 <p className="text-xs text-muted-foreground">{t("dashboard.settings.descriptionCounter", { count: description.length })}</p>
               </div>
+              {isRootAdmin && (
+                <div className="space-y-2">
+                  <Label>{t("dashboard.settings.orgCeilingLabel")}</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    inputMode="decimal"
+                    placeholder={t("dashboard.settings.orgCeilingPlaceholder")}
+                    value={orgCeiling}
+                    onChange={e => setOrgCeiling(e.target.value)}
+                    data-testid="input-org-ceiling"
+                  />
+                  <p className="text-xs text-muted-foreground">{t("dashboard.settings.orgCeilingHelper")}</p>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label>{t("dashboard.settings.planLabel")}</Label>
                 <div className="flex items-center gap-2">
