@@ -5,4 +5,5 @@
 - [Key status decoupled from budget](key-status-budget-decoupling.md) — budget exhaustion/recovery must never mutate API key status; enforce at membership level + flush apiKeyCache, else manual revokes get resurrected.
 - [Budget-ceiling enforcement](budget-ceiling-enforcement.md) — guard EVERY allocation-growth point incl. re-inclusion (reactivate EXPIRED→ACTIVE, voucher extend); lock order org→team; irreversible side effects only AFTER the ceiling-checked tx commits.
 - [Sub-cent carry ledger & settlement](settlement-carry-ledger.md) — settle via carry, feed crossedCents to the cap, and zero reservedCostCents right after adjust (before any await) or the catch double-refunds.
+- [Vite manualChunks React white-screen](vite-manualchunks-react.md) — hand-rolled vendor manualChunks splitting React crashes prod build ("Cannot set properties of undefined (Children)"); dev hides it; verify built bundle renders via Playwright before publishing.
 - [Flaky tests under full-suite load](flaky-tests.md) — oauth/voucher-key-display i18n case times out / FK-teardown-races only under the full build run; passes isolated. Re-run in isolation before treating as a regression.
