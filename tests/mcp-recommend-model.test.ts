@@ -307,6 +307,21 @@ describe("classifyCapability — size-qualifier short-circuit", () => {
     expect(cap("gemini-2.5-pro")).toMatchObject({ label: "advanced", source: "map" });
     expect(cap("gemini-2.5-flash")).toMatchObject({ label: "balanced", source: "map" });
   });
+
+  it("does not coerce substring-only matches (e.g. 'minimax') into the fast tier via the map", () => {
+    // The 'mini' in 'minimax' is not boundary-anchored: neither the short-circuit
+    // NOR the trailing 'small' fallback row should fire, so it falls through to
+    // the price-derived score (source: "price") instead of being labeled fast by
+    // the map's fallback row purely because of the substring.
+    expect(cap("minimax-text-01").source).toBe("price");
+  });
+
+  it("still classifies anchored size suffixes via the fallback row", () => {
+    // 'small'/'flash' live only in the fallback row (not the short-circuit);
+    // anchored hyphenated names must still resolve to the fast tier.
+    expect(cap("phi-3-small")).toMatchObject({ label: "fast", source: "map" });
+    expect(cap("groq-flash")).toMatchObject({ label: "fast", source: "map" });
+  });
 });
 
 describe("recommend_model — gpt-5 nano lands in the fast tier", () => {

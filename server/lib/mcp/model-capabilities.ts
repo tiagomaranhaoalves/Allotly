@@ -33,7 +33,13 @@ const CAPABILITY_MAP: CapabilityRule[] = [
   { family: "gpt-4o", match: /gpt-4o(?!-mini)/i, score: 76, label: "advanced" },
   { family: "claude-haiku", match: /haiku/i, score: 64, label: "balanced" },
   { family: "gemini-flash", match: /gemini[-\w.]*flash/i, score: 60, label: "balanced" },
-  { family: "small", match: /mini|nano|lite|small|flash|tiny/i, score: 56, label: "fast" },
+  // Trailing size-fallback row. Uses the SAME word-boundary anchoring as
+  // {@link SMALL_VARIANT_RE} (see its doc-comment for why) so substring-only
+  // hits like the `mini` inside `minimax` can no longer be coerced to the fast
+  // tier — keeping the two size rules consistent. `small`/`flash` are kept here
+  // (not in the short-circuit) for non-gemini families; real gemini `flash`
+  // models are already caught as "balanced" by the curated row above.
+  { family: "small", match: /(?:^|[-_.])(?:nano|mini|lite|tiny|small|flash)(?:$|[-_.\d])/i, score: 56, label: "fast" },
 ];
 
 /**
