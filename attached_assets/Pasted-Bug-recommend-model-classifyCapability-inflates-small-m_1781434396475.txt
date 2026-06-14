@@ -1,0 +1,16 @@
+Bug: recommend_model / classifyCapability inflates small model variants to "frontier"
+
+In server/lib/mcp/model-capabilities.ts, the CAPABILITY_MAP is first-match-wins, but the small size-qualifier row (nano|mini|lite|small|flash|tiny → fast/56) is last. So any family row that matches first wins before the size check runs.
+
+Concrete failure: gpt-5.4-nano (and gpt-5-nano, gpt-5.x-mini) match the openai-o-series row /\bo[1-9]\b|^o[1-9][-_]|gpt-5/i → scored frontier/93/slow. Note the gpt-4.1 row was already written with a negative lookahead (?!-(?:mini|nano)) so gpt-4.1-nano correctly falls through to small/fast — but the gpt-5 pattern has no equivalent guard. Verified live: prefer=fastest/cheapest probes return gpt-5.4-nano labeled "frontier… typically slow."
+
+Impact: misleading reason text; fastest wrongly excludes gpt-5 nanos from the fast tier; smartest margin is fragile (a nano at 93 sits just under opus 96). cheapest is cost-ranked so it's unaffected. No money/ledger impact — purely classification.
+
+Fix (preferred — robust for all current and future families): In classifyCapability, run a size-qualifier short-circuit before the CAPABILITY_MAP loop. If the model id matches a word-bounded size qualifier, e.g. /(?:^|[-_.])(?:nano|mini|lite|tiny)(?:$|[-_.\d])/i, classify it as the fast tier (or the price-derived fallback score) and skip family matching. Keep flash/haiku handled by their existing curated rows (they're deliberately "balanced", not "fast") — i.e. don't include flash in the short-circuit set. (A narrower alternative is to add (?![\w.]*-(?:mini|nano|lite)) to the gpt-5 pattern, mirroring the gpt-4.1 row, but that only patches one family.)
+
+Tests (add to the recommend_model / capabilities suite):
+
+gpt-5.4-nano, gpt-5-nano, gpt-5.4-mini → fast tier, not frontier.
+Regression: gpt-4.1-nano stays fast; claude-opus-4-7 stays frontier; claude-haiku-* stays balanced; gemini-*-flash stays balanced.
+prefer=fastest short probe ranks a nano in the fast tier with a non-"slow" latency reason.
+Constraints: read-only tool, no proxy/ledger/reservation changes. Run npm run check + targeted Vitest + npm run build, capture the fastest/cheapest probe outputs, push via Git pane, do not redeploy.
