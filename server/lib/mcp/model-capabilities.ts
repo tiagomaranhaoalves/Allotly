@@ -20,6 +20,40 @@ interface CapabilityRule {
 }
 
 /**
+ * Single source of truth for the size-tier word-boundary anchoring shared by
+ * the {@link SMALL_VARIANT_RE} short-circuit and the trailing "small" fallback
+ * row in {@link CAPABILITY_MAP}. Both rules are built from this one wrapper so
+ * the boundary handling can never drift apart again: a model id only counts as a
+ * size variant when the token sits on a boundary (`^`/`-`/`_`/`.` before, end /
+ * `-`/`_`/`.`/digit after), so incidental substrings — the `mini` inside
+ * `gemini`/`minimax` — never fire.
+ *
+ * Adding or removing a size token is a one-line change to one of the token
+ * lists below; both rules update in lockstep because the fallback list is
+ * derived from the short-circuit list.
+ */
+function buildSizeTierRe(tokens: readonly string[]): RegExp {
+  return new RegExp(`(?:^|[-_.])(?:${tokens.join("|")})(?:$|[-_.\\d])`, "i");
+}
+
+/**
+ * Size tokens that short-circuit ANY family straight to the fast tier (matched
+ * before {@link CAPABILITY_MAP}). `flash`/`haiku` are intentionally absent —
+ * they stay "balanced" via their curated rows; only `flash-lite` (carrying
+ * `lite`) drops to fast.
+ */
+const SMALL_VARIANT_TOKENS = ["nano", "mini", "lite", "tiny"] as const;
+
+/**
+ * Size tokens for the trailing fallback row. A superset of
+ * {@link SMALL_VARIANT_TOKENS} plus `small`/`flash`, which are kept here (not in
+ * the short-circuit) so non-gemini families like `phi-3-small`/`groq-flash`
+ * resolve to fast while real gemini `flash` models are already caught as
+ * "balanced" by the curated row above.
+ */
+const SIZE_FALLBACK_TOKENS = [...SMALL_VARIANT_TOKENS, "small", "flash"] as const;
+
+/**
  * Ordered most-capable / most-specific first; the FIRST matching row wins.
  * Extend by adding a row — no ranking code changes. Scores are deliberately
  * spread so the deterministic tiers stay distinct.
@@ -33,13 +67,11 @@ const CAPABILITY_MAP: CapabilityRule[] = [
   { family: "gpt-4o", match: /gpt-4o(?!-mini)/i, score: 76, label: "advanced" },
   { family: "claude-haiku", match: /haiku/i, score: 64, label: "balanced" },
   { family: "gemini-flash", match: /gemini[-\w.]*flash/i, score: 60, label: "balanced" },
-  // Trailing size-fallback row. Uses the SAME word-boundary anchoring as
-  // {@link SMALL_VARIANT_RE} (see its doc-comment for why) so substring-only
-  // hits like the `mini` inside `minimax` can no longer be coerced to the fast
-  // tier — keeping the two size rules consistent. `small`/`flash` are kept here
-  // (not in the short-circuit) for non-gemini families; real gemini `flash`
-  // models are already caught as "balanced" by the curated row above.
-  { family: "small", match: /(?:^|[-_.])(?:nano|mini|lite|tiny|small|flash)(?:$|[-_.\d])/i, score: 56, label: "fast" },
+  // Trailing size-fallback row. Built from {@link buildSizeTierRe} — the SAME
+  // word-boundary anchoring as {@link SMALL_VARIANT_RE} — so substring-only hits
+  // like the `mini` inside `minimax` can no longer be coerced to the fast tier
+  // and the two size rules can never drift apart.
+  { family: "small", match: buildSizeTierRe(SIZE_FALLBACK_TOKENS), score: 56, label: "fast" },
 ];
 
 /**
@@ -113,8 +145,11 @@ function labelForScore(score: number): CapabilityLabel {
  * `minimax` is not preceded by a boundary, so those fall through to the family
  * map. `flash` and `haiku` are intentionally excluded — they stay "balanced"
  * via their curated rows; only `flash-lite` (carrying `lite`) drops to fast.
+ *
+ * Built from {@link buildSizeTierRe} so it shares the exact word-boundary
+ * anchoring of the {@link CAPABILITY_MAP} "small" fallback row.
  */
-const SMALL_VARIANT_RE = /(?:^|[-_.])(?:nano|mini|lite|tiny)(?:$|[-_.\d])/i;
+const SMALL_VARIANT_RE = buildSizeTierRe(SMALL_VARIANT_TOKENS);
 
 /**
  * Classify a model's capability. Size variants (nano/mini/lite/tiny) short-
