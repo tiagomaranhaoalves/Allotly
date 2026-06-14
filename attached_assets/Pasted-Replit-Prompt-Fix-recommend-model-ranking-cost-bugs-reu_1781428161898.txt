@@ -1,0 +1,45 @@
+Replit Prompt — Fix recommend_model ranking/cost bugs; reuse existing precision; open the door to a self-improving recommender
+What & Why
+recommend_model (server/lib/mcp/tools/consumption/recommend-model.ts) returns wrong picks and misleading costs, undermining Allotly's cost-control value prop. Verified root cause: it computes its own whole-cent estimate (Math.ceil(... / 1_000_000)), so on small tasks every model's cost collapses to ~1¢. That tie defeats prefer=cheapest (the stable sort falls back to pricing-table order → a premium model like opus surfaces and gets labelled "cheapest"), makes expected_output_length the de-facto model selector, and produces the estimate_cost "$0.02 displayed / 98% savings" contradiction. The codebase already has sub-cent precision (the micro-cent billing migration + preciseCostCents used by estimate_cost alternatives) — recommend_model just isn't using it.
+
+Must-fix (locked)
+Reuse existing precision, don't re-round. Rank and compare on the true sub-cent (micro-cent / fractional-cent) cost via the shared cost helper that estimate_cost already uses (e.g. preciseCostCents / the micro-cent settlement helpers in cost-utils.ts/safeguards.ts). recommend_model and estimate_cost must compute cost through the same function so they can never disagree again. Find the current helpers and reuse them; only round at final display.
+prefer must bind the PRIMARY pick and survive cost ties: cheapest → sort by true per-token/total price ascending; smartest → by capability score descending; fastest → by latency tier, then cost. With precise cost, cheapest will no longer tie.
+Stop using expected_output_length to choose the model class. It must only scale the cost estimate, never select the tier.
+Cost estimate scales with expected output length (and ideally real input size) instead of a floored constant — a 20k-word report must not read "~$0.01". Decide a sensible mapping; document it.
+Honest sub-cent display: render <$0.01 or sufficient decimal precision so displayed costs differentiate and are mutually consistent with savings_pct. Fix the same display issue in estimate_cost (the "$0.02 / 98% savings" headline).
+Real per-model reason text — reflect this model's actual cost, capability fit, and (if available) latency, not one of two canned buckets.
+Don't derive tiers from name regexes where avoidable — prefer deriving "premium/fast/cheap" from the actual model_pricing data (price, and capability flags) so new models classify correctly without code edits. If a small curated capability map is still needed, make it data, centralized, and easy to extend.
+Explore / design freedom — toward a self-improving recommender
+You have latitude here: think, propose, and implement what's sound; phase it; or stub with a clear TODO if a piece is too big for this task. Allotly already logs every call (mcp_audit_log, proxy_request_logs) with actual model, tokens, cost, latency — a real feedback corpus. Directions worth considering (pick what's high-value and safe; explain what you chose and why):
+
+Calibrate cost estimates from history: replace the flat INPUT_TOKENS_ESTIMATE/fixed output buckets with recent observed input/output token distributions (per membership or global) so estimates converge to reality.
+Latency tier from measurement: sort fastest by actual observed p50 latency per model, not a name regex.
+Capability/quality signal from outcomes: e.g. when a user re-runs a similar task on a pricier model shortly after a cheaper one, treat it as a signal the cheaper one underperformed; nudge capability scores. (Design the signal carefully; don't over-fit.)
+Lean on the caller's LLM: recommend_model could return rich structured facts (true price, capabilities, measured latency, historical success) and let the host LLM reason — consistent with the existing "list_available_models + host picks" philosophy — and/or optionally call a cheap model server-side for the recommendation (the deferred "M3c LLM recommender"), cached, with a heuristic fallback. If you go this route, keep it optional and degrade gracefully.
+Don't build a heavy ML system. Favor a clean, data-driven heuristic that can be fed by history, with seams for the above rather than all of it at once.
+
+Out of scope / guardrails
+Do not touch the proxy hot path (processChatCompletion), the settlement/ledger writes, or the budget reservation logic.
+Keep both tools read-only (no budget charge, no upstream calls for recommend_model).
+Do not regress estimate_cost's existing precise-alternatives behavior — improve its display, keep its ranking.
+No schema migration unless you add a genuinely needed column (if so, call it out and run db:push --force on dev only).
+Preserve the allowlist/provider/vision/tools filtering already in place.
+Tests (include the exact bug-report probes as regression cases)
+prefer=cheapest, expected_output_length=short → primary is a genuinely cheap model (not opus); confirms the tie is gone.
+Flipping prefer cheapest↔smartest changes the primary pick, not just alternatives.
+Same prefer, output length short vs long → primary pick does NOT change class purely due to length (length only scales cost).
+A 20k-word (very long) request yields a cost estimate orders of magnitude above a short one.
+recommend_model and estimate_cost return the same cost for the same (model, input, output) inputs.
+estimate_cost: displayed cost and savings_pct are mutually consistent (no "$0.02 / 98% savings"); sub-cent costs render honestly.
+Cheapest-tier model requested → cheaper alternatives empty/correct (don't regress prior fix).
+Verify
+npm run check (0 TS errors), npx vitest run, npm run build. Live curl on dev: run the four bug-report probes and paste outputs showing the premium-as-cheapest bug is gone and costs differentiate sub-cent.
+
+Report
+Root causes confirmed; files changed; which self-improving directions you implemented vs deferred (and why); test results; the four probe outputs. Push via Git pane; do NOT redeploy — user reviews.
+
+Two notes for you:
+
+Tell Replit the precision already exists (it does — micro-cent migration + estimate_cost's preciseCostCents). The biggest risk is Replit "introducing" a third cost representation instead of reusing the existing one, which would re-create drift. The prompt forces them through the shared helper — verify that in the diff.
+The "self-evolving" section is deliberately loose per your ask. When it comes back, the thing to check is that they didn't over-build — a clean data-fed heuristic with seams beats a half-working ML experiment. I'll audit for that when it lands.
