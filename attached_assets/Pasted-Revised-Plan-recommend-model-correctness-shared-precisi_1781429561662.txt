@@ -1,0 +1,80 @@
+Revised Plan — recommend_model correctness + shared precision + self-improving seams
+Component: Allotly MCP — recommend_model, estimate_cost
+Type: Correctness + display + light refactor
+Status: Plan for Replit Agent implementation
+Constraint: Read-only tools; no proxy hot-path, ledger, or reservation changes.
+
+What & Why
+Allotly's MCP recommend_model tool returns wrong picks and misleading costs, which undermines the product's core cost-control value. Root causes are confirmed in code:
+
+It computes its own whole-cent cost estimate (Math.ceil(... / 1_000_000)), so on small tasks every model's cost collapses to ~1¢. That tie defeats prefer=cheapest — the stable sort falls back to pricing-table order and a premium model (e.g. claude-opus-4-7) surfaces and is labelled "cheapest."
+prefer technically feeds the sort, but the cost tie makes it look ignored for the primary pick.
+Models are classified by brittle name regexes that misclassify new models.
+A flat input-token guess (500) and tiny fixed output buckets (short=200 … long=4000) make a 20k-word report read "~$0.01".
+reason text is one of two canned buckets.
+The codebase already has sub-cent precision (the micro-cent billing migration + the preciseCostCents helper estimate_cost's alternatives already use). This task makes recommend_model rank on that true sub-cent cost through the same shared helper estimate_cost uses, binds prefer to the primary pick, scales cost with output length, classifies models from pricing data, and makes both tools display sub-cent costs honestly — while leaving clean seams for a future self-improving recommender.
+
+Done looks like
+prefer=cheapest on a short task returns a genuinely cheap model as the primary pick, never a premium one — the rounding tie is gone.
+Flipping prefer between cheapest, smartest, and fastest changes the primary recommendation, not just the alternatives.
+Changing expected_output_length (short vs long) scales the cost estimate but does NOT change the recommended model's class; a very long (20k-word) request yields a cost orders of magnitude above a short one.
+recommend_model and estimate_cost report the same cost for the same model + equivalent input/output assumptions.
+Costs below one cent render with enough precision to be visibly different between models (e.g. $0.006 vs $0.0001) — NOT collapsed to a shared "<$0.01". estimate_cost's displayed cost is mutually consistent with its savings_pct (no "$0.02 / 98% savings" mismatch).
+Each recommended/alternative model has a reason reflecting its actual cost, capability fit, and (where available) latency — not a fixed bucket phrase.
+npm run check is clean, targeted Vitest suites pass, npm run build succeeds, and the live curl probes on dev show the premium-as-cheapest bug gone and sub-cent costs differentiated.
+Must-fix (locked)
+Reuse existing precision — no third cost representation. Move the precise (unrounded fractional/micro-cent) and conservative (per-component ceil, reserve-safe) cost functions into the shared proxy cost module; both recommend_model and estimate_cost import them so their math can never diverge. One shared sub-cent money formatter used by both. Do NOT introduce a new/third cost representation — reuse the existing precise + ceil pair.
+🔴 Unit consistency with the micro-cent ledger (verify FIRST — top risk). The billing migration made the canonical money unit micro-cents but kept the ...Cents names. recommend_model compares its estimate against snap.remaining_cents from buildBudgetSnapshot. Before writing logic, confirm the actual unit of that snapshot's budget fields post-migration (cents vs micro-cents). Ensure every comparison — estimate vs remaining, the affordability gate, and displayed numbers — is in one consistent unit. A mismatch here is a silent 1,000,000× error (every model looks affordable, or none does). Add an explicit assertion/test that a known budget and a known cost compare correctly.
+prefer binds the PRIMARY pick and survives ties (precise cost removes the tie). Sort order with deterministic, sensible secondary keys:
+cheapest → precise cost ascending, then capability descending.
+smartest → capability descending, then precise cost ascending.
+fastest → latency tier ascending, then precise cost ascending.
+expected_output_length only scales cost, never selects the class. Map to realistic output caps (short ≈ 1,000, medium ≈ 4,000, long ≈ 16,000), but clamp to the model's real max-output tokens where known. Estimate input tokens from the task description via the proxy's existing token estimator instead of a flat constant.
+Rank on precise cost; gate affordability on the reserve-safe (ceil) cost vs the unit-correct remaining budget — never recommend a model the proxy would then reject.
+🔴 Honest, differentiating sub-cent display. Show enough decimal precision that two models with sub-cent costs ~60× apart render as visibly different values (e.g. $0.006 vs $0.0001). "<$0.01" is NOT acceptable as the common case — it just moves the collapse from the cent layer to the display layer and leaves the bug half-alive. Use "<$0.01" only as a last-resort floor for absurdly tiny values. Apply to both tools; make estimate_cost's headline cost mutually consistent with savings_pct.
+Additive sub-cent display fields — keep the reserve-safe field unchanged. Keep the existing reserve-safe whole-cent cost field and its display so it keeps matching what the proxy reserves and the existing low-token regression test. Add the precise sub-cent fields alongside; compute savings_pct from the precise basis.
+Data-driven model classification with graceful fallback. Derive cheap/premium ordering from the pricing table (blended input/output price). Capability score from a small, centralized, extensible capability map (as data, keyed by model family/provider) plus a price-derived fallback when a model isn't in the map — so a brand-new model still classifies sensibly without a code edit. No inline name regexes for selection/ranking.
+Per-model reason from real values: the precise cost, the capability label/score, the latency tier when known, and why the model matched the chosen prefer.
+Latency for "fastest" (refined)
+Add a read-only storage aggregation of recent per-model request duration (mirroring the existing proxy-log aggregation), used to order fastest, with a deterministic fallback tier when a model has no history.
+Bound and cache it: restrict to a recent window (e.g. last 7 days or last N rows) and cache the aggregate in Redis with a short TTL (e.g. 1h) — do NOT run an unbounded GROUP BY over proxy_request_logs on every interactive call.
+Prefer a size-normalized metric (latency per output token / tokens-per-second) over raw average duration, so a model used for large tasks isn't mislabeled "slow."
+Additive read method only — no write paths, no hot-path changes. Leave clearly-marked TODO seams for deferred self-improving directions (history-calibrated token estimates, outcome-quality signals).
+Out of scope / guardrails
+The proxy hot path (processChatCompletion), settlement/ledger writes, and budget-reservation logic — not touched.
+Any budget charge or upstream provider call from recommend_model / estimate_cost — both stay strictly read-only.
+Schema/DB migration — none expected; if a column is genuinely needed, call it out and run db:push --force on dev only.
+estimate_cost's existing precise-alternatives ranking behavior — unchanged; only its display is made honest.
+Heavy ML / outcome-quality learning and per-membership token calibration — deferred as documented TODO seams, not built now.
+Tests
+prefer=cheapest, expected_output_length=short → primary is a genuinely cheap model (not opus); confirms the tie is gone.
+Flipping prefer cheapest↔smartest changes the primary pick, not just alternatives.
+Same prefer, output length short vs long → primary pick does NOT change class purely due to length; length only scales cost.
+A very-long (20k-word) request yields a cost estimate orders of magnitude above a short one.
+Agreement test: recommend_model and estimate_cost return the same cost for equivalent output assumptions (e.g. short→1000 ↔ max_tokens=1000) — feed equivalent inputs explicitly.
+🔴 Unit-consistency test: a membership with a known remaining budget correctly admits/rejects a model whose cost straddles the limit (guards the micro-cent 1,000,000× trap).
+🔴 Display-differentiation test: two models with sub-cent costs ~60× apart render as different strings (not both "<$0.01").
+estimate_cost: displayed cost ↔ savings_pct mutually consistent; existing reserve-safe low-token assertion still passes.
+Cheapest-tier model requested → cheaper alternatives empty/correct (no regression of the prior alternatives fix).
+Unknown/new model (absent from the capability map) still receives a sane price-derived score and ranks reasonably.
+Verify & hand off
+Run npm run check (0 TS errors), the targeted Vitest suites, and npm run build.
+Run the four bug-report probes on dev plus the unit-consistency and display-differentiation checks; capture outputs.
+Final report: root causes confirmed; files changed; which self-improving directions were implemented vs deferred (and why); test results; probe outputs.
+Push via the Git pane; do not redeploy — the user reviews and deploys.
+Relevant files
+server/lib/mcp/tools/consumption/recommend-model.ts
+server/lib/mcp/tools/consumption/estimate-cost.ts
+server/lib/proxy/cost-utils.ts
+server/lib/proxy/safeguards.ts (cost helpers; ~125-163)
+server/lib/mcp/meta-budget.ts (buildBudgetSnapshot — verify the money unit)
+server/lib/mcp/schemas.ts (~124-137)
+server/storage.ts (model pricing + proxy-log aggregation)
+shared/schema.ts (model_pricing, proxy_request_logs)
+tests/mcp-estimate-cost.test.ts (+ new recommend_model suite)
+Reviewer watch-list (highest-risk items in the returned diff)
+🔴 Unit consistency (#2): silent 1,000,000× money bug if the budget snapshot is micro-cents but the estimate is cents (or vice-versa). The original plan missed this.
+🔴 Differentiating display (#6): "<$0.01" for everything re-creates the collapse at the display layer — confirm distinct sub-cent values actually render.
+No third cost representation (#1): confirm both tools route through the same shared helper, not a new parallel calculation.
+Latency query bounded + cached: confirm no unbounded GROUP BY on proxy_request_logs per call.
+Capability fallback (#8): confirm a model absent from the map still gets a price-derived score.
