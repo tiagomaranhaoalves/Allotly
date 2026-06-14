@@ -278,6 +278,43 @@ describe("estimate_cost — low max_tokens true-cost ranking (regression)", () =
   });
 });
 
+describe("estimate_cost — precise sub-cent fields", () => {
+  it("exposes a fractional precise cost alongside the conservative ceil", async () => {
+    const tool = getTool("estimate_cost")!;
+    const out = await tool.handler({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: "hello world" }],
+      max_tokens: 500,
+    }, { principal: principal(makeMembership()), authHeader: undefined });
+
+    // Conservative whole-cent ceil for reservation vs true fractional cost.
+    expect(out.estimated.precise_cost_usd_cents).toBeGreaterThan(0);
+    expect(out.estimated.precise_cost_usd_cents).toBeLessThanOrEqual(out.estimated.max_cost_usd_cents);
+    // Sub-cent request renders with extra decimals, never collapsing to $0.00.
+    expect(out.estimated.precise_cost_display.formatted).toMatch(/^\$0\.00/);
+    expect(out.estimated.precise_cost_display.currency).toBe("USD");
+  });
+
+  it("gives each alternative its own precise cost + display", async () => {
+    const tool = getTool("estimate_cost")!;
+    const out = await tool.handler({
+      model: "claude-opus-4-7",
+      messages: [{ role: "user", content: "hi" }],
+      max_tokens: 1000,
+    }, { principal: principal(makeMembership()), authHeader: undefined });
+
+    expect(out.alternatives.length).toBeGreaterThan(0);
+    for (const alt of out.alternatives) {
+      expect(alt.precise_cost_usd_cents).toBeGreaterThan(0);
+      expect(alt.precise_cost_usd_cents).toBeLessThanOrEqual(alt.max_cost_usd_cents);
+      expect(alt.precise_cost_display.formatted).toMatch(/\$/);
+    }
+    // Precise costs ascend with the (already cheapest-first) alternatives.
+    const precise = out.alternatives.map((a: any) => a.precise_cost_usd_cents);
+    expect(precise).toEqual([...precise].sort((a: number, b: number) => a - b));
+  });
+});
+
 describe("estimate_cost — currency display", () => {
   it("formats max_cost_display in the org's currency (BRL → R$ 0,...)", async () => {
     (storage.getOrganization as any).mockResolvedValue({ id: ORG_ID, plan: "TEAM", currency: "BRL" });

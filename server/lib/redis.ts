@@ -293,4 +293,5 @@ export const REDIS_KEYS = {
   apiKeyCache: (keyHash: string) => `allotly:apikey:${keyHash}`,
   modelPrice: (provider: string, model: string) => `allotly:modelprice:${provider}:${model}`,
   azureDeployments: (orgId: string) => `allotly:azure:deployments:${orgId}`,
+  mcpLatency: (membershipId: string) => `allotly:mcp:latency:${membershipId}`,
 };

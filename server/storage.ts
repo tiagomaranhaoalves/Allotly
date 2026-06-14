@@ -12,7 +12,7 @@ import {
   passwordResetTokens, projects,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, sql, asc, gte, lte, count, inArray } from "drizzle-orm";
+import { eq, and, desc, sql, asc, gt, gte, lte, count, inArray } from "drizzle-orm";
 
 // Lets allocating writes run inside a caller-supplied transaction so a budget
 // ceiling check and the write it guards commit atomically. Defaults to `db`.
@@ -108,6 +108,7 @@ export interface IStorage {
   createProxyRequestLog(data: any): Promise<ProxyRequestLog>;
   settleSpendWithCarry(membershipId: string, costMicroCents: number): Promise<{ crossedCents: number; newSpendCents: number }>;
   getProxyRequestLogsByMembership(membershipId: string, limit?: number): Promise<ProxyRequestLog[]>;
+  getRecentModelLatency(membershipId: string, sinceMs?: number): Promise<{ model: string; avgMsPerOutputToken: number; samples: number }[]>;
 
   getAllOrganizations(): Promise<Organization[]>;
 
@@ -584,6 +585,46 @@ export class DrizzleStorage implements IStorage {
 
   async getProxyRequestLogsByMembership(membershipId: string, limit = 50): Promise<ProxyRequestLog[]> {
     return db.select().from(proxyRequestLogs).where(eq(proxyRequestLogs.membershipId, membershipId)).orderBy(desc(proxyRequestLogs.createdAt)).limit(limit);
+  }
+
+  /**
+   * Read-only, bounded per-model latency aggregation for the "fastest"
+   * recommendation. Bounded by the (membership_id, created_at) index — an
+   * equality on the membership plus a recent-window range scan — so it never
+   * runs an unbounded GROUP BY; callers cache the result briefly. Uses a
+   * size-normalized metric (ms per output token) so large-output models aren't
+   * mislabeled slow. Excludes rows with no output tokens / no duration.
+   *
+   * TODO (deferred self-improving directions): (1) history-calibrated input
+   * token estimates per membership; (2) outcome-quality signals to weight the
+   * capability score. Both are additive read paths layered on this seam.
+   */
+  async getRecentModelLatency(
+    membershipId: string,
+    sinceMs = 14 * 24 * 60 * 60 * 1000,
+  ): Promise<{ model: string; avgMsPerOutputToken: number; samples: number }[]> {
+    const since = new Date(Date.now() - sinceMs);
+    const rows = await db
+      .select({
+        model: proxyRequestLogs.model,
+        avgMsPerOutputToken: sql<number>`AVG(${proxyRequestLogs.durationMs}::float / NULLIF(${proxyRequestLogs.outputTokens}, 0))`,
+        samples: sql<number>`COUNT(*)`,
+      })
+      .from(proxyRequestLogs)
+      .where(
+        and(
+          eq(proxyRequestLogs.membershipId, membershipId),
+          gt(proxyRequestLogs.createdAt, since),
+          gt(proxyRequestLogs.outputTokens, 0),
+          gt(proxyRequestLogs.durationMs, 0),
+        ),
+      )
+      .groupBy(proxyRequestLogs.model);
+    return rows.map((r) => ({
+      model: r.model,
+      avgMsPerOutputToken: Number(r.avgMsPerOutputToken),
+      samples: Number(r.samples),
+    }));
   }
 
   async getDashboardStats(orgId: string): Promise<any> {

@@ -3,17 +3,18 @@ import { EstimateCostInputSchema, type ChatMessage } from "../../schemas";
 import { McpToolError } from "../../errors";
 import { registerTool } from "../registry";
 import { estimateInputTokens } from "../../../proxy/safeguards";
+import { maxCostCents, preciseCostCents } from "../../../proxy/cost-utils";
+import { supportsVision } from "../../model-capabilities";
 import {
   convertFromUsdCents,
   formatMoney,
   getActiveRates,
   getOrgCurrency,
+  buildPreciseAmountDisplay,
   type SupportedCurrency,
   CURRENCY_LOCALES,
 } from "../../../currency";
 import type { ModelPricing } from "@shared/schema";
-
-const VISION_CAPABLE = /gpt-4o|claude-(sonnet|haiku|opus)|gemini/i;
 
 /**
  * V1.5.1 default cap when the caller omits `max_tokens`. Mirrors the
@@ -38,25 +39,6 @@ function hasImageContent(messages: ChatMessage[]): boolean {
     }
   }
   return false;
-}
-
-function maxCostCents(inputTokens: number, maxOutputTokens: number, pricing: ModelPricing): number {
-  const inputCost = Math.ceil((inputTokens * pricing.inputPricePerMTok) / 1_000_000);
-  const outputCost = Math.ceil((maxOutputTokens * pricing.outputPricePerMTok) / 1_000_000);
-  return inputCost + outputCost;
-}
-
-/**
- * True fractional-cent cost for ranking/comparison ONLY. Unlike
- * `maxCostCents` it does NOT round per component, so two models with very
- * different real prices don't collapse to the same value at low max_tokens
- * (where each component would otherwise hit the 1-cent ceil floor). This is
- * used to select and order alternatives and to compute savings_pct; it is
- * never displayed. Displayed costs stay on the conservative `maxCostCents`
- * ceil so a preview never undercuts what `processChatCompletion` reserves.
- */
-function preciseCostCents(inputTokens: number, maxOutputTokens: number, pricing: ModelPricing): number {
-  return (inputTokens * pricing.inputPricePerMTok + maxOutputTokens * pricing.outputPricePerMTok) / 1_000_000;
 }
 
 function buildAmountDisplay(
@@ -130,7 +112,7 @@ registerTool({
       });
     }
 
-    if (needsVision && !VISION_CAPABLE.test(input.model)) {
+    if (needsVision && !supportsVision(input.model)) {
       throw new McpToolError("InvalidInput", `Model "${input.model}" does not support image input`, {
         hint: "Try a vision-capable model such as claude-sonnet-4-6 or gpt-4o.",
       });
@@ -158,7 +140,7 @@ registerTool({
       .filter(p => p.modelId !== input.model)
       .filter(p => filteredProviders.includes(p.provider))
       .filter(p => !allowedModels || allowedModels.length === 0 || allowedModels.includes(p.modelId))
-      .filter(p => !needsVision || VISION_CAPABLE.test(p.modelId))
+      .filter(p => !needsVision || supportsVision(p.modelId))
       .map(p => ({
         modelId: p.modelId,
         // Conservative ceil for display, precise value for ranking/savings.
@@ -180,11 +162,15 @@ registerTool({
         max_output_tokens: maxOutputTokens,
         max_cost_usd_cents: requestedCost,
         max_cost_display: buildAmountDisplay(requestedCost, orgCurrency, rate),
+        precise_cost_usd_cents: requestedPrecise,
+        precise_cost_display: buildPreciseAmountDisplay(requestedPrecise, orgCurrency, rate),
       },
       alternatives: alternatives.map(a => ({
         model: a.modelId,
         max_cost_usd_cents: a.cost,
         max_cost_display: buildAmountDisplay(a.cost, orgCurrency, rate),
+        precise_cost_usd_cents: a.precise,
+        precise_cost_display: buildPreciseAmountDisplay(a.precise, orgCurrency, rate),
         savings_pct: requestedPrecise > 0
           ? Math.round(((requestedPrecise - a.precise) / requestedPrecise) * 100)
           : 0,

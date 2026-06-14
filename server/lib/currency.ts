@@ -111,6 +111,75 @@ export function formatMoney(minorUnits: number, currency: SupportedCurrency, loc
   }
 }
 
+/**
+ * Like {@link convertFromUsdCents} but WITHOUT rounding to whole minor units,
+ * so fractional sub-cent amounts survive currency conversion for honest
+ * display. Use ONLY for displaying fractional-cent estimates; all whole-money
+ * math (budgets, reservations, settlement) stays on `convertFromUsdCents`.
+ */
+export function convertFromUsdCentsPrecise(usdCents: number, target: SupportedCurrency, rate?: number): number {
+  if (target === "USD") return usdCents;
+  const r = rate ?? FALLBACK_RATES[target as Exclude<SupportedCurrency, "USD">];
+  return usdCents * r;
+}
+
+function formatMoneyWithDigits(value: number, currency: SupportedCurrency, locale: string, maxFractionDigits: number): string {
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: maxFractionDigits,
+    }).format(value);
+  } catch {
+    return `${CURRENCY_SYMBOLS[currency]}${value.toFixed(maxFractionDigits)}`;
+  }
+}
+
+/**
+ * Sub-cent-aware money formatter. Renders just enough fractional digits
+ * (~2 significant figures below a cent, capped at 8) that two sub-cent amounts
+ * differing by orders of magnitude render as visibly DIFFERENT strings (e.g.
+ * "$0.006" vs "$0.0001") instead of both collapsing to "$0.01"/"<$0.01".
+ * Amounts at or above one cent fall back to the standard 2-decimal display.
+ * Amounts too tiny to render even at max precision show as a "less than" bound
+ * rather than a misleading rounded-to-zero "$0.00".
+ *
+ * @param minorUnits amount in the currency's minor units (may be fractional)
+ */
+export function formatPreciseMoney(minorUnits: number, currency: SupportedCurrency, locale?: string): string {
+  const loc = locale || CURRENCY_LOCALES[currency];
+  const value = minorUnits / 100;
+  if (!Number.isFinite(value) || value === 0) return formatMoney(0, currency, loc);
+  const abs = Math.abs(value);
+  let maxFractionDigits: number;
+  if (abs >= 0.01) {
+    maxFractionDigits = 2;
+  } else {
+    maxFractionDigits = Math.min(8, Math.max(2, 1 - Math.floor(Math.log10(abs))));
+  }
+  const smallest = Math.pow(10, -maxFractionDigits);
+  if (abs < smallest) {
+    return `<${formatMoneyWithDigits(Math.sign(value) * smallest, currency, loc, maxFractionDigits)}`;
+  }
+  return formatMoneyWithDigits(value, currency, loc, maxFractionDigits);
+}
+
+/**
+ * Build a sub-cent display object from a USD-cents amount (possibly
+ * fractional), converted into the target currency for honest rendering. The
+ * companion to estimate_cost's whole-cent `buildAmountDisplay`, shared by both
+ * MCP cost tools so their precise displays are mutually consistent.
+ */
+export function buildPreciseAmountDisplay(
+  usdCents: number,
+  currency: SupportedCurrency,
+  rate: number,
+): { currency: SupportedCurrency; amount: number; formatted: string } {
+  const amount = convertFromUsdCentsPrecise(usdCents, currency, rate);
+  return { currency, amount, formatted: formatPreciseMoney(amount, currency) };
+}
+
 export interface DisplayBlock {
   currency: SupportedCurrency;
   locale: string;

@@ -65,3 +65,33 @@ export async function resolveAzurePricing(
   }
   return null;
 }
+
+/**
+ * Conservative, reserve-safe worst-case cost in WHOLE USD-cents. Each
+ * component is ceiled independently — this is exactly what
+ * `processChatCompletion` reserves against budget, so a preview built from it
+ * can never undercut the proxy's actual hold. This is the value the MCP tools
+ * DISPLAY as the whole-cent worst case and the value affordability gates on.
+ *
+ * Shared by `estimate_cost` and `recommend_model` so their cost math can never
+ * diverge. Inputs are token counts and a pricing row whose per-MTok prices are
+ * integer USD-cents per million tokens.
+ */
+export function maxCostCents(inputTokens: number, maxOutputTokens: number, pricing: ModelPricing): number {
+  const inputCost = Math.ceil((inputTokens * pricing.inputPricePerMTok) / 1_000_000);
+  const outputCost = Math.ceil((maxOutputTokens * pricing.outputPricePerMTok) / 1_000_000);
+  return inputCost + outputCost;
+}
+
+/**
+ * True FRACTIONAL-cent cost for ranking/comparison and honest sub-cent
+ * display. Unlike {@link maxCostCents} it does NOT round per component, so two
+ * models with very different real prices don't collapse to the same value at
+ * low token counts (where each component would otherwise hit the 1-cent ceil
+ * floor and defeat `prefer=cheapest`). Use this to select/order candidates, to
+ * compute `savings_pct`, and to render sub-cent display — never to reserve
+ * budget (that stays on the conservative {@link maxCostCents}).
+ */
+export function preciseCostCents(inputTokens: number, maxOutputTokens: number, pricing: ModelPricing): number {
+  return (inputTokens * pricing.inputPricePerMTok + maxOutputTokens * pricing.outputPricePerMTok) / 1_000_000;
+}
