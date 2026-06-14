@@ -27,6 +27,7 @@ vi.mock("../server/lib/currency", async () => {
 
 import { storage } from "../server/storage";
 import { getTool } from "../server/lib/mcp/tools";
+import { classifyCapability } from "../server/lib/mcp/model-capabilities";
 
 const TEAM_ID = "team-1";
 const ORG_ID = "org-1";
@@ -279,6 +280,52 @@ describe("recommend_model — capability classification", () => {
       expect(m).toMatch(/gpt-4o|claude-(sonnet|haiku|opus)|gemini/);
     }
     expect(chosen).not.toContain("o3");
+  });
+});
+
+describe("classifyCapability — size-qualifier short-circuit", () => {
+  const ctx = { minBlended: 10, maxBlended: 10_000 };
+  const cap = (id: string) => classifyCapability(id, 100, ctx);
+
+  it("classifies size variants as fast across families, not their parent tier", () => {
+    for (const id of ["gpt-5.4-nano", "gpt-5-nano", "gpt-5.4-mini", "o4-mini", "gemini-2.5-flash-lite"]) {
+      expect(cap(id)).toMatchObject({ label: "fast", source: "map" });
+      expect(cap(id).score).toBeLessThan(60);
+    }
+  });
+
+  it("keeps existing families correct (regressions)", () => {
+    expect(cap("gpt-4.1-nano").label).toBe("fast"); // still fast via the size short-circuit
+    expect(cap("claude-opus-4-7").label).toBe("frontier");
+    expect(cap("claude-haiku-4-5").label).toBe("balanced");
+    expect(cap("gemini-2.5-flash").label).toBe("balanced"); // plain flash stays balanced
+  });
+
+  it("does not fire on the 'mini' inside 'gemini'", () => {
+    // 'mini' inside 'gemini' is not boundary-anchored, so the short-circuit
+    // skips it and the family map resolves gemini-pro to advanced as before.
+    expect(cap("gemini-2.5-pro")).toMatchObject({ label: "advanced", source: "map" });
+    expect(cap("gemini-2.5-flash")).toMatchObject({ label: "balanced", source: "map" });
+  });
+});
+
+describe("recommend_model — gpt-5 nano lands in the fast tier", () => {
+  it("ranks a gpt-5 nano as fast (not frontier/slow) for prefer=fastest", async () => {
+    (storage.getModelPricing as any).mockResolvedValue([
+      { id: "n1", provider: "OPENAI", modelId: "gpt-5.4-nano", displayName: "GPT-5.4 nano",
+        inputPricePerMTok: 5, outputPricePerMTok: 40, isActive: true, updatedAt: new Date() },
+      { id: "p2", provider: "OPENAI", modelId: "gpt-4o", displayName: "GPT-4o",
+        inputPricePerMTok: 250, outputPricePerMTok: 1000, isActive: true, updatedAt: new Date() },
+    ] as any);
+    const tool = getTool("recommend_model")!;
+    const out = await tool.handler(
+      { task_description: TASK, expected_output_length: "short", prefer: "fastest" },
+      ctx(makeMembership()),
+    );
+    expect(out.recommended.model).toBe("gpt-5.4-nano");
+    expect(out.recommended.capability).toBe("fast");
+    expect(out.recommended.latency_tier).toBe("fast");
+    expect(out.recommended.reason).not.toMatch(/slow|frontier/i);
   });
 });
 

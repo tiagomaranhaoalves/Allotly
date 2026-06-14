@@ -95,11 +95,31 @@ function labelForScore(score: number): CapabilityLabel {
 }
 
 /**
- * Classify a model's capability. Known families come from {@link
+ * Word-bounded "small variant" qualifier. A model id carrying one of these size
+ * suffixes (e.g. `gpt-5.4-nano`, `o4-mini`, `gemini-2.5-flash-lite`) is the fast
+ * tier regardless of its family. This is matched BEFORE {@link CAPABILITY_MAP}
+ * so a broad family row — notably the `gpt-5` frontier row, which has no
+ * negative lookahead unlike the `gpt-4.1`/`gpt-4o` rows — can no longer inflate
+ * a nano/mini to "frontier".
+ *
+ * The boundary anchors (`^`/`-`/`_`/`.` before, end / `-`/`_`/`.`/digit after)
+ * keep it from firing on incidental substrings: the `mini` inside `gemini` and
+ * `minimax` is not preceded by a boundary, so those fall through to the family
+ * map. `flash` and `haiku` are intentionally excluded — they stay "balanced"
+ * via their curated rows; only `flash-lite` (carrying `lite`) drops to fast.
+ */
+const SMALL_VARIANT_RE = /(?:^|[-_.])(?:nano|mini|lite|tiny)(?:$|[-_.\d])/i;
+
+/**
+ * Classify a model's capability. Size variants (nano/mini/lite/tiny) short-
+ * circuit to the fast tier; otherwise known families come from {@link
  * CAPABILITY_MAP}; unknown models fall back to a log-normalized price score
  * within the candidate set so they still order sensibly.
  */
 export function classifyCapability(modelId: string, blended: number, ctx: PriceContext): Capability {
+  if (SMALL_VARIANT_RE.test(modelId)) {
+    return { score: 56, label: "fast", source: "map" };
+  }
   for (const rule of CAPABILITY_MAP) {
     if (rule.match.test(modelId)) {
       return { score: rule.score, label: rule.label, source: "map" };
